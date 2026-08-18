@@ -22,3 +22,8 @@
 - [x] Modelar a importação com Codigo + Filial como chave do registro e Qtd13M como vendas acumuladas.
 - [x] Implementar o armazenamento seguro da planilha Excel importada e a persistência dos registros analíticos.
 - [x] Substituir a navegação por painel analítico e importação de planilha, removendo a exposição inicial de fornecedores e entregas.
+- [x] Corrigir a métrica de vendas acumuladas para utilizar CustoTot13M.
+- [x] Persistir unidade, família, subfamília e giro de capital na importação Protheus.
+- [x] Implementar análises de giro por curva, unidade, família e subfamília.
+- [x] Identificar e propor visões adicionais sustentadas pelos campos da planilha.
+- [x] Validar a nova importação e os agrupamentos de giro com a planilha Compras.xlsx.
