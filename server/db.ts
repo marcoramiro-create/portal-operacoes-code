@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { inventoryAnalytics, protheusImports, type InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+import { calculateTurnover } from "./analyticsRules";
 import { parseProtheusWorkbook } from "./protheusImport";
 import { storagePut } from "./storage";
 
@@ -69,7 +70,6 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
         stockValue: record.stockValue.toFixed(2),
         coverageDays: record.coverageDays.toFixed(3),
         excessValue: record.excessValue.toFixed(2),
-        capitalTurnover: record.capitalTurnover.toFixed(3),
       })));
     }
   });
@@ -80,7 +80,7 @@ type Curve = "A" | "B" | "C" | "D" | "E";
 type ProductType = "ME" | "PE";
 const ANALYSIS_BRANCHES = ["0101", "0102", "0301", "0303"] as const;
 export type AnalyticsFilter = { branch?: string; curve?: Curve; productType?: ProductType; family?: string; subfamily?: string };
-type AnalyticsGroup = { label: string; salesValue13M: number; stockValue: number; capitalTurnover: number; coverageDays: number; excessValue: number };
+type AnalyticsGroup = { label: string; salesValue13M: number; stockValue: number; turnover: number; coverageDays: number; excessValue: number };
 
 async function getLatestImportId() {
   const db = await getDb();
@@ -93,7 +93,7 @@ const normalizeLabel = (value: string) => value || "Não informado";
 export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
   const importId = await getLatestImportId();
-  const empty = { currentImport: null, summary: { salesValue13M: 0, stockValue: 0, capitalTurnover: 0, coverageDays: 0, excessValue: 0 }, byBranch: [] as AnalyticsGroup[], byCurve: [] as AnalyticsGroup[], byFamily: [] as AnalyticsGroup[], bySubfamily: [] as AnalyticsGroup[] };
+  const empty = { currentImport: null, summary: { salesValue13M: 0, stockValue: 0, turnover: 0, coverageDays: 0, excessValue: 0 }, byBranch: [] as AnalyticsGroup[], byCurve: [] as AnalyticsGroup[], byFamily: [] as AnalyticsGroup[], bySubfamily: [] as AnalyticsGroup[] };
   if (!db || !importId) return empty;
   const [currentImport] = await db.select().from(protheusImports).where(eq(protheusImports.id, importId)).limit(1);
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
@@ -106,19 +106,24 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
-    capitalTurnover: sql<string>`coalesce(avg(${inventoryAnalytics.capitalTurnover}), 0)`,
     coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
   };
   const [summary] = await db.select(measures).from(inventoryAnalytics).where(whereClause);
-  const toGroups = (rows: Array<{ label: string; salesValue13M: string; stockValue: string; capitalTurnover: string; coverageDays: string; excessValue: string }>) => rows.map(row => ({ label: normalizeLabel(row.label), salesValue13M: asNumber(row.salesValue13M), stockValue: asNumber(row.stockValue), capitalTurnover: asNumber(row.capitalTurnover), coverageDays: asNumber(row.coverageDays), excessValue: asNumber(row.excessValue) }));
+  const toGroups = (rows: Array<{ label: string; salesValue13M: string; stockValue: string; coverageDays: string; excessValue: string }>) => rows.map(row => {
+    const salesValue13M = asNumber(row.salesValue13M);
+    const stockValue = asNumber(row.stockValue);
+    return { label: normalizeLabel(row.label), salesValue13M, stockValue, turnover: calculateTurnover(salesValue13M, stockValue), coverageDays: asNumber(row.coverageDays), excessValue: asNumber(row.excessValue) };
+  });
   const [branchRows, curveRows, familyRows, subfamilyRows] = await Promise.all([
     db.select({ label: inventoryAnalytics.branch, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.branch).orderBy(asc(inventoryAnalytics.branch)),
     db.select({ label: inventoryAnalytics.curve, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.curve).orderBy(asc(inventoryAnalytics.curve)),
     db.select({ label: inventoryAnalytics.family, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.family).orderBy(desc(sql`sum(${inventoryAnalytics.salesValue13M})`)),
     db.select({ label: inventoryAnalytics.subfamily, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.subfamily).orderBy(desc(sql`sum(${inventoryAnalytics.salesValue13M})`)),
   ]);
-  return { currentImport: currentImport ?? null, summary: { salesValue13M: asNumber(summary?.salesValue13M), stockValue: asNumber(summary?.stockValue), capitalTurnover: asNumber(summary?.capitalTurnover), coverageDays: asNumber(summary?.coverageDays), excessValue: asNumber(summary?.excessValue) }, byBranch: toGroups(branchRows), byCurve: toGroups(curveRows), byFamily: toGroups(familyRows), bySubfamily: toGroups(subfamilyRows) };
+  const salesValue13M = asNumber(summary?.salesValue13M);
+  const stockValue = asNumber(summary?.stockValue);
+  return { currentImport: currentImport ?? null, summary: { salesValue13M, stockValue, turnover: calculateTurnover(salesValue13M, stockValue), coverageDays: asNumber(summary?.coverageDays), excessValue: asNumber(summary?.excessValue) }, byBranch: toGroups(branchRows), byCurve: toGroups(curveRows), byFamily: toGroups(familyRows), bySubfamily: toGroups(subfamilyRows) };
 }
 
 export async function getAnalyticsFilterOptions() {

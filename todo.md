@@ -31,3 +31,5 @@
 - [x] Persistir e disponibilizar o filtro opcional de tipo de produto ME e PE.
 - [x] Restringir a análise atual às lojas 0101, 0102, 0301 e 0303.
 - [x] Ordenar as visões de giro por família e subfamília do maior para o menor volume de vendas.
+- [x] Calcular o giro como CustoTot13M dividido por Total R$ em todos os agrupamentos.
+- [x] Remover o indicador de cobertura média do painel.

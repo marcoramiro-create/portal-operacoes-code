@@ -11,9 +11,13 @@ const [allData, branchData, typePeData, familyData, subfamilyData] = await Promi
 
 const expectedBranches = ["0101", "0102", "0301", "0303"];
 const isDescendingBySales = rows => rows.every((row, index) => index === 0 || rows[index - 1].salesValue13M >= row.salesValue13M);
+const expectedTurnover = allData.summary.salesValue13M / allData.summary.stockValue;
 
 if (!allData.currentImport || allData.summary.salesValue13M <= 0 || allData.summary.stockValue <= 0) {
   throw new Error("O painel não retornou vendas ou estoque financeiro da importação atual.");
+}
+if (Math.abs(allData.summary.turnover - expectedTurnover) > 0.000001) {
+  throw new Error("O giro do painel não corresponde a CustoTot13M dividido por Total R$.");
 }
 if (allData.byBranch.map(row => row.label).join(",") !== expectedBranches.join(",")) {
   throw new Error("O painel não está limitado às quatro unidades prioritárias.");
@@ -37,6 +41,7 @@ if (!isDescendingBySales(allData.byFamily) || !isDescendingBySales(allData.bySub
 console.log(JSON.stringify({
   salesValue13M: allData.summary.salesValue13M,
   stockValue: allData.summary.stockValue,
+  turnover: allData.summary.turnover,
   branches: allData.byBranch.map(row => row.label),
   productTypesValidated: ["PE"],
   families: allData.byFamily.length,

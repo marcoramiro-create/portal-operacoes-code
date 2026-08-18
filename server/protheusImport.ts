@@ -14,10 +14,9 @@ export type ProtheusInventoryRecord = {
   stockValue: number;
   coverageDays: number;
   excessValue: number;
-  capitalTurnover: number;
 };
 
-const requiredHeaders = ["Codigo", "Descricao", "Filial", "Tipo", "Qtd13M", "CustoTot13M", "Estoque", "Total R$", "Classe ABC", "Cobertura (Dias)", "Excedente (R$)", "Família", "SubFamília", "Giro Capital"] as const;
+const requiredHeaders = ["Codigo", "Descricao", "Filial", "Tipo", "Qtd13M", "CustoTot13M", "Estoque", "Total R$", "Classe ABC", "Cobertura (Dias)", "Excedente (R$)", "Família", "SubFamília"] as const;
 const allowedCurves = new Set<ProtheusInventoryRecord["curve"]>(["A", "B", "C", "D", "E"]);
 const allowedBranches = new Set(["0101", "0102", "0301", "0303"]);
 const allowedProductTypes = new Set<ProtheusInventoryRecord["productType"]>(["ME", "PE"]);
@@ -81,7 +80,6 @@ export function parseProtheusWorkbook(buffer: Buffer): ProtheusInventoryRecord[]
       stockValue: asNumber(valueOf("Total R$")),
       coverageDays: asNumber(valueOf("Cobertura (Dias)")),
       excessValue: asNumber(valueOf("Excedente (R$)")),
-      capitalTurnover: asNumber(valueOf("Giro Capital")),
     });
   });
   if (records.length === 0) throw new Error("A planilha não contém registros para importação.");
