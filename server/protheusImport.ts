@@ -4,19 +4,23 @@ export type ProtheusInventoryRecord = {
   code: string;
   description: string;
   branch: string;
+  productType: "ME" | "PE";
   family: string;
   subfamily: string;
   curve: "A" | "B" | "C" | "D" | "E";
   sales13M: number;
   salesValue13M: number;
   stock: number;
+  stockValue: number;
   coverageDays: number;
   excessValue: number;
   capitalTurnover: number;
 };
 
-const requiredHeaders = ["Codigo", "Descricao", "Filial", "Qtd13M", "CustoTot13M", "Estoque", "Classe ABC", "Cobertura (Dias)", "Excedente (R$)", "Família", "SubFamília", "Giro Capital"] as const;
+const requiredHeaders = ["Codigo", "Descricao", "Filial", "Tipo", "Qtd13M", "CustoTot13M", "Estoque", "Total R$", "Classe ABC", "Cobertura (Dias)", "Excedente (R$)", "Família", "SubFamília", "Giro Capital"] as const;
 const allowedCurves = new Set<ProtheusInventoryRecord["curve"]>(["A", "B", "C", "D", "E"]);
+const allowedBranches = new Set(["0101", "0102", "0301", "0303"]);
+const allowedProductTypes = new Set<ProtheusInventoryRecord["productType"]>(["ME", "PE"]);
 
 function asText(value: unknown) { return String(value ?? "").trim(); }
 
@@ -54,8 +58,11 @@ export function parseProtheusWorkbook(buffer: Buffer): ProtheusInventoryRecord[]
     const code = asText(valueOf("Codigo"));
     const description = asText(valueOf("Descricao"));
     const branch = asText(valueOf("Filial"));
+    const productType = asText(valueOf("Tipo")).toUpperCase() as ProtheusInventoryRecord["productType"];
     const curve = asText(valueOf("Classe ABC")).toUpperCase() as ProtheusInventoryRecord["curve"];
     if (!code || !description || !branch || !allowedCurves.has(curve)) throw new Error(`A linha ${line} não possui Codigo, Descricao, Filial ou Classe ABCDE válidos.`);
+    if (!allowedProductTypes.has(productType)) throw new Error(`A linha ${line} possui Tipo de produto inválido.`);
+    if (!allowedBranches.has(branch)) return;
     const recordKey = `${code}::${branch}`;
     if (recordKeys.has(recordKey)) throw new Error(`A planilha possui o registro duplicado ${code} na filial ${branch}.`);
     recordKeys.add(recordKey);
@@ -64,12 +71,14 @@ export function parseProtheusWorkbook(buffer: Buffer): ProtheusInventoryRecord[]
       code,
       description,
       branch,
+      productType,
       family: asText(valueOf("Família")),
       subfamily: asText(valueOf("SubFamília")),
       curve,
       sales13M: asNumber(valueOf("Qtd13M")),
       salesValue13M: asNumber(valueOf("CustoTot13M")),
       stock: asNumber(valueOf("Estoque")),
+      stockValue: asNumber(valueOf("Total R$")),
       coverageDays: asNumber(valueOf("Cobertura (Dias)")),
       excessValue: asNumber(valueOf("Excedente (R$)")),
       capitalTurnover: asNumber(valueOf("Giro Capital")),

@@ -8,13 +8,13 @@ function workbookBuffer(rows: unknown[][]) {
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 }
 
-const headers = ["Codigo", "Descricao", "Filial", "Qtd13M", "CustoTot13M", "Estoque", "Classe ABC", "Cobertura (Dias)", "Excedente (R$)", "Família", "SubFamília", "Giro Capital"];
+const headers = ["Codigo", "Descricao", "Filial", "Tipo", "Qtd13M", "CustoTot13M", "Estoque", "Total R$", "Classe ABC", "Cobertura (Dias)", "Excedente (R$)", "Família", "SubFamília", "Giro Capital"];
 
 describe("leitura da planilha Protheus", () => {
   it("usa a primeira coluna Classe ABC como curva ABCDE e CustoTot13M como vendas financeiras", () => {
-    const buffer = workbookBuffer([headers, ["001", "Item", "0101", 120, 3250.5, 30, "D", 12.5, 450, "Freios", "Discos", 8.7]]);
+    const buffer = workbookBuffer([headers, ["001", "Item", "0101", "ME", 120, 3250.5, 30, 1400, "D", 12.5, 450, "Freios", "Discos", 8.7]]);
     const [record] = parseProtheusWorkbook(buffer);
-    expect(record).toMatchObject({ code: "001", branch: "0101", curve: "D", sales13M: 120, salesValue13M: 3250.5, stock: 30, coverageDays: 12.5, excessValue: 450, family: "Freios", subfamily: "Discos", capitalTurnover: 8.7 });
+    expect(record).toMatchObject({ code: "001", branch: "0101", productType: "ME", curve: "D", sales13M: 120, salesValue13M: 3250.5, stock: 30, stockValue: 1400, coverageDays: 12.5, excessValue: 450, family: "Freios", subfamily: "Discos", capitalTurnover: 8.7 });
   });
 
   it("rejeita a ausência de uma coluna obrigatória", () => {

@@ -27,3 +27,7 @@
 - [x] Implementar análises de giro por curva, unidade, família e subfamília.
 - [x] Identificar e propor visões adicionais sustentadas pelos campos da planilha.
 - [x] Validar a nova importação e os agrupamentos de giro com a planilha Compras.xlsx.
+- [x] Utilizar Total R$ como estoque financeiro nas métricas e análises do painel.
+- [x] Persistir e disponibilizar o filtro opcional de tipo de produto ME e PE.
+- [x] Restringir a análise atual às lojas 0101, 0102, 0301 e 0303.
+- [x] Ordenar as visões de giro por família e subfamília do maior para o menor volume de vendas.
