@@ -2,7 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
-import { logisticsRouter } from "./routers/logistics";
+import { analyticsRouter } from "./routers/analytics";
 
 export const appRouter = router({
   system: systemRouter,
@@ -14,7 +14,7 @@ export const appRouter = router({
       return { success: true } as const;
     }),
   }),
-  logistics: logisticsRouter,
+  analytics: analyticsRouter,
 });
 
 export type AppRouter = typeof appRouter;

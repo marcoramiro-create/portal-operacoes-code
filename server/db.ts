@@ -1,20 +1,14 @@
-import { desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
-  deliveries,
-  inventoryItems,
-  purchaseOrders,
-  stockMovements,
-  suppliers,
+  inventoryAnalytics,
+  protheusImports,
   type InsertUser,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
-import { calculateStockQuantity, validateDeliveryReceipt } from "./logisticsRules";
-
-export type PurchaseOrderStatus = "rascunho" | "aprovado" | "enviado" | "recebido" | "cancelado";
-export type DeliveryStatus = "pendente" | "recebido";
-export type MovementType = "entrada" | "saida";
+import { parseProtheusWorkbook } from "./protheusImport";
+import { storagePut } from "./storage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -38,19 +32,16 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   const values: InsertUser = { openId: user.openId };
   const updateSet: Record<string, unknown> = {};
   const textFields = ["name", "email", "loginMethod"] as const;
-
   textFields.forEach(field => {
     if (user[field] !== undefined) {
       values[field] = user[field] ?? null;
       updateSet[field] = user[field] ?? null;
     }
   });
-
   values.role = user.role ?? (user.openId === ENV.ownerOpenId ? "admin" : "user");
   values.lastSignedIn = user.lastSignedIn ?? new Date();
   updateSet.role = values.role;
   updateSet.lastSignedIn = values.lastSignedIn;
-
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
 
@@ -61,212 +52,128 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
-export async function listSuppliers() {
+export async function listProtheusImports() {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(suppliers).orderBy(desc(suppliers.createdAt));
+  return db.select().from(protheusImports).orderBy(desc(protheusImports.importedAt));
 }
 
-export async function createSupplier(input: {
-  name: string;
-  contact: string;
-  category: string;
-  deliveryLeadTime: number;
-  evaluation: number;
-}) {
+export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-  await db.insert(suppliers).values({
-    ...input,
-    evaluation: input.evaluation.toFixed(1),
-  });
-  return { success: true } as const;
-}
+  const records = parseProtheusWorkbook(fileBuffer);
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const storedFile = await storagePut(`protheus-imports/${Date.now()}-${safeFileName}`, fileBuffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-export async function listPurchaseOrders() {
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select({
-      id: purchaseOrders.id,
-      supplierId: purchaseOrders.supplierId,
-      supplierName: suppliers.name,
-      supplierCategory: suppliers.category,
-      status: purchaseOrders.status,
-      createdAt: purchaseOrders.createdAt,
-    })
-    .from(purchaseOrders)
-    .innerJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
-    .orderBy(desc(purchaseOrders.createdAt));
-}
-
-export async function createPurchaseOrder(input: { supplierId: number; status: PurchaseOrderStatus }) {
-  const db = await getDb();
-  if (!db) throw new Error("Banco de dados indisponível.");
-  await db.insert(purchaseOrders).values(input);
-  return { success: true } as const;
-}
-
-export async function updatePurchaseOrderStatus(id: number, status: PurchaseOrderStatus) {
-  const db = await getDb();
-  if (!db) throw new Error("Banco de dados indisponível.");
-  await db.update(purchaseOrders).set({ status }).where(eq(purchaseOrders.id, id));
-  return { success: true } as const;
-}
-
-export async function listInventoryItems() {
-  const db = await getDb();
-  if (!db) return [];
-  return db.select().from(inventoryItems).orderBy(desc(inventoryItems.createdAt));
-}
-
-export async function createInventoryItem(input: {
-  item: string;
-  quantityAvailable: number;
-  reorderPoint: number;
-}) {
-  const db = await getDb();
-  if (!db) throw new Error("Banco de dados indisponível.");
-  await db.insert(inventoryItems).values(input);
-  return { success: true } as const;
-}
-
-export async function listStockMovements() {
-  const db = await getDb();
-  if (!db) return [];
-  return db
-    .select({
-      id: stockMovements.id,
-      inventoryItemId: stockMovements.inventoryItemId,
-      item: inventoryItems.item,
-      type: stockMovements.type,
-      quantity: stockMovements.quantity,
-      occurredAt: stockMovements.occurredAt,
-    })
-    .from(stockMovements)
-    .innerJoin(inventoryItems, eq(stockMovements.inventoryItemId, inventoryItems.id))
-    .orderBy(desc(stockMovements.occurredAt));
-}
-
-export async function recordStockMovement(input: {
-  inventoryItemId: number;
-  type: MovementType;
-  quantity: number;
-}) {
-  const db = await getDb();
-  if (!db) throw new Error("Banco de dados indisponível.");
-
+  const importedAt = new Date();
   await db.transaction(async tx => {
-    const item = await tx.select().from(inventoryItems).where(eq(inventoryItems.id, input.inventoryItemId)).limit(1);
-    const currentItem = item[0];
-    if (!currentItem) throw new Error("Item de estoque não encontrado.");
+    await tx.insert(protheusImports).values({
+      fileName,
+      fileKey: storedFile.key,
+      rowCount: records.length,
+      importedAt,
+    });
+    const createdImport = await tx.select({ id: protheusImports.id })
+      .from(protheusImports)
+      .where(eq(protheusImports.fileKey, storedFile.key))
+      .limit(1);
+    const importId = createdImport[0]?.id;
+    if (!importId) throw new Error("Não foi possível registrar a importação.");
 
-    const nextQuantity = calculateStockQuantity(currentItem.quantityAvailable, input.type, input.quantity);
-
-    await tx.update(inventoryItems).set({ quantityAvailable: nextQuantity }).where(eq(inventoryItems.id, input.inventoryItemId));
-    await tx.insert(stockMovements).values(input);
+    const batchSize = 500;
+    for (let start = 0; start < records.length; start += batchSize) {
+      const batch = records.slice(start, start + batchSize).map(record => ({
+        importId,
+        code: record.code,
+        description: record.description,
+        branch: record.branch,
+        curve: record.curve,
+        sales13M: record.sales13M.toFixed(3),
+        stock: record.stock.toFixed(3),
+        coverageDays: record.coverageDays.toFixed(3),
+        excessValue: record.excessValue.toFixed(2),
+      }));
+      await tx.insert(inventoryAnalytics).values(batch);
+    }
   });
 
-  return { success: true } as const;
+  return { rowCount: records.length, importedAt, fileName };
 }
 
-export async function listDeliveries() {
+type AnalyticsFilter = { branch?: string; curve?: "A" | "B" | "C" | "D" | "E" };
+
+async function getLatestImportId() {
   const db = await getDb();
-  if (!db) return [];
-  return db
-    .select({
-      id: deliveries.id,
-      purchaseOrderId: deliveries.purchaseOrderId,
-      expectedAt: deliveries.expectedAt,
-      actualAt: deliveries.actualAt,
-      status: deliveries.status,
-      supplierId: suppliers.id,
-      supplierName: suppliers.name,
-      supplierCategory: suppliers.category,
-    })
-    .from(deliveries)
-    .innerJoin(purchaseOrders, eq(deliveries.purchaseOrderId, purchaseOrders.id))
-    .innerJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
-    .orderBy(desc(deliveries.expectedAt));
+  if (!db) return undefined;
+  const latest = await db.select({ id: protheusImports.id }).from(protheusImports).orderBy(desc(protheusImports.importedAt)).limit(1);
+  return latest[0]?.id;
 }
 
-export async function createDelivery(input: {
-  purchaseOrderId: number;
-  expectedAt: Date;
-  actualAt?: Date;
-  status: DeliveryStatus;
-}) {
-  const db = await getDb();
-  if (!db) throw new Error("Banco de dados indisponível.");
-  validateDeliveryReceipt(input.status, input.actualAt);
-  await db.insert(deliveries).values(input);
-  return { success: true } as const;
+function asNumber(value: unknown) {
+  return Number(value ?? 0);
 }
 
-export async function updateDelivery(input: { id: number; status: DeliveryStatus; actualAt?: Date }) {
+export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
-  if (!db) throw new Error("Banco de dados indisponível.");
-  validateDeliveryReceipt(input.status, input.actualAt);
-  await db.update(deliveries).set({ status: input.status, actualAt: input.actualAt ?? null }).where(eq(deliveries.id, input.id));
-  return { success: true } as const;
-}
+  const importId = await getLatestImportId();
+  const empty = {
+    currentImport: null,
+    summary: { sales13M: 0, stock: 0, coverageDays: 0, excessValue: 0 },
+    byBranch: [] as Array<{ branch: string; sales13M: number; stock: number; coverageDays: number; excessValue: number }>,
+    byCurve: [] as Array<{ curve: "A" | "B" | "C" | "D" | "E"; sales13M: number; stock: number; coverageDays: number; excessValue: number }>,
+  };
+  if (!db || !importId) return empty;
 
-export async function getDashboardMetrics() {
-  const db = await getDb();
-  if (!db) return { openOrders: 0, stockLevel: 0, pendingDeliveries: 0, averageLeadTime: 0 };
+  const [currentImport] = await db.select().from(protheusImports).where(eq(protheusImports.id, importId)).limit(1);
+  const conditions = [eq(inventoryAnalytics.importId, importId)];
+  if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
+  if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
+  const whereClause = and(...conditions);
 
-  const [openOrders, stockLevel, pendingDeliveries, averageLeadTime] = await Promise.all([
-    db.select({ value: sql<number>`count(*)` }).from(purchaseOrders).where(inArray(purchaseOrders.status, ["rascunho", "aprovado", "enviado"])),
-    db.select({ value: sql<number>`coalesce(sum(${inventoryItems.quantityAvailable}), 0)` }).from(inventoryItems),
-    db.select({ value: sql<number>`count(*)` }).from(deliveries).where(eq(deliveries.status, "pendente")),
-    db.select({ value: sql<number>`coalesce(avg(${suppliers.deliveryLeadTime}), 0)` }).from(suppliers),
-  ]);
+  const [summary] = await db.select({
+    sales13M: sql<string>`coalesce(sum(${inventoryAnalytics.sales13M}), 0)`,
+    stock: sql<string>`coalesce(sum(${inventoryAnalytics.stock}), 0)`,
+    coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
+    excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
+  }).from(inventoryAnalytics).where(whereClause);
+
+  const byBranch = await db.select({
+    branch: inventoryAnalytics.branch,
+    sales13M: sql<string>`coalesce(sum(${inventoryAnalytics.sales13M}), 0)`,
+    stock: sql<string>`coalesce(sum(${inventoryAnalytics.stock}), 0)`,
+    coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
+    excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
+  }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.branch).orderBy(asc(inventoryAnalytics.branch));
+
+  const byCurve = await db.select({
+    curve: inventoryAnalytics.curve,
+    sales13M: sql<string>`coalesce(sum(${inventoryAnalytics.sales13M}), 0)`,
+    stock: sql<string>`coalesce(sum(${inventoryAnalytics.stock}), 0)`,
+    coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
+    excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
+  }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.curve).orderBy(asc(inventoryAnalytics.curve));
 
   return {
-    openOrders: Number(openOrders[0]?.value ?? 0),
-    stockLevel: Number(stockLevel[0]?.value ?? 0),
-    pendingDeliveries: Number(pendingDeliveries[0]?.value ?? 0),
-    averageLeadTime: Number(averageLeadTime[0]?.value ?? 0),
+    currentImport: currentImport ?? null,
+    summary: {
+      sales13M: asNumber(summary?.sales13M),
+      stock: asNumber(summary?.stock),
+      coverageDays: asNumber(summary?.coverageDays),
+      excessValue: asNumber(summary?.excessValue),
+    },
+    byBranch: byBranch.map(row => ({ ...row, sales13M: asNumber(row.sales13M), stock: asNumber(row.stock), coverageDays: asNumber(row.coverageDays), excessValue: asNumber(row.excessValue) })),
+    byCurve: byCurve.map(row => ({ ...row, curve: row.curve as "A" | "B" | "C" | "D" | "E", sales13M: asNumber(row.sales13M), stock: asNumber(row.stock), coverageDays: asNumber(row.coverageDays), excessValue: asNumber(row.excessValue) })),
   };
 }
 
-export async function listReportEntries() {
+export async function getAnalyticsFilterOptions() {
   const db = await getDb();
-  if (!db) return [];
+  const importId = await getLatestImportId();
+  if (!db || !importId) return { branches: [] as string[], curves: [] as Array<"A" | "B" | "C" | "D" | "E"> };
 
-  const [orders, movements, deliveryRows] = await Promise.all([
-    listPurchaseOrders(),
-    listStockMovements(),
-    listDeliveries(),
+  const [branches, curves] = await Promise.all([
+    db.selectDistinct({ value: inventoryAnalytics.branch }).from(inventoryAnalytics).where(eq(inventoryAnalytics.importId, importId)).orderBy(asc(inventoryAnalytics.branch)),
+    db.selectDistinct({ value: inventoryAnalytics.curve }).from(inventoryAnalytics).where(eq(inventoryAnalytics.importId, importId)).orderBy(asc(inventoryAnalytics.curve)),
   ]);
-
-  return [
-    ...orders.map(order => ({
-      id: `pedido-${order.id}`,
-      record: "Pedido de compra",
-      detail: `Pedido #${order.id} — ${order.status}`,
-      supplierId: order.supplierId,
-      supplierName: order.supplierName,
-      category: order.supplierCategory,
-      occurredAt: order.createdAt,
-    })),
-    ...movements.map(movement => ({
-      id: `estoque-${movement.id}`,
-      record: "Movimentação de estoque",
-      detail: `${movement.type} — ${movement.item} (${movement.quantity})`,
-      supplierId: null,
-      supplierName: null,
-      category: null,
-      occurredAt: movement.occurredAt,
-    })),
-    ...deliveryRows.map(delivery => ({
-      id: `entrega-${delivery.id}`,
-      record: "Entrega",
-      detail: `Pedido #${delivery.purchaseOrderId} — ${delivery.status}`,
-      supplierId: delivery.supplierId,
-      supplierName: delivery.supplierName,
-      category: delivery.supplierCategory,
-      occurredAt: delivery.actualAt ?? delivery.expectedAt,
-    })),
-  ].sort((left, right) => right.occurredAt.getTime() - left.occurredAt.getTime());
+  return { branches: branches.map(row => row.value), curves: curves.map(row => row.value as "A" | "B" | "C" | "D" | "E") };
 }

@@ -11,3 +11,14 @@
 - [x] Integrar os módulos sem adicionar campos, seções ou interações fora dos requisitos especificados.
 - [x] Criar e executar testes unitários para os fluxos de dados e regras de negócio.
 - [x] Validar as telas em desktop e mobile, corrigir falhas encontradas e preparar a entrega.
+- [x] Substituir a visão inicial de fornecedores e entregas por uma visão analítica orientada a dados do TOTVS Protheus.
+- [x] Definir o dicionário de colunas obrigatório da planilha Excel para vendas por loja, curva ABCDE, estoque, cobertura e excedente.
+- [x] Implementar a importação e a validação de planilhas Excel extraídas do Protheus.
+- [x] Implementar filtros e indicadores por loja e curva ABCDE para vendas, estoque, cobertura e excedente.
+- [x] Validar a importação e os cálculos com uma planilha real fornecida pelo usuário.
+- [x] Auditar a estrutura e as colunas da planilha Compras.xlsx para confirmar o mapeamento do Protheus.
+- [x] Confirmar se os consumos mensais e a Qtd13M devem ser apresentados como vendas por loja.
+- [x] Confirmar o uso da primeira coluna Classe ABC como classificação ABCDE oficial da análise.
+- [x] Modelar a importação com Codigo + Filial como chave do registro e Qtd13M como vendas acumuladas.
+- [x] Implementar o armazenamento seguro da planilha Excel importada e a persistência dos registros analíticos.
+- [x] Substituir a navegação por painel analítico e importação de planilha, removendo a exposição inicial de fornecedores e entregas.

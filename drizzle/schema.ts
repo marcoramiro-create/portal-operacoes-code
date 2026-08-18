@@ -1,4 +1,4 @@
-import { decimal, int, mysqlEnum, mysqlTable, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { decimal, int, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -12,6 +12,7 @@ export const users = mysqlTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+// Tabelas do primeiro fluxo operacional preservadas para evitar descarte destrutivo de dados já existentes.
 export const suppliers = mysqlTable("suppliers", {
   id: int("id").autoincrement().primaryKey(),
   name: varchar("name", { length: 200 }).notNull(),
@@ -26,9 +27,7 @@ export const suppliers = mysqlTable("suppliers", {
 export const purchaseOrders = mysqlTable("purchaseOrders", {
   id: int("id").autoincrement().primaryKey(),
   supplierId: int("supplierId").notNull().references(() => suppliers.id),
-  status: mysqlEnum("status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"])
-    .default("rascunho")
-    .notNull(),
+  status: mysqlEnum("status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]).default("rascunho").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -60,10 +59,32 @@ export const deliveries = mysqlTable("deliveries", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
+export const protheusImports = mysqlTable("protheusImports", {
+  id: int("id").autoincrement().primaryKey(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  fileKey: varchar("fileKey", { length: 512 }).notNull(),
+  rowCount: int("rowCount").notNull(),
+  importedAt: timestamp("importedAt").defaultNow().notNull(),
+});
+
+export const inventoryAnalytics = mysqlTable(
+  "inventoryAnalytics",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    importId: int("importId").notNull().references(() => protheusImports.id),
+    code: varchar("code", { length: 120 }).notNull(),
+    description: varchar("description", { length: 1000 }).notNull(),
+    branch: varchar("branch", { length: 24 }).notNull(),
+    curve: mysqlEnum("curve", ["A", "B", "C", "D", "E"]).notNull(),
+    sales13M: decimal("sales13M", { precision: 20, scale: 3 }).notNull(),
+    stock: decimal("stock", { precision: 20, scale: 3 }).notNull(),
+    coverageDays: decimal("coverageDays", { precision: 20, scale: 3 }).notNull(),
+    excessValue: decimal("excessValue", { precision: 20, scale: 2 }).notNull(),
+  },
+  table => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-export type Supplier = typeof suppliers.$inferSelect;
-export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
-export type InventoryItem = typeof inventoryItems.$inferSelect;
-export type StockMovement = typeof stockMovements.$inferSelect;
-export type Delivery = typeof deliveries.$inferSelect;
+export type AnalyticsImport = typeof protheusImports.$inferSelect;
+export type InventoryAnalytics = typeof inventoryAnalytics.$inferSelect;

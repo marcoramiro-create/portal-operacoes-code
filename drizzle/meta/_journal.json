@@ -15,6 +15,13 @@
       "when": 1787075712026,
       "tag": "0001_nosy_sister_grimm",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1787084347299,
+      "tag": "0002_spotty_sharon_ventura",
+      "breakpoints": true
     }
   ]
 }
