@@ -4,7 +4,7 @@ import { Pool } from "pg";
 type ApplicationNodeRow = { id: string; node_key: string; label: string; parent_id: string | null; sort_order: number };
 type PortalUserRow = { id: string; auth_user_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; profile_keys: string[] | null; profile_key?: string | null; email_confirmed_at?: Date | null };
 type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
-type RequestRow = { id: string; requested_email: string; status: "pending" | "approved" | "rejected" | "cancelled"; reason: string | null; created_at: Date; display_name: string | null };
+type RequestRow = { id: string; requested_email: string; status: "pending" | "approved" | "rejected" | "cancelled"; reason: string | null; created_at: Date; display_name: string | null; active_user_exists?: boolean };
 
 export type ApplicationTreeNode = { id: string; key: string; label: string; children: ApplicationTreeNode[] };
 export type PortalIdentity = { id: string; email: string; displayName: string | null; isDevelopmentAdmin: boolean; profiles: string[] };
@@ -197,6 +197,14 @@ export async function resendActivationInvite(userId: string) {
 
 export async function createAccessRequest(input: { email: string; displayName: string; reason?: string }) {
   const database = getSupabasePool();
+  const existing = await database.query<{ active_user_exists: boolean; pending_request_exists: boolean }>(
+    `select
+       exists(select 1 from public.portal_users where lower(email) = lower($1) and status = 'active') as active_user_exists,
+       exists(select 1 from public.user_access_requests where lower(requested_email) = lower($1) and status = 'pending') as pending_request_exists`,
+    [input.email],
+  );
+  if (existing.rows[0]?.active_user_exists) throw new TRPCError({ code: "BAD_REQUEST", message: "Este e-mail já possui acesso ativo ao portal." });
+  if (existing.rows[0]?.pending_request_exists) throw new TRPCError({ code: "BAD_REQUEST", message: "Já existe uma solicitação pendente para este e-mail." });
   await database.query(
     `insert into public.user_access_requests (requested_email, reason)
      values ($1, $2)`,
@@ -207,8 +215,13 @@ export async function createAccessRequest(input: { email: string; displayName: s
 }
 
 export async function listAccessRequests() {
-  const result = await getSupabasePool().query<RequestRow>("select id, requested_email, status, reason, created_at, null::text as display_name from public.user_access_requests order by created_at desc");
-  return result.rows.map(row => ({ id: row.id, email: row.requested_email, status: row.status, reason: row.reason, createdAt: row.created_at }));
+  const result = await getSupabasePool().query<RequestRow>(
+    `select request.id, request.requested_email, request.status, request.reason, request.created_at, null::text as display_name,
+       exists(select 1 from public.portal_users user_record where lower(user_record.email) = lower(request.requested_email) and user_record.status = 'active') as active_user_exists
+     from public.user_access_requests request
+     order by request.created_at desc`,
+  );
+  return result.rows.map(row => ({ id: row.id, email: row.requested_email, status: row.status, reason: row.reason, createdAt: row.created_at, userAlreadyActive: row.active_user_exists ?? false }));
 }
 
 export async function reviewAccessRequest(input: { requestId: string; decision: "approved" | "rejected"; profileKey?: string; displayName?: string }, actor: PortalIdentity) {
@@ -218,6 +231,8 @@ export async function reviewAccessRequest(input: { requestId: string; decision: 
   if (!current || current.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Solicitação indisponível para revisão." });
   if (input.decision === "approved") {
     if (!input.profileKey || !input.displayName) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o nome e perfil para aprovar a solicitação." });
+    const existingActiveUser = await database.query<{ id: string }>("select id from public.portal_users where lower(email) = lower($1) and status = 'active' limit 1", [current.requested_email]);
+    if (existingActiveUser.rows[0]) throw new TRPCError({ code: "BAD_REQUEST", message: "Este e-mail já possui acesso ativo. Arquive a solicitação duplicada sem aprová-la." });
     await createPortalUser({ email: current.requested_email, displayName: input.displayName, profileKey: input.profileKey }, actor);
   }
   await database.query("update public.user_access_requests set status = $2, reviewed_by_user_id = $3, reviewed_at = now(), updated_at = now() where id = $1", [input.requestId, input.decision, actor.id]);

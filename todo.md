@@ -77,3 +77,4 @@
 - [ ] Publicar a versão com a área administrativa e revalidar os comandos após a atualização.
 - [ ] Corrigir a recusa de login após a redefinição de senha no ambiente de homologação.
 - [x] Tratar no portal o limite temporário de envio de e-mails de autenticação sem repetir requisições.
+- [x] Impedir que a aprovação de uma solicitação duplicada altere o perfil de um usuário já ativo.
