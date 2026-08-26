@@ -5,6 +5,8 @@ type ApplicationNodeRow = { id: string; node_key: string; label: string; parent_
 type PortalUserRow = { id: string; auth_user_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; profile_keys: string[] | null; profile_key?: string | null; email_confirmed_at?: Date | null };
 type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
 type RequestRow = { id: string; requested_email: string; status: "pending" | "approved" | "rejected" | "cancelled"; reason: string | null; created_at: Date; display_name: string | null; active_user_exists?: boolean };
+type Permission = "view" | "manage" | "approve";
+type PermissionNodeRow = ApplicationNodeRow & { view: boolean; manage: boolean; approve: boolean };
 
 export type ApplicationTreeNode = { id: string; key: string; label: string; children: ApplicationTreeNode[] };
 export type PortalIdentity = { id: string; email: string; displayName: string | null; isDevelopmentAdmin: boolean; profiles: string[] };
@@ -66,6 +68,17 @@ export function assertPortalAdministrator(identity: PortalIdentity) {
   }
 }
 
+export async function assertApplicationPermission(identity: PortalIdentity, nodeKey: string, permission: Permission) {
+  const result = await getSupabasePool().query<{ allowed: boolean }>(
+    `select coalesce(
+       (select user_permission.allowed from public.user_node_permissions user_permission join public.application_nodes node on node.id = user_permission.node_id where user_permission.user_id = $1 and node.node_key = $2 and user_permission.permission = $3),
+       exists(select 1 from public.user_profile_assignments assignment join public.profile_node_permissions profile_permission on profile_permission.profile_id = assignment.profile_id join public.application_nodes node on node.id = profile_permission.node_id where assignment.user_id = $1 and node.node_key = $2 and profile_permission.permission = $3)
+     ) as allowed`, [identity.id, nodeKey, permission],
+  );
+  if (!result.rows[0]?.allowed) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não possui o nível de acesso necessário neste módulo." });
+  return true;
+}
+
 export function buildApplicationTree(rows: ApplicationNodeRow[]): ApplicationTreeNode[] {
   const mapped = new Map<string, ApplicationTreeNode>();
   const roots: ApplicationTreeNode[] = [];
@@ -84,10 +97,11 @@ function keepAllowedBranches(nodes: ApplicationTreeNode[], allowed: Set<string>)
 export async function listApplicationTreeForUser(identity: PortalIdentity) {
   const result = await getSupabasePool().query<ApplicationNodeRow & { permitted: boolean }>(
     `select node.id, node.node_key, node.label, node.parent_id, node.sort_order,
-       exists(
-         select 1 from public.user_profile_assignments assignment
-         join public.profile_node_permissions permission on permission.profile_id = assignment.profile_id
-         where assignment.user_id = $1 and permission.node_id = node.id and permission.permission in ('view', 'manage', 'approve')
+       exists(select 1 from (values ('view'::text), ('manage'::text), ('approve'::text)) as operation(permission)
+         where coalesce(
+           (select user_permission.allowed from public.user_node_permissions user_permission where user_permission.user_id = $1 and user_permission.node_id = node.id and user_permission.permission = operation.permission),
+           exists(select 1 from public.user_profile_assignments assignment join public.profile_node_permissions profile_permission on profile_permission.profile_id = assignment.profile_id where assignment.user_id = $1 and profile_permission.node_id = node.id and profile_permission.permission = operation.permission)
+         )
        ) as permitted
      from public.application_nodes node
      where node.active = true
@@ -100,6 +114,52 @@ export async function listApplicationTreeForUser(identity: PortalIdentity) {
 export async function listAccessProfiles() {
   const result = await getSupabasePool().query<ProfileRow>("select id, profile_key, name, description from public.access_profiles where active = true order by name");
   return result.rows.map(row => ({ id: row.id, key: row.profile_key, name: row.name, description: row.description }));
+}
+
+async function listNodesWithPermissions(profileKey: string, userId?: string) {
+  const database = getSupabasePool();
+  const profile = await database.query<{ id: string }>("select id from public.access_profiles where profile_key = $1 and active = true", [profileKey]);
+  if (!profile.rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Perfil não encontrado." });
+  const result = await database.query<PermissionNodeRow>(
+    `select node.id, node.node_key, node.label, node.parent_id, node.sort_order,
+      exists(select 1 from public.profile_node_permissions permission where permission.profile_id = $1 and permission.node_id = node.id and permission.permission = 'view') as view,
+      exists(select 1 from public.profile_node_permissions permission where permission.profile_id = $1 and permission.node_id = node.id and permission.permission = 'manage') as manage,
+      exists(select 1 from public.profile_node_permissions permission where permission.profile_id = $1 and permission.node_id = node.id and permission.permission = 'approve') as approve
+     from public.application_nodes node where node.active = true order by node.sort_order, node.label`, [profile.rows[0].id],
+  );
+  const overrides = userId ? await database.query<{ node_id: string; permission: Permission; allowed: boolean }>("select node_id, permission, allowed from public.user_node_permissions where user_id = $1", [userId]) : { rows: [] };
+  const byNode = new Map<string, Map<Permission, boolean>>();
+  overrides.rows.forEach(row => { const operations = byNode.get(row.node_id) ?? new Map<Permission, boolean>(); operations.set(row.permission, row.allowed); byNode.set(row.node_id, operations); });
+  return result.rows.map(row => ({ id: row.id, key: row.node_key, label: row.label, parentId: row.parent_id, view: byNode.get(row.id)?.get("view") ?? row.view, manage: byNode.get(row.id)?.get("manage") ?? row.manage, approve: byNode.get(row.id)?.get("approve") ?? row.approve, overrides: userId ? { view: byNode.get(row.id)?.get("view") ?? null, manage: byNode.get(row.id)?.get("manage") ?? null, approve: byNode.get(row.id)?.get("approve") ?? null } : undefined }));
+}
+
+export async function listProfileNodePermissions(profileKey: string) { return listNodesWithPermissions(profileKey); }
+
+export async function listUserNodePermissions(userId: string) {
+  const profiles = await getSupabasePool().query<{ profile_key: string }>("select profile.profile_key from public.user_profile_assignments assignment join public.access_profiles profile on profile.id = assignment.profile_id where assignment.user_id = $1", [userId]);
+  if (!profiles.rows[0]) throw new TRPCError({ code: "BAD_REQUEST", message: "Usuário sem perfil de acesso." });
+  return listNodesWithPermissions(profiles.rows[0].profile_key, userId);
+}
+
+export async function updateProfileNodePermission(input: { profileKey: string; nodeId: string; permission: Permission; allowed: boolean }, actor: PortalIdentity) {
+  const database = getSupabasePool();
+  const profile = await database.query<{ id: string }>("select id from public.access_profiles where profile_key = $1 and active = true", [input.profileKey]);
+  if (!profile.rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Perfil não encontrado." });
+  if (input.profileKey === "development-admin" && !actor.isDevelopmentAdmin) throw new TRPCError({ code: "FORBIDDEN", message: "Somente o administrador técnico pode alterar este perfil." });
+  if (input.allowed) await database.query("insert into public.profile_node_permissions (profile_id, node_id, permission) values ($1, $2, $3) on conflict do nothing", [profile.rows[0].id, input.nodeId, input.permission]);
+  else await database.query("delete from public.profile_node_permissions where profile_id = $1 and node_id = $2 and permission = $3", [profile.rows[0].id, input.nodeId, input.permission]);
+  return { success: true as const };
+}
+
+export async function updateUserNodePermission(input: { userId: string; nodeId: string; permission: Permission; allowed: boolean }, actor: PortalIdentity) {
+  const database = getSupabasePool();
+  const target = await database.query<{ is_development_admin: boolean }>("select is_development_admin from public.portal_users where id = $1", [input.userId]);
+  if (!target.rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+  if (target.rows[0].is_development_admin) throw new TRPCError({ code: "FORBIDDEN", message: "O administrador técnico não recebe exceções individuais." });
+  await database.query(`insert into public.user_node_permissions (user_id, node_id, permission, allowed, updated_by_user_id)
+    values ($1, $2, $3, $4, $5)
+    on conflict (user_id, node_id, permission) do update set allowed = excluded.allowed, updated_by_user_id = excluded.updated_by_user_id, updated_at = now()`, [input.userId, input.nodeId, input.permission, input.allowed, actor.id]);
+  return { success: true as const };
 }
 
 export async function listPortalUsers() {

@@ -10,6 +10,7 @@ import NotFound from "./pages/NotFound";
 import PortalAccess from "./pages/PortalAccess";
 import RegistrationImport from "./pages/RegistrationImport";
 import UserManagement from "./pages/UserManagement";
+import AccessProfiles from "./pages/AccessProfiles";
 import { Route, Switch } from "wouter";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
@@ -19,6 +20,7 @@ function Router() {
     <Route path="/"><WithLayout><Dashboard /></WithLayout></Route>
     <Route path="/importar"><WithLayout><ImportData /></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
+    <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
     <Route path="/cadastros/usuarios"><WithLayout><RegistrationImport type="users" /></WithLayout></Route>
     <Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
     <Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>

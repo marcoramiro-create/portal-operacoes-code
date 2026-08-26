@@ -99,3 +99,14 @@
 - [x] Validar no portal publicado a ocultação da administração para usuário sem a liberação correspondente.
 - [x] Testar o bloqueio FORBIDDEN do procedimento de ativação sem a permissão Administrar.
 - [x] Testar o bloqueio FORBIDDEN do procedimento de edição sem a permissão Administrar.
+- [x] Definir a matriz de acesso dos perfis por aplicação, subaplicação e operação.
+- [x] Criar no portal a edição de permissões de cada perfil de acesso.
+- [ ] Validar a matriz de perfis com as contas administrativa e operacional de homologação.
+- [x] Permitir liberar individualmente módulos e submódulos a usuários específicos.
+- [x] Permitir definir individualmente os níveis consultar, administrar e aprovar por módulo liberado.
+- [x] Aplicar a matriz padrão aprovada dos perfis em toda a árvore de aplicações e subaplicações.
+- [x] Integrar os níveis consultar, administrar e aprovar aos guards dos procedimentos dos módulos.
+- [x] Integrar a permissão Aprovar a um procedimento real de revisão de acesso.
+- [x] Testar o bloqueio e a liberação por Aprovar no contrato do portal.
+- [ ] Validar em homologação comportamentos distintos para consultar, administrar e aprovar.
+- [ ] Validar em homologação uma exceção individual por usuário e módulo, confirmando mudança de comportamento.

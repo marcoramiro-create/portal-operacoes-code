@@ -2,6 +2,7 @@ import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import {
   assertPortalAdministrator,
+  assertApplicationPermission,
   createAccessRequest,
   createPortalUser,
   getPortalIdentity,
@@ -9,9 +10,13 @@ import {
   listAccessRequests,
   listApplicationTreeForUser,
   listPortalUsers,
+  listProfileNodePermissions,
+  listUserNodePermissions,
   resendActivationInvite,
   resendInvite,
   reviewAccessRequest,
+  updateProfileNodePermission,
+  updateUserNodePermission,
   updatePortalUser,
 } from "../supabasePortal";
 import { registrationOperations, resolvedRegistrationPermissionsForUser, updateRegistrationPermission } from "../registrationAccess";
@@ -23,6 +28,7 @@ function authorizationHeader(headers: Record<string, string | string[] | undefin
 }
 
 const profileKey = z.enum(["development-admin", "operations-admin", "manager", "operator", "viewer"]);
+const nodePermission = z.enum(["view", "manage", "approve"]);
 
 async function administrator(ctx: { req: { headers: Record<string, string | string[] | undefined> } }) {
   const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
@@ -67,6 +73,7 @@ export const portalRouter = router({
   }),
   reviewAccessRequest: publicProcedure.input(z.object({ requestId: z.string().uuid(), decision: z.enum(["approved", "rejected"]), profileKey: profileKey.optional(), displayName: z.string().trim().min(3).max(160).optional() })).mutation(async ({ ctx, input }) => {
     const identity = await administrator(ctx);
+    await assertApplicationPermission(identity, "usuarios-solicitacoes", "approve");
     return reviewAccessRequest(input, identity);
   }),
   registrationPermissions: publicProcedure.input(z.object({ userId: z.string().uuid() })).query(async ({ ctx, input }) => {
@@ -76,5 +83,21 @@ export const portalRouter = router({
   updateRegistrationPermission: publicProcedure.input(z.object({ userId: z.string().uuid(), type: z.enum(registrationTypes), operation: z.enum(registrationOperations), allowed: z.boolean() })).mutation(async ({ ctx, input }) => {
     const identity = await administrator(ctx);
     return updateRegistrationPermission(input, identity);
+  }),
+  profileNodePermissions: publicProcedure.input(z.object({ profileKey })).query(async ({ ctx, input }) => {
+    await administrator(ctx);
+    return listProfileNodePermissions(input.profileKey);
+  }),
+  updateProfileNodePermission: publicProcedure.input(z.object({ profileKey, nodeId: z.string().uuid(), permission: nodePermission, allowed: z.boolean() })).mutation(async ({ ctx, input }) => {
+    const identity = await administrator(ctx);
+    return updateProfileNodePermission(input, identity);
+  }),
+  userNodePermissions: publicProcedure.input(z.object({ userId: z.string().uuid() })).query(async ({ ctx, input }) => {
+    await administrator(ctx);
+    return listUserNodePermissions(input.userId);
+  }),
+  updateUserNodePermission: publicProcedure.input(z.object({ userId: z.string().uuid(), nodeId: z.string().uuid(), permission: nodePermission, allowed: z.boolean() })).mutation(async ({ ctx, input }) => {
+    const identity = await administrator(ctx);
+    return updateUserNodePermission(input, identity);
   }),
 });

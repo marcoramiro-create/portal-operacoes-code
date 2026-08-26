@@ -7,6 +7,7 @@ const nodePaths: Record<string, string> = {
   "compras-protheus": "/",
   administracao: "/usuarios",
   "usuarios-solicitacoes": "/usuarios",
+  "perfis-acesso": "/perfis-acesso",
   cadastros: "/cadastros/funcionarios",
   funcionarios: "/cadastros/funcionarios",
   fornecedores: "/cadastros/fornecedores",

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("./supabasePortal", () => ({
   getPortalIdentity: vi.fn().mockResolvedValue({ id: "operator-user", email: "operator@example.com", displayName: null, isDevelopmentAdmin: false, profiles: ["operator"] }),
   assertPortalAdministrator: vi.fn(),
+  assertApplicationPermission: vi.fn().mockRejectedValue(new TRPCError({ code: "FORBIDDEN", message: "Sem administração do módulo." })),
 }));
 
 vi.mock("./registrationAccess", () => ({
