@@ -68,14 +68,20 @@ export function assertPortalAdministrator(identity: PortalIdentity) {
   }
 }
 
-export async function assertApplicationPermission(identity: PortalIdentity, nodeKey: string, permission: Permission) {
-  const result = await getSupabasePool().query<{ allowed: boolean }>(
-    `select coalesce(
-       (select user_permission.allowed from public.user_node_permissions user_permission join public.application_nodes node on node.id = user_permission.node_id where user_permission.user_id = $1 and node.node_key = $2 and user_permission.permission = $3),
-       exists(select 1 from public.user_profile_assignments assignment join public.profile_node_permissions profile_permission on profile_permission.profile_id = assignment.profile_id join public.application_nodes node on node.id = profile_permission.node_id where assignment.user_id = $1 and node.node_key = $2 and profile_permission.permission = $3)
-     ) as allowed`, [identity.id, nodeKey, permission],
+export async function applicationPermissionsForUser(identity: PortalIdentity, nodeKey: string) {
+  const result = await getSupabasePool().query<{ permission: Permission; allowed: boolean }>(
+    `select operation.permission, coalesce(
+       (select user_permission.allowed from public.user_node_permissions user_permission join public.application_nodes node on node.id = user_permission.node_id where user_permission.user_id = $1 and node.node_key = $2 and user_permission.permission = operation.permission),
+       exists(select 1 from public.user_profile_assignments assignment join public.profile_node_permissions profile_permission on profile_permission.profile_id = assignment.profile_id join public.application_nodes node on node.id = profile_permission.node_id where assignment.user_id = $1 and node.node_key = $2 and profile_permission.permission = operation.permission)
+     ) as allowed
+     from (values ('view'::text), ('manage'::text), ('approve'::text)) as operation(permission)`, [identity.id, nodeKey],
   );
-  if (!result.rows[0]?.allowed) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não possui o nível de acesso necessário neste módulo." });
+  return result.rows.reduce((permissions, row) => ({ ...permissions, [row.permission]: row.allowed }), { view: false, manage: false, approve: false });
+}
+
+export async function assertApplicationPermission(identity: PortalIdentity, nodeKey: string, permission: Permission) {
+  const permissions = await applicationPermissionsForUser(identity, nodeKey);
+  if (!permissions[permission]) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não possui o nível de acesso necessário neste módulo." });
   return true;
 }
 

@@ -11,14 +11,15 @@ import PortalAccess from "./pages/PortalAccess";
 import RegistrationImport from "./pages/RegistrationImport";
 import UserManagement from "./pages/UserManagement";
 import AccessProfiles from "./pages/AccessProfiles";
+import { ApplicationRouteGuard } from "./components/ApplicationRouteGuard";
 import { Route, Switch } from "wouter";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
 
 function Router() {
   return <Switch>
-    <Route path="/"><WithLayout><Dashboard /></WithLayout></Route>
-    <Route path="/importar"><WithLayout><ImportData /></WithLayout></Route>
+    <Route path="/"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus"><Dashboard /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
     <Route path="/cadastros/usuarios"><WithLayout><RegistrationImport type="users" /></WithLayout></Route>

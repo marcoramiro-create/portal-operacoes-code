@@ -3,6 +3,7 @@ import { publicProcedure, router } from "../_core/trpc";
 import {
   assertPortalAdministrator,
   assertApplicationPermission,
+  applicationPermissionsForUser,
   createAccessRequest,
   createPortalUser,
   getPortalIdentity,
@@ -41,6 +42,10 @@ export const portalRouter = router({
   applicationTree: publicProcedure.query(async ({ ctx }) => {
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     return listApplicationTreeForUser(identity);
+  }),
+  applicationPermissions: publicProcedure.input(z.object({ nodeKey: z.string().trim().min(1).max(80) })).query(async ({ ctx, input }) => {
+    const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+    return applicationPermissionsForUser(identity, input.nodeKey);
   }),
   profiles: publicProcedure.query(async ({ ctx }) => {
     await administrator(ctx);
