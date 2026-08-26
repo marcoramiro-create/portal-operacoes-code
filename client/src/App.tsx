@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import ImportData from "./pages/ImportData";
 import NotFound from "./pages/NotFound";
 import PortalAccess from "./pages/PortalAccess";
+import RegistrationImport from "./pages/RegistrationImport";
 import UserManagement from "./pages/UserManagement";
 import { Route, Switch } from "wouter";
 
@@ -18,6 +19,10 @@ function Router() {
     <Route path="/"><WithLayout><Dashboard /></WithLayout></Route>
     <Route path="/importar"><WithLayout><ImportData /></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
+    <Route path="/cadastros/usuarios"><WithLayout><RegistrationImport type="users" /></WithLayout></Route>
+    <Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
+    <Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>
+    <Route path="/cadastros/produtos"><WithLayout><RegistrationImport type="products" /></WithLayout></Route>
     <Route path="/404" component={NotFound} />
     <Route component={NotFound} />
   </Switch>;

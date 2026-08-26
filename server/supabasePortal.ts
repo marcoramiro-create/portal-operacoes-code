@@ -11,7 +11,7 @@ export type PortalIdentity = { id: string; email: string; displayName: string | 
 
 let pool: Pool | null = null;
 
-function getSupabasePool() {
+export function getSupabasePool() {
   if (!pool) {
     const connectionString = process.env.SUPABASE_DATABASE_URL;
     if (!connectionString) throw new Error("A conexão externa com o Supabase não está configurada.");

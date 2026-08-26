@@ -3,6 +3,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { analyticsRouter } from "./routers/analytics";
+import { cadastrosRouter } from "./routers/cadastros";
 import { portalRouter } from "./routers/portal";
 
 export const appRouter = router({
@@ -17,6 +18,7 @@ export const appRouter = router({
   }),
   analytics: analyticsRouter,
   portal: portalRouter,
+  cadastros: cadastrosRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -81,3 +81,9 @@
 - [x] Confirmar no portal publicado a listagem, os perfis, os status e a grade de solicitações com a conta administradora.
 - [ ] Executar e confirmar no portal publicado um comando administrativo seguro após a atualização.
 - [x] Registrar validação textual objetiva da listagem, perfis, status e solicitações no portal publicado.
+- [x] Definir e disponibilizar leiautes Excel exportáveis para os cadastros centrais do portal.
+- [x] Implementar importação validada de planilhas para os cadastros centrais do portal.
+- [x] Disponibilizar leiaute Excel de Usuários para preenchimento e importação controlada.
+- [x] Disponibilizar leiaute Excel de Funcionários para preenchimento e importação controlada.
+- [x] Disponibilizar leiaute Excel de Fornecedores para preenchimento e importação controlada.
+- [x] Disponibilizar leiaute Excel de Produtos para preenchimento e importação controlada.
