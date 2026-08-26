@@ -33,3 +33,28 @@
 - [x] Ordenar as visões de giro por família e subfamília do maior para o menor volume de vendas.
 - [x] Calcular o giro como CustoTot13M dividido por Total R$ em todos os agrupamentos.
 - [x] Remover o indicador de cobertura média do painel.
+- [ ] Verificar as possibilidades de recuperação dos apps de recebimento de NF e controle de consumíveis, EPIs e uniformes.
+- [ ] Verificar os históricos e dados recuperáveis do painel Protheus após a última evolução relatada.
+- [x] Definir o catálogo corporativo de aplicações e subaplicações em navegação hierárquica.
+- [x] Modelar o cadastro central de funcionários, fornecedores e produtos.
+- [x] Modelar usuários, grupos de acesso e permissões por aplicação e subaplicação.
+- [ ] Definir a priorização de reconstrução do painel Protheus, recebimentos e consumíveis, EPIs e uniformes.
+- [ ] Mapear fontes de dados e integrações para as aplicações de estoque, custos, fornecedores e manutenção.
+- [ ] Definir o fluxo próprio de solicitação, criação, aprovação, liberação e redefinição de senha de usuários.
+- [ ] Implementar cadastros e controles vinculados a funcionário, centro de custo e unidade.
+- [ ] Garantir a importação e a exportação por planilhas nos cadastros do portal.
+- [ ] Avaliar e definir o uso de OneDrive sob controle do usuário para arquivos e dados do portal.
+- [ ] Separar o administrador de desenvolvimento dos usuários operacionais configuráveis.
+- [ ] Definir uma estratégia de backup independente para código, dados e arquivos do portal.
+- [ ] Selecionar a arquitetura inicial de autenticação e armazenamento compatível com OneDrive pessoal e sem Azure.
+- [x] Orientar a criação de contas próprias no GitHub e Supabase para código, banco e autenticação.
+- [ ] Estruturar a pasta Portal Operações no OneDrive para arquivos e cópias de segurança.
+- [ ] Preparar a integração segura das contas externas ao portal após a confirmação do usuário.
+- [ ] Configurar o projeto Supabase externo como base de dados e identidade do portal.
+- [x] Criar o repositório privado sob o usuário GitHub informado e publicar o código inicial.
+- [ ] Definir o acesso futuro ao OneDrive pessoal para arquivos e cópias independentes.
+- [x] Diagnosticar e resolver a falha de verificação da sincronização com o repositório portal-operacoes-code.
+- [x] Verificar diretamente a presença do histórico de commits e dos arquivos principais no repositório portal-operacoes-code.
+- [x] Solicitar e configurar com segurança as credenciais do Supabase externo.
+- [x] Definir e aplicar o modelo de usuários, perfis, permissões e cadastros centrais no Supabase.
+- [x] Validar a conexão externa antes de migrar os módulos operacionais para a nova base.
