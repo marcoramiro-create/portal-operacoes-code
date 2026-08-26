@@ -174,8 +174,8 @@ export async function resendInvite(email: string) {
 
 export async function resendActivationInvite(userId: string) {
   const database = getSupabasePool();
-  const result = await database.query<{ email: string; display_name: string | null; email_confirmed_at: Date | null }>(
-    `select portal.email, portal.display_name, auth.email_confirmed_at
+  const result = await database.query<{ email: string; display_name: string | null; auth_user_id: string | null; email_confirmed_at: Date | null }>(
+    `select portal.email, portal.display_name, portal.auth_user_id, auth.email_confirmed_at
      from public.portal_users portal
      left join auth.users auth on auth.id = portal.auth_user_id
      where portal.id = $1`,
@@ -192,6 +192,8 @@ export async function resendActivationInvite(userId: string) {
   });
   const body = await response.json();
   if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: body.msg ?? body.message ?? "Não foi possível reenviar o convite de ativação." });
+  const authUserId = body.user?.id ?? body.id;
+  if (authUserId && !user.auth_user_id) await database.query("update public.portal_users set auth_user_id = $2, status = 'active', updated_at = now() where id = $1", [userId, authUserId]);
   return { success: true } as const;
 }
 

@@ -87,3 +87,15 @@
 - [x] Disponibilizar leiaute Excel de Funcionários para preenchimento e importação controlada.
 - [x] Disponibilizar leiaute Excel de Fornecedores para preenchimento e importação controlada.
 - [x] Disponibilizar leiaute Excel de Produtos para preenchimento e importação controlada.
+- [x] Implementar cadastro direto de Usuários, Funcionários, Fornecedores e Produtos no portal.
+- [x] Permitir liberar por usuário as ações de consultar, cadastrar diretamente, importar e administrar cada cadastro.
+- [x] Implementar edição e ativação ou inativação de registros protegidas pela permissão Administrar.
+- [x] Ocultar as ações administrativas quando o usuário não tiver a liberação Administrar no cadastro.
+- [x] Testar a proteção da permissão Administrar nos procedimentos e na interface de cadastros.
+- [x] Implementar edição explícita de registros carregando os dados no formulário de cadastro.
+- [x] Validar o bloqueio de administração sem a permissão Administrar e a ocultação dos controles na interface.
+- [x] Corrigir a edição de Usuários para carregar e preservar o perfil real do registro.
+- [x] Comprovar por teste o bloqueio de operações administrativas sem a permissão Administrar.
+- [ ] Validar no portal publicado a ocultação da administração para usuário sem a liberação correspondente.
+- [x] Testar o bloqueio FORBIDDEN do procedimento de ativação sem a permissão Administrar.
+- [x] Testar o bloqueio FORBIDDEN do procedimento de edição sem a permissão Administrar.

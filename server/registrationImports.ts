@@ -107,3 +107,40 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
   return { success: true as const, importedRows: preview.totalRows };
 }
+
+export async function listRegistrationRecords(type: RegistrationType) {
+  const database = getSupabasePool();
+  if (type === "employees") {
+    const result = await database.query(`select employee.employee_code as code, employee.full_name as name, employee.email, unit.code as codigo_unidade, cost_center.code as codigo_centro_custo, employee.active, employee.updated_at as updated_at
+      from public.employees employee left join public.org_units unit on unit.id = employee.unit_id left join public.cost_centers cost_center on cost_center.id = employee.cost_center_id order by employee.full_name limit 200`);
+    return result.rows;
+  }
+  if (type === "suppliers") {
+    const result = await database.query("select supplier_code as code, legal_name as name, trade_name as nome_fantasia, document_number as cnpj_cpf, active, updated_at as updated_at from public.suppliers order by legal_name limit 200");
+    return result.rows;
+  }
+  if (type === "products") {
+    const result = await database.query("select product_code as code, name, product_type as tipo_produto, active, updated_at as updated_at from public.products order by name limit 200");
+    return result.rows;
+  }
+  const result = await database.query(`select user_record.email as code, user_record.display_name as name, user_record.status as secondary, user_record.status = 'active' as active,
+    coalesce((select profile.profile_key from public.user_profile_assignments assignment join public.access_profiles profile on profile.id = assignment.profile_id where assignment.user_id = user_record.id limit 1), 'viewer') as perfil,
+    user_record.updated_at as updated_at from public.portal_users user_record order by user_record.display_name nulls last limit 200`);
+  return result.rows;
+}
+
+export async function setRegistrationRecordActive(type: RegistrationType, code: string, active: boolean, actor: PortalIdentity) {
+  const database = getSupabasePool();
+  let affected = 0;
+  if (type === "employees") affected = (await database.query("update public.employees set active = $2, updated_at = now() where employee_code = $1", [code, active])).rowCount ?? 0;
+  if (type === "suppliers") affected = (await database.query("update public.suppliers set active = $2, updated_at = now() where supplier_code = $1", [code, active])).rowCount ?? 0;
+  if (type === "products") affected = (await database.query("update public.products set active = $2, updated_at = now() where product_code = $1", [code, active])).rowCount ?? 0;
+  if (type === "users") {
+    const result = await database.query<{ is_development_admin: boolean }>("select is_development_admin from public.portal_users where email = $1", [code]);
+    if (result.rows[0]?.is_development_admin) throw new TRPCError({ code: "FORBIDDEN", message: "O administrador técnico não pode ser inativado por este cadastro." });
+    affected = (await database.query("update public.portal_users set status = $2, updated_at = now() where email = $1", [code, active ? "active" : "inactive"])).rowCount ?? 0;
+  }
+  if (!affected) throw new TRPCError({ code: "NOT_FOUND", message: "Registro não encontrado." });
+  await database.query("insert into public.audit_events (actor_user_id, entity_type, action, details) values ($1, $2, 'status_updated', jsonb_build_object('code', $3::text, 'active', $4::boolean))", [actor.id, type, code, active]);
+  return { success: true as const, active };
+}

@@ -14,6 +14,8 @@ import {
   reviewAccessRequest,
   updatePortalUser,
 } from "../supabasePortal";
+import { registrationOperations, resolvedRegistrationPermissionsForUser, updateRegistrationPermission } from "../registrationAccess";
+import { registrationTypes } from "../../shared/registrationLayouts";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) {
   const value = headers.authorization;
@@ -66,5 +68,13 @@ export const portalRouter = router({
   reviewAccessRequest: publicProcedure.input(z.object({ requestId: z.string().uuid(), decision: z.enum(["approved", "rejected"]), profileKey: profileKey.optional(), displayName: z.string().trim().min(3).max(160).optional() })).mutation(async ({ ctx, input }) => {
     const identity = await administrator(ctx);
     return reviewAccessRequest(input, identity);
+  }),
+  registrationPermissions: publicProcedure.input(z.object({ userId: z.string().uuid() })).query(async ({ ctx, input }) => {
+    await administrator(ctx);
+    return resolvedRegistrationPermissionsForUser(input.userId);
+  }),
+  updateRegistrationPermission: publicProcedure.input(z.object({ userId: z.string().uuid(), type: z.enum(registrationTypes), operation: z.enum(registrationOperations), allowed: z.boolean() })).mutation(async ({ ctx, input }) => {
+    const identity = await administrator(ctx);
+    return updateRegistrationPermission(input, identity);
   }),
 });
