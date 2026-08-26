@@ -12,6 +12,7 @@ import RegistrationImport from "./pages/RegistrationImport";
 import UserManagement from "./pages/UserManagement";
 import AccessProfiles from "./pages/AccessProfiles";
 import { ApplicationRouteGuard } from "./components/ApplicationRouteGuard";
+import NfReceipts from "./pages/NfReceipts";
 import { Route, Switch } from "wouter";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
@@ -22,6 +23,7 @@ function Router() {
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
+    <Route path="/recebimentos/nf"><WithLayout><ApplicationRouteGuard nodeKey="chaves-nf"><NfReceipts /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/cadastros/usuarios"><WithLayout><RegistrationImport type="users" /></WithLayout></Route>
     <Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
     <Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>

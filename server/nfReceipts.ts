@@ -1,0 +1,39 @@
+import { TRPCError } from "@trpc/server";
+import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
+
+export type CaptureMethod = "manual" | "camera" | "barcode_reader";
+
+export function normalizeNfAccessKey(value: string) { return value.replace(/\D/g, ""); }
+
+export function parseNfAccessKey(value: string) {
+  const accessKey = normalizeNfAccessKey(value);
+  if (!/^\d{44}$/.test(accessKey)) throw new TRPCError({ code: "BAD_REQUEST", message: "A chave de acesso da NF deve possuir exatamente 44 dígitos numéricos." });
+  return { accessKey, issuedYearMonth: accessKey.slice(2, 6), issuerCnpj: accessKey.slice(6, 20), invoiceModel: accessKey.slice(20, 22), invoiceSeries: accessKey.slice(22, 25), invoiceNumber: accessKey.slice(25, 34) };
+}
+
+export async function listRecentNfReceipts(identity: PortalIdentity) {
+  await assertApplicationPermission(identity, "chaves-nf", "view");
+  const result = await getSupabasePool().query<{ id: string; access_key: string; issuer_cnpj: string; invoice_model: string; invoice_series: string; invoice_number: string; capture_method: CaptureMethod; captured_at: Date; captured_by: string | null }>(
+    `select receipt.id, receipt.access_key, receipt.issuer_cnpj, receipt.invoice_model, receipt.invoice_series, receipt.invoice_number, receipt.capture_method, receipt.captured_at, user_record.display_name as captured_by
+     from public.nf_receipts receipt join public.portal_users user_record on user_record.id = receipt.captured_by_user_id
+     order by receipt.captured_at desc limit 50`,
+  );
+  return result.rows.map(row => ({ id: row.id, accessKey: row.access_key, issuerCnpj: row.issuer_cnpj, invoiceModel: row.invoice_model, invoiceSeries: row.invoice_series, invoiceNumber: row.invoice_number, captureMethod: row.capture_method, capturedAt: row.captured_at, capturedBy: row.captured_by }));
+}
+
+export async function createNfReceipt(input: { accessKey: string; captureMethod: CaptureMethod }, identity: PortalIdentity) {
+  await assertApplicationPermission(identity, "chaves-nf", "manage");
+  const parsed = parseNfAccessKey(input.accessKey);
+  try {
+    const result = await getSupabasePool().query<{ id: string; captured_at: Date }>(
+      `insert into public.nf_receipts (access_key, issuer_cnpj, invoice_model, invoice_series, invoice_number, issued_year_month, capture_method, captured_by_user_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, captured_at`,
+      [parsed.accessKey, parsed.issuerCnpj, parsed.invoiceModel, parsed.invoiceSeries, parsed.invoiceNumber, parsed.issuedYearMonth, input.captureMethod, identity.id],
+    );
+    await getSupabasePool().query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, 'nf_receipt', $2, 'captured', jsonb_build_object('capture_method', $3::text, 'access_key_suffix', $4::text))", [identity.id, result.rows[0].id, input.captureMethod, parsed.accessKey.slice(-6)]);
+    return { id: result.rows[0].id, capturedAt: result.rows[0].captured_at, ...parsed };
+  } catch (error: unknown) {
+    if (typeof error === "object" && error && "code" in error && error.code === "23505") throw new TRPCError({ code: "CONFLICT", message: "Esta chave de acesso já foi registrada anteriormente." });
+    throw error;
+  }
+}

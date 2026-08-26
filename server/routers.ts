@@ -5,6 +5,7 @@ import { publicProcedure, router } from "./_core/trpc";
 import { analyticsRouter } from "./routers/analytics";
 import { cadastrosRouter } from "./routers/cadastros";
 import { portalRouter } from "./routers/portal";
+import { nfReceiptsRouter } from "./routers/nfReceipts";
 
 export const appRouter = router({
   system: systemRouter,
@@ -19,6 +20,7 @@ export const appRouter = router({
   analytics: analyticsRouter,
   portal: portalRouter,
   cadastros: cadastrosRouter,
+  nfReceipts: nfReceiptsRouter,
 });
 
 export type AppRouter = typeof appRouter;

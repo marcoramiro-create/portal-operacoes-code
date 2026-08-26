@@ -12,6 +12,7 @@ const nodePaths: Record<string, string> = {
   funcionarios: "/cadastros/funcionarios",
   fornecedores: "/cadastros/fornecedores",
   produtos: "/cadastros/produtos",
+  "chaves-nf": "/recebimentos/nf",
 };
 
 const nodeIcons: Record<string, typeof Folder> = {

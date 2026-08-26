@@ -112,3 +112,6 @@
 - [x] Validar em homologação uma exceção individual por usuário e módulo, confirmando mudança de comportamento.
 - [x] Impedir que a rota de um módulo bloqueado permaneça acessível ou visível sem permissão de consulta.
 - [x] Validar no portal publicado que a conta operacional recebe a tela de acesso não liberado quando o módulo estiver bloqueado.
+- [x] Criar o recebimento simples de NF com chave de acesso de 44 dígitos, usuário e data/hora de leitura.
+- [x] Permitir registrar chave de NF por digitação, câmera de celular e leitor de código de barras de mesa.
+- [x] Preparar os campos de referência para cruzamento futuro com SC7 Protheus e NF Legal Logithink.
