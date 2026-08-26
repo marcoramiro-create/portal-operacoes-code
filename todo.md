@@ -58,3 +58,20 @@
 - [x] Solicitar e configurar com segurança as credenciais do Supabase externo.
 - [x] Definir e aplicar o modelo de usuários, perfis, permissões e cadastros centrais no Supabase.
 - [x] Validar a conexão externa antes de migrar os módulos operacionais para a nova base.
+- [x] Verificar o estado publicado atual e os perfis que possuem acesso ao portal.
+- [x] Definir contas separadas de administrador técnico e usuário operacional de teste.
+- [x] Implementar o cadastro, convite, ativação e gestão inicial de usuários.
+- [x] Definir o fluxo de homologação e publicação antes das próximas entregas.
+- [x] Criar o administrador técnico marco.ramiro@megatec.com.br no ambiente de homologação.
+- [x] Criar o usuário operacional de teste marcoramiro@gmail.com no ambiente de homologação.
+- [x] Configurar as permissões iniciais distintas para administrador técnico e usuário operacional de teste.
+- [ ] Manter o Supabase atual como homologação e preparar a criação posterior do Supabase de produção.
+- [x] Implementar tela administrativa de usuários para listar, consultar status, ativar ou inativar e atribuir perfis.
+- [x] Implementar reenvio de convite e solicitação de redefinição de senha para usuários homologados.
+- [ ] Implementar e testar o fluxo de solicitação de acesso e aprovação usando as tabelas externas existentes.
+- [x] Corrigir o reconhecimento do retorno de redefinição de senha do Supabase para abrir a tela de definição de senha.
+- [x] Corrigir os comandos da área de Administração que não executam as ações de usuários e solicitações.
+- [ ] Validar no portal publicado a tela de usuários com uma conta administradora, incluindo listagem, perfil, status e solicitações.
+- [x] Exibir estados explícitos de carregamento e falha nas consultas administrativas de usuários e solicitações.
+- [x] Implementar reenvio de convite de ativação separado da redefinição de senha para usuários pendentes.
+- [ ] Publicar a versão com a área administrativa e revalidar os comandos após a atualização.

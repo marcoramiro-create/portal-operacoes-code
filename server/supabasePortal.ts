@@ -1,19 +1,13 @@
+import { TRPCError } from "@trpc/server";
 import { Pool } from "pg";
 
-type ApplicationNodeRow = {
-  id: string;
-  node_key: string;
-  label: string;
-  parent_id: string | null;
-  sort_order: number;
-};
+type ApplicationNodeRow = { id: string; node_key: string; label: string; parent_id: string | null; sort_order: number };
+type PortalUserRow = { id: string; auth_user_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; profile_keys: string[] | null; profile_key?: string | null; email_confirmed_at?: Date | null };
+type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
+type RequestRow = { id: string; requested_email: string; status: "pending" | "approved" | "rejected" | "cancelled"; reason: string | null; created_at: Date; display_name: string | null };
 
-export type ApplicationTreeNode = {
-  id: string;
-  key: string;
-  label: string;
-  children: ApplicationTreeNode[];
-};
+export type ApplicationTreeNode = { id: string; key: string; label: string; children: ApplicationTreeNode[] };
+export type PortalIdentity = { id: string; email: string; displayName: string | null; isDevelopmentAdmin: boolean; profiles: string[] };
 
 let pool: Pool | null = null;
 
@@ -26,22 +20,206 @@ function getSupabasePool() {
   return pool;
 }
 
+function getAccessToken(authorizationHeader?: string) {
+  const match = authorizationHeader?.match(/^Bearer\s+(.+)$/i);
+  if (!match) throw new TRPCError({ code: "UNAUTHORIZED", message: "Autenticação do portal necessária." });
+  return match[1];
+}
+
+function serviceConfig() {
+  const projectUrl = process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!projectUrl || !serviceRoleKey) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Integração de identidade incompleta." });
+  return { projectUrl, serviceRoleKey };
+}
+
+async function getSupabaseAuthUser(authorizationHeader?: string) {
+  const token = getAccessToken(authorizationHeader);
+  const projectUrl = process.env.VITE_SUPABASE_URL;
+  const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+  if (!projectUrl || !anonKey) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Integração Supabase incompleta." });
+  const response = await fetch(`${projectUrl}/auth/v1/user`, { headers: { apikey: anonKey, Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão do portal inválida ou expirada." });
+  return response.json() as Promise<{ id: string; email?: string }>;
+}
+
+export async function getPortalIdentity(authorizationHeader?: string): Promise<PortalIdentity> {
+  const authUser = await getSupabaseAuthUser(authorizationHeader);
+  const result = await getSupabasePool().query<PortalUserRow>(
+    `select u.id, u.email, u.display_name, u.is_development_admin,
+       coalesce(array_agg(p.profile_key) filter (where p.profile_key is not null), '{}') as profile_keys
+     from public.portal_users u
+     left join public.user_profile_assignments assignment on assignment.user_id = u.id
+     left join public.access_profiles p on p.id = assignment.profile_id
+     where u.auth_user_id = $1 and u.status = 'active'
+     group by u.id`,
+    [authUser.id],
+  );
+  const row = result.rows[0];
+  if (!row) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não foi liberado para o portal." });
+  return { id: row.id, email: row.email, displayName: row.display_name, isDevelopmentAdmin: row.is_development_admin, profiles: row.profile_keys ?? [] };
+}
+
+export function assertPortalAdministrator(identity: PortalIdentity) {
+  if (!identity.isDevelopmentAdmin && !identity.profiles.includes("operations-admin")) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem gerenciar usuários." });
+  }
+}
+
 export function buildApplicationTree(rows: ApplicationNodeRow[]): ApplicationTreeNode[] {
   const mapped = new Map<string, ApplicationTreeNode>();
   const roots: ApplicationTreeNode[] = [];
-
   rows.forEach(row => mapped.set(row.id, { id: row.id, key: row.node_key, label: row.label, children: [] }));
-  rows.forEach(row => {
-    const node = mapped.get(row.id)!;
-    if (!row.parent_id) roots.push(node);
-    else mapped.get(row.parent_id)?.children.push(node);
-  });
+  rows.forEach(row => { const node = mapped.get(row.id)!; if (!row.parent_id) roots.push(node); else mapped.get(row.parent_id)?.children.push(node); });
   return roots;
 }
 
-export async function listApplicationTree() {
-  const result = await getSupabasePool().query<ApplicationNodeRow>(
-    "select id, node_key, label, parent_id, sort_order from public.application_nodes where active = true order by sort_order, label",
+function keepAllowedBranches(nodes: ApplicationTreeNode[], allowed: Set<string>): ApplicationTreeNode[] {
+  return nodes.flatMap(node => {
+    const children = keepAllowedBranches(node.children, allowed);
+    return allowed.has(node.id) || children.length > 0 ? [{ ...node, children }] : [];
+  });
+}
+
+export async function listApplicationTreeForUser(identity: PortalIdentity) {
+  const result = await getSupabasePool().query<ApplicationNodeRow & { permitted: boolean }>(
+    `select node.id, node.node_key, node.label, node.parent_id, node.sort_order,
+       exists(
+         select 1 from public.user_profile_assignments assignment
+         join public.profile_node_permissions permission on permission.profile_id = assignment.profile_id
+         where assignment.user_id = $1 and permission.node_id = node.id and permission.permission in ('view', 'manage', 'approve')
+       ) as permitted
+     from public.application_nodes node
+     where node.active = true
+     order by node.sort_order, node.label`,
+    [identity.id],
   );
-  return buildApplicationTree(result.rows);
+  return keepAllowedBranches(buildApplicationTree(result.rows), new Set(result.rows.filter(row => row.permitted).map(row => row.id)));
+}
+
+export async function listAccessProfiles() {
+  const result = await getSupabasePool().query<ProfileRow>("select id, profile_key, name, description from public.access_profiles where active = true order by name");
+  return result.rows.map(row => ({ id: row.id, key: row.profile_key, name: row.name, description: row.description }));
+}
+
+export async function listPortalUsers() {
+  const result = await getSupabasePool().query<PortalUserRow>(
+    `select u.id, u.auth_user_id, u.email, u.display_name, u.status, u.is_development_admin, auth.email_confirmed_at,
+       coalesce(array_agg(p.profile_key) filter (where p.profile_key is not null), '{}') as profile_keys
+     from public.portal_users u
+     left join auth.users auth on auth.id = u.auth_user_id
+     left join public.user_profile_assignments assignment on assignment.user_id = u.id
+     left join public.access_profiles p on p.id = assignment.profile_id
+     group by u.id, auth.email_confirmed_at
+     order by u.created_at asc`,
+  );
+  return result.rows.map(row => ({ id: row.id, authUserId: row.auth_user_id, email: row.email, displayName: row.display_name, status: row.status, isDevelopmentAdmin: row.is_development_admin, activation: row.email_confirmed_at ? "confirmed" : "pending", profiles: row.profile_keys ?? [] }));
+}
+
+async function ensureAuthInvitation(email: string, displayName: string) {
+  const database = getSupabasePool();
+  const existing = await database.query<{ id: string }>("select id from auth.users where lower(email) = lower($1) limit 1", [email]);
+  if (existing.rows[0]) return existing.rows[0];
+  const { projectUrl, serviceRoleKey } = serviceConfig();
+  const response = await fetch(`${projectUrl}/auth/v1/invite`, {
+    method: "POST",
+    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, data: { display_name: displayName, portal_environment: "homologacao" } }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: body.msg ?? body.message ?? "Não foi possível enviar o convite." });
+  return body.user ?? body as { id: string };
+}
+
+export async function createPortalUser(input: { email: string; displayName: string; profileKey: string }, actor: PortalIdentity) {
+  const authUser = await ensureAuthInvitation(input.email, input.displayName);
+  const database = getSupabasePool();
+  const portalUser = await database.query<{ id: string }>(
+    `insert into public.portal_users (auth_user_id, email, display_name, status)
+     values ($1, $2, $3, 'active')
+     on conflict (email) do update set auth_user_id = excluded.auth_user_id, display_name = excluded.display_name, status = 'active', updated_at = now()
+     returning id`,
+    [authUser.id, input.email, input.displayName],
+  );
+  await assignProfile(portalUser.rows[0].id, input.profileKey, actor);
+  return { success: true } as const;
+}
+
+export async function assignProfile(userId: string, profileKey: string, actor: PortalIdentity) {
+  const database = getSupabasePool();
+  const profile = await database.query<ProfileRow>("select id, profile_key, name, description from public.access_profiles where profile_key = $1 and active = true", [profileKey]);
+  if (!profile.rows[0]) throw new TRPCError({ code: "BAD_REQUEST", message: "Perfil de acesso inválido." });
+  await database.query("delete from public.user_profile_assignments where user_id = $1", [userId]);
+  await database.query("insert into public.user_profile_assignments (user_id, profile_id, assigned_by_user_id) values ($1, $2, $3)", [userId, profile.rows[0].id, actor.id]);
+  await database.query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, 'portal_user', $2, 'profile_assigned', jsonb_build_object('profile', $3::text))", [actor.id, userId, profileKey]);
+}
+
+export async function updatePortalUser(userId: string, input: { status: "active" | "inactive"; profileKey: string }, actor: PortalIdentity) {
+  const database = getSupabasePool();
+  await database.query("update public.portal_users set status = $2, updated_at = now() where id = $1", [userId, input.status]);
+  await assignProfile(userId, input.profileKey, actor);
+  return { success: true } as const;
+}
+
+export async function resendInvite(email: string) {
+  const { projectUrl, serviceRoleKey } = serviceConfig();
+  const response = await fetch(`${projectUrl}/auth/v1/recover`, {
+    method: "POST",
+    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, redirect_to: "https://gestaolog-ehcfqbaf.manus.space" }),
+  });
+  if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível enviar a redefinição de senha." });
+  return { success: true } as const;
+}
+
+export async function resendActivationInvite(userId: string) {
+  const database = getSupabasePool();
+  const result = await database.query<{ email: string; display_name: string | null; email_confirmed_at: Date | null }>(
+    `select portal.email, portal.display_name, auth.email_confirmed_at
+     from public.portal_users portal
+     left join auth.users auth on auth.id = portal.auth_user_id
+     where portal.id = $1`,
+    [userId],
+  );
+  const user = result.rows[0];
+  if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+  if (user.email_confirmed_at) throw new TRPCError({ code: "BAD_REQUEST", message: "Este usuário já concluiu a ativação." });
+  const { projectUrl, serviceRoleKey } = serviceConfig();
+  const response = await fetch(`${projectUrl}/auth/v1/invite`, {
+    method: "POST",
+    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email: user.email, data: { display_name: user.display_name, portal_environment: "homologacao" }, redirect_to: "https://gestaolog-ehcfqbaf.manus.space" }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: body.msg ?? body.message ?? "Não foi possível reenviar o convite de ativação." });
+  return { success: true } as const;
+}
+
+export async function createAccessRequest(input: { email: string; displayName: string; reason?: string }) {
+  const database = getSupabasePool();
+  await database.query(
+    `insert into public.user_access_requests (requested_email, reason)
+     values ($1, $2)`,
+    [input.email, input.reason ?? null],
+  );
+  await database.query("insert into public.audit_events (entity_type, action, details) values ('access_request', 'requested', jsonb_build_object('display_name', $1::text, 'email', $2::text))", [input.displayName, input.email]);
+  return { success: true } as const;
+}
+
+export async function listAccessRequests() {
+  const result = await getSupabasePool().query<RequestRow>("select id, requested_email, status, reason, created_at, null::text as display_name from public.user_access_requests order by created_at desc");
+  return result.rows.map(row => ({ id: row.id, email: row.requested_email, status: row.status, reason: row.reason, createdAt: row.created_at }));
+}
+
+export async function reviewAccessRequest(input: { requestId: string; decision: "approved" | "rejected"; profileKey?: string; displayName?: string }, actor: PortalIdentity) {
+  const database = getSupabasePool();
+  const request = await database.query<RequestRow>("select id, requested_email, status, reason, created_at, null::text as display_name from public.user_access_requests where id = $1", [input.requestId]);
+  const current = request.rows[0];
+  if (!current || current.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Solicitação indisponível para revisão." });
+  if (input.decision === "approved") {
+    if (!input.profileKey || !input.displayName) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o nome e perfil para aprovar a solicitação." });
+    await createPortalUser({ email: current.requested_email, displayName: input.displayName, profileKey: input.profileKey }, actor);
+  }
+  await database.query("update public.user_access_requests set status = $2, reviewed_by_user_id = $3, reviewed_at = now(), updated_at = now() where id = $1", [input.requestId, input.decision, actor.id]);
+  return { success: true } as const;
 }

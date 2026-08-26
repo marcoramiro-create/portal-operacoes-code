@@ -5,6 +5,8 @@ import type { ApplicationTreeNode } from "../../../server/supabasePortal";
 
 const nodePaths: Record<string, string> = {
   "compras-protheus": "/",
+  administracao: "/usuarios",
+  "usuarios-solicitacoes": "/usuarios",
 };
 
 const nodeIcons: Record<string, typeof Folder> = {
