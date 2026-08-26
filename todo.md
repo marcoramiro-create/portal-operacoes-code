@@ -96,6 +96,6 @@
 - [x] Validar o bloqueio de administração sem a permissão Administrar e a ocultação dos controles na interface.
 - [x] Corrigir a edição de Usuários para carregar e preservar o perfil real do registro.
 - [x] Comprovar por teste o bloqueio de operações administrativas sem a permissão Administrar.
-- [ ] Validar no portal publicado a ocultação da administração para usuário sem a liberação correspondente.
+- [x] Validar no portal publicado a ocultação da administração para usuário sem a liberação correspondente.
 - [x] Testar o bloqueio FORBIDDEN do procedimento de ativação sem a permissão Administrar.
 - [x] Testar o bloqueio FORBIDDEN do procedimento de edição sem a permissão Administrar.
