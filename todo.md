@@ -115,3 +115,4 @@
 - [x] Criar o recebimento simples de NF com chave de acesso de 44 dígitos, usuário e data/hora de leitura.
 - [x] Permitir registrar chave de NF por digitação, câmera de celular e leitor de código de barras de mesa.
 - [x] Preparar os campos de referência para cruzamento futuro com SC7 Protheus e NF Legal Logithink.
+- [x] Unificar a captura de chave de NF em um único campo com seletor de modo de coleta.
