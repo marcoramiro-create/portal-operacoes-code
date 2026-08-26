@@ -120,3 +120,4 @@
 - [x] Configurar a câmera do recebimento de NF para leitura de código de barras e QR Code em iOS e Android.
 - [x] Incluir um botão para encerrar a sessão do usuário com segurança.
 - [x] Criar uma página inicial neutra que oriente a seleção da aplicação no painel lateral.
+- [x] Substituir a captura por foto pelo leitor contínuo de código de barras e QR Code na câmera traseira móvel e webcam.
