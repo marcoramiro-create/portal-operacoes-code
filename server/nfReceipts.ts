@@ -11,14 +11,30 @@ export function parseNfAccessKey(value: string) {
   return { accessKey, issuedYearMonth: accessKey.slice(2, 6), issuerCnpj: accessKey.slice(6, 20), invoiceModel: accessKey.slice(20, 22), invoiceSeries: accessKey.slice(22, 25), invoiceNumber: accessKey.slice(25, 34) };
 }
 
+type NfReceiptRow = { id: string; access_key: string; issuer_cnpj: string; invoice_model: string; invoice_series: string; invoice_number: string; issued_year_month: string; capture_method: CaptureMethod; captured_at: Date; captured_by: string | null; protheus_sc7_reference: string | null; nf_legal_reference: string | null; matched_at: Date | null };
+
+function mapNfReceiptRow(row: NfReceiptRow) {
+  return { id: row.id, accessKey: row.access_key, issuerCnpj: row.issuer_cnpj, invoiceModel: row.invoice_model, invoiceSeries: row.invoice_series, invoiceNumber: row.invoice_number, issuedYearMonth: row.issued_year_month, captureMethod: row.capture_method, capturedAt: row.captured_at, capturedBy: row.captured_by, protheusSc7Reference: row.protheus_sc7_reference, nfLegalReference: row.nf_legal_reference, matchedAt: row.matched_at };
+}
+
 export async function listRecentNfReceipts(identity: PortalIdentity) {
   await assertApplicationPermission(identity, "chaves-nf", "view");
-  const result = await getSupabasePool().query<{ id: string; access_key: string; issuer_cnpj: string; invoice_model: string; invoice_series: string; invoice_number: string; capture_method: CaptureMethod; captured_at: Date; captured_by: string | null }>(
-    `select receipt.id, receipt.access_key, receipt.issuer_cnpj, receipt.invoice_model, receipt.invoice_series, receipt.invoice_number, receipt.capture_method, receipt.captured_at, user_record.display_name as captured_by
+  const result = await getSupabasePool().query<NfReceiptRow>(
+    `select receipt.id, receipt.access_key, receipt.issuer_cnpj, receipt.invoice_model, receipt.invoice_series, receipt.invoice_number, receipt.issued_year_month, receipt.capture_method, receipt.captured_at, user_record.display_name as captured_by, receipt.protheus_sc7_reference, receipt.nf_legal_reference, receipt.matched_at
      from public.nf_receipts receipt join public.portal_users user_record on user_record.id = receipt.captured_by_user_id
      order by receipt.captured_at desc limit 50`,
   );
-  return result.rows.map(row => ({ id: row.id, accessKey: row.access_key, issuerCnpj: row.issuer_cnpj, invoiceModel: row.invoice_model, invoiceSeries: row.invoice_series, invoiceNumber: row.invoice_number, captureMethod: row.capture_method, capturedAt: row.captured_at, capturedBy: row.captured_by }));
+  return result.rows.map(mapNfReceiptRow);
+}
+
+export async function listNfReceiptsForExport(identity: PortalIdentity) {
+  await assertApplicationPermission(identity, "chaves-nf", "view");
+  const result = await getSupabasePool().query<NfReceiptRow>(
+    `select receipt.id, receipt.access_key, receipt.issuer_cnpj, receipt.invoice_model, receipt.invoice_series, receipt.invoice_number, receipt.issued_year_month, receipt.capture_method, receipt.captured_at, user_record.display_name as captured_by, receipt.protheus_sc7_reference, receipt.nf_legal_reference, receipt.matched_at
+     from public.nf_receipts receipt join public.portal_users user_record on user_record.id = receipt.captured_by_user_id
+     order by receipt.captured_at desc limit 10000`,
+  );
+  return result.rows.map(mapNfReceiptRow);
 }
 
 export async function createNfReceipt(input: { accessKey: string; captureMethod: CaptureMethod }, identity: PortalIdentity) {

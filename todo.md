@@ -124,3 +124,5 @@
 - [ ] Ajustar a experiência de leitura de código no iOS para que a interface não sugira gravação de vídeo.
 - [ ] Corrigir a decodificação de código de barras de NF no leitor contínuo da câmera traseira do iOS.
 - [ ] Garantir leitura automática da chave de NF por câmera em iOS, Android e computador.
+- [x] Manter a evolução da leitura por câmera de NF suspensa até nova priorização.
+- [x] Exportar o histórico de leituras de NF em planilha com chave, usuário, data/hora e modo de coleta.

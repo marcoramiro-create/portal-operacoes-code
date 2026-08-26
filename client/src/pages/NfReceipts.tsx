@@ -3,9 +3,11 @@ import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { createNfBarcodeScannerConfig, normalizeNfBarcodeValue } from "@/lib/nfBarcodeScanner";
 import Quagga, { type QuaggaJSResultCallbackFunction } from "@ericblade/quagga2";
-import { Barcode, Camera, CheckCircle2, Keyboard, LoaderCircle, ScanLine, ShieldCheck, X } from "lucide-react";
+import { formatNfReceiptExportRows } from "../../../shared/nfReceiptExport";
+import { Barcode, Camera, CheckCircle2, Download, Keyboard, LoaderCircle, ScanLine, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 type CaptureMethod = "manual" | "camera" | "barcode_reader";
 
@@ -31,6 +33,7 @@ export default function NfReceipts() {
   const scannerActiveRef = useRef(false);
   const scannerSessionRef = useRef(0);
   const recent = trpc.nfReceipts.recent.useQuery(undefined, { retry: false });
+  const exportRows = trpc.nfReceipts.exportRows.useQuery(undefined, { enabled: false, retry: false });
   const utils = trpc.useUtils();
 
   const stopCamera = useCallback(() => {
@@ -105,6 +108,22 @@ export default function NfReceipts() {
     setCameraError(null);
     setCameraOpen(true);
   };
+  const exportReadings = async () => {
+    const response = await exportRows.refetch();
+    if (response.error) { toast.error(response.error.message); return; }
+    const rows = response.data ?? [];
+    if (!rows.length) { toast.error("Ainda não há leituras para exportar."); return; }
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(formatNfReceiptExportRows(rows));
+    worksheet["!cols"] = [
+      { wch: 48 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 16 },
+      { wch: 20 }, { wch: 28 }, { wch: 22 }, { wch: 26 }, { wch: 24 }, { wch: 24 },
+    ];
+    worksheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Leituras NF");
+    XLSX.writeFile(workbook, `leituras_nf_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast.success(`${rows.length} leitura(s) exportada(s) em planilha.`);
+  };
 
   return (
     <div className="page-wrap">
@@ -166,12 +185,15 @@ export default function NfReceipts() {
         </section>
 
         <section className="sc-surface overflow-hidden">
-          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-7">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-7">
+            <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#d8ebfa] text-slate-950"><ShieldCheck className="h-5 w-5" /></span>
             <div>
               <h2 className="text-lg font-extrabold tracking-tight text-slate-950">Últimas leituras</h2>
               <p className="mt-0.5 text-xs font-medium text-slate-500">Registro auditável com usuário, data e hora.</p>
             </div>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => void exportReadings()} disabled={exportRows.isFetching}><Download className="mr-2 h-4 w-4" />{exportRows.isFetching ? "Preparando…" : "Exportar Excel"}</Button>
           </div>
           {recent.isLoading ? <div className="flex items-center gap-2 p-7 text-sm font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando leituras…</div> : recent.data?.length ? <div className="divide-y divide-slate-100">{recent.data.map(item => <div className="px-5 py-4 sm:px-7" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-bold tracking-[0.08em] text-slate-800">{item.accessKey}</p><p className="mt-1 text-xs font-semibold text-slate-500">NF {Number(item.invoiceNumber)} · Série {Number(item.invoiceSeries)} · CNPJ {item.issuerCnpj}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-600">{labels[item.captureMethod]}</span></div><p className="mt-2 text-xs font-semibold text-slate-500">{new Date(item.capturedAt).toLocaleString("pt-BR")} · {item.capturedBy ?? "Usuário do portal"}</p></div>)}</div> : <div className="p-7 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-500">Nenhuma chave foi registrada ainda.</p></div>}
         </section>
