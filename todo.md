@@ -109,6 +109,6 @@
 - [x] Integrar a permissão Aprovar a um procedimento real de revisão de acesso.
 - [x] Testar o bloqueio e a liberação por Aprovar no contrato do portal.
 - [ ] Validar em homologação comportamentos distintos para consultar, administrar e aprovar.
-- [ ] Validar em homologação uma exceção individual por usuário e módulo, confirmando mudança de comportamento.
+- [x] Validar em homologação uma exceção individual por usuário e módulo, confirmando mudança de comportamento.
 - [x] Impedir que a rota de um módulo bloqueado permaneça acessível ou visível sem permissão de consulta.
-- [ ] Validar no portal publicado que a conta operacional recebe a tela de acesso não liberado quando o módulo estiver bloqueado.
+- [x] Validar no portal publicado que a conta operacional recebe a tela de acesso não liberado quando o módulo estiver bloqueado.
