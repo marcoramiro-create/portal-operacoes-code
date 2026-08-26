@@ -71,10 +71,13 @@
 - [ ] Implementar e testar o fluxo de solicitação de acesso e aprovação usando as tabelas externas existentes.
 - [x] Corrigir o reconhecimento do retorno de redefinição de senha do Supabase para abrir a tela de definição de senha.
 - [x] Corrigir os comandos da área de Administração que não executam as ações de usuários e solicitações.
-- [ ] Validar no portal publicado a tela de usuários com uma conta administradora, incluindo listagem, perfil, status e solicitações.
+- [x] Validar no portal publicado a tela de usuários com uma conta administradora, incluindo listagem, perfil, status e solicitações.
 - [x] Exibir estados explícitos de carregamento e falha nas consultas administrativas de usuários e solicitações.
 - [x] Implementar reenvio de convite de ativação separado da redefinição de senha para usuários pendentes.
-- [ ] Publicar a versão com a área administrativa e revalidar os comandos após a atualização.
-- [ ] Corrigir a recusa de login após a redefinição de senha no ambiente de homologação.
+- [x] Publicar a versão com a área administrativa e revalidar os comandos após a atualização.
+- [x] Corrigir a recusa de login após a redefinição de senha no ambiente de homologação.
 - [x] Tratar no portal o limite temporário de envio de e-mails de autenticação sem repetir requisições.
 - [x] Impedir que a aprovação de uma solicitação duplicada altere o perfil de um usuário já ativo.
+- [x] Confirmar no portal publicado a listagem, os perfis, os status e a grade de solicitações com a conta administradora.
+- [ ] Executar e confirmar no portal publicado um comando administrativo seguro após a atualização.
+- [x] Registrar validação textual objetiva da listagem, perfis, status e solicitações no portal publicado.
