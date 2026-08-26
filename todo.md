@@ -123,3 +123,4 @@
 - [x] Substituir a captura por foto pelo leitor contínuo de código de barras e QR Code na câmera traseira móvel e webcam.
 - [ ] Ajustar a experiência de leitura de código no iOS para que a interface não sugira gravação de vídeo.
 - [ ] Corrigir a decodificação de código de barras de NF no leitor contínuo da câmera traseira do iOS.
+- [ ] Garantir leitura automática da chave de NF por câmera em iOS, Android e computador.

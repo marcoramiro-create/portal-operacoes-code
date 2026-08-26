@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { nfCameraConstraints, nfScannerHints, nfScannerOptions, normalizeNfScannerValue } from "@/lib/nfScannerConfig";
-import { BrowserMultiFormatReader, IScannerControls } from "@zxing/browser";
+import { createNfBarcodeScannerConfig, normalizeNfBarcodeValue } from "@/lib/nfBarcodeScanner";
+import Quagga, { type QuaggaJSResultCallbackFunction } from "@ericblade/quagga2";
 import { Barcode, Camera, CheckCircle2, Keyboard, LoaderCircle, ScanLine, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -18,7 +18,7 @@ const labels: Record<CaptureMethod, string> = {
 const modeHelp: Record<CaptureMethod, string> = {
   manual: "Digite ou cole os 44 dígitos da chave de acesso.",
   barcode_reader: "Deixe o cursor no campo e faça a leitura; o leitor de mesa funciona como teclado.",
-  camera: "Aponte a câmera traseira para o código de barras ou QR Code. No computador, a webcam será usada.",
+  camera: "Posicione o código de barras da DANFE na faixa do leitor. No computador, a webcam será usada automaticamente.",
 };
 export default function NfReceipts() {
   const [accessKey, setAccessKey] = useState("");
@@ -26,15 +26,19 @@ export default function NfReceipts() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const scannerRef = useRef<HTMLDivElement>(null);
+  const detectedHandlerRef = useRef<QuaggaJSResultCallbackFunction | null>(null);
+  const scannerActiveRef = useRef(false);
+  const scannerSessionRef = useRef(0);
   const recent = trpc.nfReceipts.recent.useQuery(undefined, { retry: false });
   const utils = trpc.useUtils();
 
   const stopCamera = useCallback(() => {
-    controlsRef.current?.stop();
-    controlsRef.current = null;
+    scannerSessionRef.current += 1;
+    if (detectedHandlerRef.current) Quagga.offDetected(detectedHandlerRef.current);
+    detectedHandlerRef.current = null;
+    if (scannerActiveRef.current) void Quagga.stop().catch(() => undefined);
+    scannerActiveRef.current = false;
     setCameraOpen(false);
     setCameraStarting(false);
   }, []);
@@ -50,31 +54,35 @@ export default function NfReceipts() {
   });
 
   const startCamera = useCallback(async () => {
-    if (!videoRef.current || controlsRef.current) return;
+    if (!scannerRef.current || scannerActiveRef.current) return;
+    const session = scannerSessionRef.current + 1;
+    scannerSessionRef.current = session;
     setCameraError(null);
     setCameraStarting(true);
     try {
-      const reader = readerRef.current ?? new BrowserMultiFormatReader(nfScannerHints, nfScannerOptions);
-      readerRef.current = reader;
-      controlsRef.current = await reader.decodeFromConstraints(
-        { video: nfCameraConstraints, audio: false },
-        videoRef.current,
-        result => {
-          if (!result) return;
-          const key = normalizeNfScannerValue(result.getText());
-          if (!key) return;
-          setAccessKey(key);
-          toast.success("Código identificado. Revise a chave antes de registrar a NF.");
-          controlsRef.current?.stop();
-          controlsRef.current = null;
-          setCameraOpen(false);
-        },
-      );
+      await Quagga.init(createNfBarcodeScannerConfig(scannerRef.current));
+      if (session !== scannerSessionRef.current) {
+        await Quagga.stop().catch(() => undefined);
+        return;
+      }
+      const onDetected: QuaggaJSResultCallbackFunction = result => {
+        const key = normalizeNfBarcodeValue(result.codeResult?.code);
+        if (!key) return;
+        setAccessKey(key);
+        toast.success("Código de barras identificado. Revise a chave antes de registrar a NF.");
+        stopCamera();
+      };
+      detectedHandlerRef.current = onDetected;
+      Quagga.onDetected(onDetected);
+      Quagga.start();
+      scannerActiveRef.current = true;
     } catch (error) {
+      if (session !== scannerSessionRef.current) return;
+      scannerActiveRef.current = false;
       setCameraOpen(false);
       setCameraError(error instanceof DOMException && error.name === "NotAllowedError"
         ? "O uso da câmera não foi autorizado. Libere a permissão de câmera do navegador e tente novamente."
-        : "Não foi possível iniciar a câmera. Confirme se há uma câmera disponível e tente novamente.");
+        : "Não foi possível iniciar o leitor automático. Feche qualquer outro aplicativo que esteja usando a câmera e tente novamente.");
     } finally {
       setCameraStarting(false);
     }
@@ -84,7 +92,7 @@ export default function NfReceipts() {
     if (captureMethod === "camera" && cameraOpen) void startCamera();
   }, [cameraOpen, captureMethod, startCamera]);
 
-  useEffect(() => () => controlsRef.current?.stop(), []);
+  useEffect(() => () => { if (scannerActiveRef.current) void Quagga.stop().catch(() => undefined); }, []);
 
   const submit = () => capture.mutate({ accessKey, captureMethod });
   const changeMode = (next: CaptureMethod) => {
@@ -146,11 +154,11 @@ export default function NfReceipts() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-extrabold text-slate-800">Leitor de código pela câmera</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">O leitor prioriza o código Code 128 da DANFE e QR Code. Mantenha o código na horizontal, dentro da faixa, e aproxime devagar até o foco ficar nítido.</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">O leitor reconhece automaticamente o Code 128 da DANFE. Mantenha o código na horizontal, dentro da faixa, e aproxime devagar até o foco ficar nítido.</p>
                 </div>
                 {cameraOpen ? <Button variant="outline" onClick={stopCamera}><X className="mr-2 h-4 w-4" />Encerrar câmera</Button> : <Button variant="outline" onClick={retryCamera}><Camera className="mr-2 h-4 w-4" />Iniciar leitor</Button>}
               </div>
-              {cameraOpen && <div className="relative mt-4 overflow-hidden rounded-xl bg-slate-950"><video ref={videoRef} className="aspect-video w-full object-cover" muted playsInline /><div className="pointer-events-none absolute inset-x-[10%] top-[34%] h-[32%] rounded-lg border-2 border-white/90 shadow-[0_0_0_999px_rgba(2,6,23,0.22)]"><span className="absolute -top-6 left-0 text-[10px] font-extrabold uppercase tracking-[0.16em] text-white">Alinhe o código nesta faixa</span></div></div>}
+              {cameraOpen && <div ref={scannerRef} className="relative mt-4 aspect-video overflow-hidden rounded-xl bg-slate-950 [&_canvas]:absolute [&_canvas]:inset-0 [&_canvas]:h-full [&_canvas]:w-full [&_canvas]:object-cover [&_video]:h-full [&_video]:w-full [&_video]:object-cover" />}
               {cameraStarting && <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Iniciando leitor de código…</p>}
               {cameraError && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{cameraError}</p>}
             </div>
