@@ -1,10 +1,12 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import DashboardLayout from "@/components/DashboardLayout";
+import { PORTAL_HOME_PATH } from "@/lib/portalNavigation";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { SupabaseAuthProvider, useSupabaseAuth } from "./contexts/SupabaseAuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Dashboard from "./pages/Dashboard";
+import Home from "./pages/Home";
 import ImportData from "./pages/ImportData";
 import NotFound from "./pages/NotFound";
 import PortalAccess from "./pages/PortalAccess";
@@ -19,7 +21,8 @@ function WithLayout({ children }: { children: React.ReactNode }) { return <Dashb
 
 function Router() {
   return <Switch>
-    <Route path="/"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus"><Dashboard /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path={PORTAL_HOME_PATH}><WithLayout><Home /></WithLayout></Route>
+    <Route path="/compras/protheus"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus"><Dashboard /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>

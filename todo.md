@@ -117,3 +117,6 @@
 - [x] Preparar os campos de referência para cruzamento futuro com SC7 Protheus e NF Legal Logithink.
 - [x] Unificar a captura de chave de NF em um único campo com seletor de modo de coleta.
 - [x] Abrir automaticamente a câmera ao selecionar esse modo e corrigir a falha de inicialização da leitura de NF.
+- [x] Configurar a câmera do recebimento de NF para leitura de código de barras e QR Code em iOS e Android.
+- [x] Incluir um botão para encerrar a sessão do usuário com segurança.
+- [x] Criar uma página inicial neutra que oriente a seleção da aplicação no painel lateral.

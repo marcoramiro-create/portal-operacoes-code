@@ -8,6 +8,7 @@ type SupabaseAuthContextValue = {
   loading: boolean;
   passwordSetupRequired: boolean;
   clearPasswordSetupRequired: () => void;
+  signOut: () => Promise<{ error: Error | null }>;
 };
 
 const SupabaseAuthContext = createContext<SupabaseAuthContextValue | null>(null);
@@ -37,6 +38,15 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     clearPasswordSetupRequired: () => {
       setPasswordSetupRequired(false);
       window.history.replaceState({}, document.title, window.location.pathname);
+    },
+    signOut: async () => {
+      const { error } = await supabase.auth.signOut();
+      if (!error) {
+        setSession(null);
+        setPasswordSetupRequired(false);
+        window.history.replaceState({}, document.title, "/");
+      }
+      return { error };
     },
   }), [loading, passwordSetupRequired, session]);
 

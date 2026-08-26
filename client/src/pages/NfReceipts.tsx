@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { BrowserMultiFormatReader, IScannerControls } from "@zxing/browser";
-import { Barcode, Camera, CheckCircle2, Keyboard, LoaderCircle, ScanLine, ShieldCheck, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { BarcodeFormat, BrowserMultiFormatReader } from "@zxing/browser";
+import { Barcode, Camera, CheckCircle2, ImageUp, Keyboard, LoaderCircle, ScanLine, ShieldCheck } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 type CaptureMethod = "manual" | "camera" | "barcode_reader";
@@ -17,86 +17,67 @@ const labels: Record<CaptureMethod, string> = {
 const modeHelp: Record<CaptureMethod, string> = {
   manual: "Digite ou cole os 44 dígitos da chave de acesso.",
   barcode_reader: "Deixe o cursor no campo e faça a leitura; o leitor de mesa funciona como teclado.",
-  camera: "A câmera traseira será aberta automaticamente. Aponte para o código de barras da DANFE.",
+  camera: "A câmera do celular abre no modo foto para ler código de barras ou QR Code. A foto não é guardada no portal.",
 };
+const supportedFormats = [
+  BarcodeFormat.CODE_128,
+  BarcodeFormat.CODE_39,
+  BarcodeFormat.CODE_93,
+  BarcodeFormat.EAN_13,
+  BarcodeFormat.EAN_8,
+  BarcodeFormat.ITF,
+  BarcodeFormat.QR_CODE,
+  BarcodeFormat.UPC_A,
+  BarcodeFormat.UPC_E,
+];
 
 export default function NfReceipts() {
   const [accessKey, setAccessKey] = useState("");
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>("manual");
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraStarting, setCameraStarting] = useState(false);
+  const [cameraScanning, setCameraScanning] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const controlsRef = useRef<IScannerControls | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const recent = trpc.nfReceipts.recent.useQuery(undefined, { retry: false });
   const utils = trpc.useUtils();
-
-  const stopCamera = useCallback(() => {
-    controlsRef.current?.stop();
-    controlsRef.current = null;
-    setCameraOpen(false);
-    setCameraStarting(false);
-  }, []);
-
   const capture = trpc.nfReceipts.capture.useMutation({
     onSuccess: data => {
       toast.success(`NF registrada às ${new Date(data.capturedAt).toLocaleTimeString("pt-BR")}.`);
       utils.nfReceipts.recent.invalidate();
       setAccessKey("");
-      stopCamera();
     },
     onError: error => toast.error(error.message),
   });
 
-  const startCamera = useCallback(async () => {
-    if (!videoRef.current || controlsRef.current) return;
-    setCameraError(null);
-    setCameraStarting(true);
-    try {
-      const reader = readerRef.current ?? new BrowserMultiFormatReader();
-      readerRef.current = reader;
-      controlsRef.current = await reader.decodeFromConstraints(
-        { video: { facingMode: { ideal: "environment" } }, audio: false },
-        videoRef.current,
-        result => {
-          if (result) {
-            setAccessKey(clean(result.getText()));
-            controlsRef.current?.stop();
-            controlsRef.current = null;
-            setCameraOpen(false);
-          }
-        },
-      );
-    } catch (error) {
-      setCameraOpen(false);
-      setCameraError(error instanceof DOMException && error.name === "NotAllowedError"
-        ? "O uso da câmera não foi autorizado. Libere a permissão de câmera do navegador e tente novamente."
-        : "Não foi possível iniciar a câmera. Confirme a permissão do navegador e tente novamente.");
-    } finally {
-      setCameraStarting(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (captureMethod === "camera" && cameraOpen) void startCamera();
-  }, [cameraOpen, captureMethod, startCamera]);
-
-  useEffect(() => () => controlsRef.current?.stop(), []);
-
   const submit = () => capture.mutate({ accessKey, captureMethod });
+  const openCamera = () => imageInputRef.current?.click();
   const changeMode = (next: CaptureMethod) => {
     setCaptureMethod(next);
     setCameraError(null);
-    if (next === "camera") {
-      setCameraOpen(true);
-    } else {
-      stopCamera();
+    if (next === "camera") openCamera();
+  };
+  const decodePhoto = async (file: File) => {
+    setCameraScanning(true);
+    setCameraError(null);
+    const photoUrl = URL.createObjectURL(file);
+    try {
+      const reader = readerRef.current ?? new BrowserMultiFormatReader();
+      readerRef.current = reader;
+      reader.possibleFormats = supportedFormats;
+      const result = await reader.decodeFromImageUrl(photoUrl);
+      setAccessKey(clean(result.getText()));
+      toast.success("Código identificado. Revise a chave antes de registrar a NF.");
+    } catch {
+      setCameraError("Não foi possível identificar um código de barras ou QR Code nesta foto. Aproxime o código, mantenha boa iluminação e tente novamente.");
+    } finally {
+      URL.revokeObjectURL(photoUrl);
+      setCameraScanning(false);
     }
   };
-  const retryCamera = () => {
-    setCameraError(null);
-    setCameraOpen(true);
+  const onPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) void decodePhoto(file);
   };
 
   return (
@@ -109,6 +90,7 @@ export default function NfReceipts() {
 
       <div className="grid gap-5 xl:grid-cols-[1.06fr_.94fr]">
         <section className="sc-surface p-5 sm:p-7">
+          <input ref={imageInputRef} className="sr-only" type="file" accept="image/*" capture="environment" onChange={onPhotoChange} />
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f1ccd7] text-slate-950"><ScanLine className="h-5 w-5" /></span>
             <div>
@@ -146,13 +128,12 @@ export default function NfReceipts() {
             <div className="mt-5 border-t border-slate-100 pt-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-extrabold text-slate-800">Leitura pela câmera</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">A leitura preenche o campo acima. Revise antes de registrar.</p>
+                  <p className="text-sm font-extrabold text-slate-800">Fotografar código</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">A foto é analisada somente no dispositivo para preencher a chave e não é salva.</p>
                 </div>
-                {cameraOpen ? <Button variant="outline" onClick={stopCamera}><X className="mr-2 h-4 w-4" />Encerrar câmera</Button> : <Button variant="outline" onClick={retryCamera}><Camera className="mr-2 h-4 w-4" />Tentar novamente</Button>}
+                <Button variant="outline" onClick={openCamera} disabled={cameraScanning}><ImageUp className="mr-2 h-4 w-4" />Fotografar novamente</Button>
               </div>
-              {cameraOpen && <video ref={videoRef} className="mt-4 aspect-video w-full rounded-xl bg-slate-950 object-cover" muted playsInline />}
-              {cameraStarting && <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Iniciando câmera…</p>}
+              {cameraScanning && <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Lendo o código da foto…</p>}
               {cameraError && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{cameraError}</p>}
             </div>
           )}
