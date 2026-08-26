@@ -75,3 +75,5 @@
 - [x] Exibir estados explícitos de carregamento e falha nas consultas administrativas de usuários e solicitações.
 - [x] Implementar reenvio de convite de ativação separado da redefinição de senha para usuários pendentes.
 - [ ] Publicar a versão com a área administrativa e revalidar os comandos após a atualização.
+- [ ] Corrigir a recusa de login após a redefinição de senha no ambiente de homologação.
+- [x] Tratar no portal o limite temporário de envio de e-mails de autenticação sem repetir requisições.
