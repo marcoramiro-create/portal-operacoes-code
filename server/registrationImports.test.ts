@@ -3,9 +3,14 @@ import { registrationValidationMessage, validateRegistrationRows } from "./regis
 
 describe("validação de leiautes de cadastro", () => {
   it("aponta campos obrigatórios de uma linha de produto incompleta", () => {
-    const result = validateRegistrationRows("products", [{ codigo_produto: "", nome_produto: "", tipo_produto: "", ativo: "SIM" }]);
+    const result = validateRegistrationRows("products", [{ codigo_produto: "", nome_produto: "", codigo_tipo_produto: "", categoria_operacional: "", unidade_medida: "", controla_tamanho: "NÃO", controla_lote: "NÃO", controla_validade: "NÃO", controla_ca: "NÃO", ativo: "SIM" }]);
     expect(result.valid).toBe(false);
-    expect(result.issues).toHaveLength(2);
+    expect(result.issues).toHaveLength(5);
+  });
+
+  it("aceita os controles de produto no leiaute central", () => {
+    const result = validateRegistrationRows("products", [{ codigo_produto: "EPI-001", nome_produto: "Luva de proteção", codigo_tipo_produto: "EPI", categoria_operacional: "EPI", unidade_medida: "PAR", controla_tamanho: "SIM", controla_lote: "SIM", controla_validade: "SIM", controla_ca: "SIM", ativo: "SIM" }]);
+    expect(result.valid).toBe(true);
   });
 
   it("aceita uma linha de fornecedor preenchida com os campos mínimos", () => {

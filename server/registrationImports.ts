@@ -1,12 +1,17 @@
 import { TRPCError } from "@trpc/server";
 import { PoolClient } from "pg";
-import { normalizeCell, parseActive, registrationLayouts, RegistrationType } from "../shared/registrationLayouts";
+import { normalizeCell, parseActive, parseYesNo, registrationLayouts, RegistrationType } from "../shared/registrationLayouts";
 import { getSupabasePool, PortalIdentity } from "./supabasePortal";
 
 export type ImportRow = Record<string, string>;
 export type ImportIssue = { row: number; field: string; message: string };
 
 const allowedProfileKeys = new Set(["operations-admin", "manager", "operator", "viewer"]);
+const productCategories: Record<string, "consumable" | "epi" | "uniform" | "tool" | "other"> = { consumivel: "consumable", "consumível": "consumable", consumable: "consumable", epi: "epi", uniforme: "uniform", uniform: "uniform", ferramenta: "tool", tool: "tool", outro: "other", other: "other" };
+
+function parseProductCategory(value: string) {
+  return productCategories[value.trim().toLowerCase()] ?? null;
+}
 
 export function registrationValidationMessage(source: "spreadsheet" | "direct", issues: ImportIssue[]) {
   if (source === "spreadsheet") return "A planilha contém erros. Corrija-os antes de importar.";
@@ -30,6 +35,10 @@ export function validateRegistrationRows(type: RegistrationType, rawRows: Import
     if (row.email && !/^\S+@\S+\.\S+$/.test(row.email)) issues.push({ row: rowNumber, field: "E-mail", message: "Informe um e-mail válido." });
     if (row.ativo && !parseActive(row.ativo).valid) issues.push({ row: rowNumber, field: "Ativo", message: "Use SIM ou NÃO." });
     if (type === "users" && row.perfil && !allowedProfileKeys.has(row.perfil)) issues.push({ row: rowNumber, field: "Perfil", message: "Use operations-admin, manager, operator ou viewer." });
+    if (type === "products") {
+      if (row.categoria_operacional && !parseProductCategory(row.categoria_operacional)) issues.push({ row: rowNumber, field: "Categoria operacional", message: "Use consumível, EPI, uniforme, ferramenta ou outro." });
+      (["controla_tamanho", "controla_lote", "controla_validade", "controla_ca"] as const).forEach(field => { if (!parseYesNo(row[field]).valid) issues.push({ row: rowNumber, field, message: "Use SIM ou NÃO." }); });
+    }
     const uniqueKey = type === "users" ? row.email.toLowerCase() : type === "employees" ? row.codigo_funcionario : type === "suppliers" ? row.codigo_fornecedor : row.codigo_produto;
     if (uniqueKey && seen.has(uniqueKey)) issues.push({ row: rowNumber, field: "Código ou e-mail", message: "Valor duplicado dentro da planilha." });
     if (uniqueKey) seen.add(uniqueKey);
@@ -41,6 +50,11 @@ async function resolveReference(client: PoolClient, table: "org_units" | "cost_c
   if (!code) return null;
   const result = await client.query<{ id: string }>(`select id from public.${table} where code = $1 and active = true limit 1`, [code]);
   return result.rows[0]?.id ?? null;
+}
+
+async function resolveProductType(client: PoolClient, code: string) {
+  const result = await client.query<{ id: string; name: string }>("select id, name from public.product_types where code = $1 and active = true limit 1", [code]);
+  return result.rows[0] ?? null;
 }
 
 async function validateReferences(type: RegistrationType, rows: ImportRow[]) {
@@ -61,6 +75,7 @@ async function validateReferences(type: RegistrationType, rows: ImportRow[]) {
         const existing = await client.query<{ supplier_code: string }>("select supplier_code from public.suppliers where document_number = $1 and supplier_code <> $2", [row.cnpj_cpf, row.codigo_fornecedor]);
         if (existing.rows[0]) issues.push({ row: index + 2, field: "CNPJ ou CPF", message: "Este documento já pertence a outro código de fornecedor." });
       }
+      if (type === "products" && !(await resolveProductType(client, row.codigo_tipo_produto))) issues.push({ row: index + 2, field: "Código do tipo de produto", message: "Tipo de produto ativo não encontrado." });
       if (type === "users") {
         const existing = await client.query<{ is_development_admin: boolean }>("select is_development_admin from public.portal_users where lower(email) = lower($1)", [row.email]);
         if (existing.rows[0]?.is_development_admin) issues.push({ row: index + 2, field: "E-mail", message: "O administrador técnico não pode ser alterado por planilha." });
@@ -96,9 +111,14 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
       if (type === "suppliers") await client.query(`insert into public.suppliers (supplier_code, legal_name, trade_name, document_number, active)
         values ($1, $2, nullif($3, ''), nullif($4, ''), $5)
         on conflict (supplier_code) do update set legal_name = excluded.legal_name, trade_name = excluded.trade_name, document_number = excluded.document_number, active = excluded.active, updated_at = now()`, [row.codigo_fornecedor, row.razao_social, row.nome_fantasia, row.cnpj_cpf, active]);
-      if (type === "products") await client.query(`insert into public.products (product_code, name, product_type, active)
-        values ($1, $2, nullif($3, ''), $4)
-        on conflict (product_code) do update set name = excluded.name, product_type = excluded.product_type, active = excluded.active, updated_at = now()`, [row.codigo_produto, row.nome_produto, row.tipo_produto, active]);
+      if (type === "products") {
+        const productType = await resolveProductType(client, row.codigo_tipo_produto);
+        const category = parseProductCategory(row.categoria_operacional);
+        if (!productType || !category) throw new TRPCError({ code: "BAD_REQUEST", message: "Revise o tipo e a categoria operacional do produto." });
+        await client.query(`insert into public.products (product_code, name, product_type, product_type_id, inventory_control_category, unit_of_measure, requires_size, requires_lot, requires_expiration, requires_ca, active)
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          on conflict (product_code) do update set name = excluded.name, product_type = excluded.product_type, product_type_id = excluded.product_type_id, inventory_control_category = excluded.inventory_control_category, unit_of_measure = excluded.unit_of_measure, requires_size = excluded.requires_size, requires_lot = excluded.requires_lot, requires_expiration = excluded.requires_expiration, requires_ca = excluded.requires_ca, active = excluded.active, updated_at = now()`, [row.codigo_produto, row.nome_produto, productType.name, productType.id, category, row.unidade_medida.toUpperCase(), parseYesNo(row.controla_tamanho).value, parseYesNo(row.controla_lote).value, parseYesNo(row.controla_validade).value, parseYesNo(row.controla_ca).value, active]);
+      }
       if (type === "users") {
         const portalUser = await client.query<{ id: string }>(`insert into public.portal_users (email, display_name, status)
           values ($1, $2, $3)
@@ -128,7 +148,7 @@ export async function listRegistrationRecords(type: RegistrationType) {
     return result.rows;
   }
   if (type === "products") {
-    const result = await database.query("select product_code as code, name, product_type as tipo_produto, active, updated_at as updated_at from public.products order by name limit 200");
+    const result = await database.query("select product.product_code as code, product.name, product.product_type as tipo_produto, product_type.code as codigo_tipo_produto, product.product_type_id, product.inventory_control_category, product.unit_of_measure, product.requires_size, product.requires_lot, product.requires_expiration, product.requires_ca, product.active, product.updated_at as updated_at from public.products product left join public.product_types product_type on product_type.id = product.product_type_id order by product.name limit 200");
     return result.rows;
   }
   const result = await database.query(`select user_record.email as code, user_record.display_name as name, user_record.status as secondary, user_record.status = 'active' as active,

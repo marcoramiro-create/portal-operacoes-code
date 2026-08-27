@@ -162,3 +162,6 @@
 - [ ] Preparar a carga ordenada de empresa, filial, armazém, local, centro de custo, tipo de produto e produto antes do teste de almoxarifado.
 - [x] Disponibilizar cadastros estruturados de unidades e centros de custo para preparar o vínculo dos funcionários.
 - [x] Centralizar todos os cadastros existentes e futuros na área única de Cadastros, removendo-os do Almoxarifado operacional.
+- [x] Exibir empresa, filial, armazém, local de estoque, unidade, centro de custo e tipo de produto como itens próprios na árvore de Cadastros.
+- [x] Evoluir o cadastro central de Produtos com tipo e controles de almoxarifado, sem duplicar produtos em outro módulo.
+- [x] Revisar dependências de dados, navegação e permissões do portal antes de cada novo módulo ou alteração estrutural.

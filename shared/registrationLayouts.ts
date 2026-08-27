@@ -49,11 +49,17 @@ export const registrationLayouts: Record<RegistrationType, RegistrationLayout> =
     ],
   },
   products: {
-    key: "products", label: "Produtos", sheetName: "Produtos", fileName: "leiaute-produtos", description: "Cadastro básico de produtos para recebimento, estoque, consumo e análises posteriores.",
+    key: "products", label: "Produtos", sheetName: "Produtos", fileName: "leiaute-produtos", description: "Cadastro único de itens de compra, consumo, EPI, uniforme e ferramenta para recebimento, estoque e operações posteriores.",
     columns: [
       { key: "codigo_produto", label: "Código do produto", required: true, hint: "Código único do item no ERP ou controle interno." },
       { key: "nome_produto", label: "Nome do produto", required: true, hint: "Descrição objetiva do produto." },
-      { key: "tipo_produto", label: "Tipo de produto", hint: "Exemplos: peça, consumível, EPI, uniforme ou ferramenta." },
+      { key: "codigo_tipo_produto", label: "Código do tipo de produto", required: true, hint: "Código já cadastrado em Tipos de produto; por exemplo, EPI ou FERR." },
+      { key: "categoria_operacional", label: "Categoria operacional", required: true, hint: "Use: consumível, EPI, uniforme, ferramenta ou outro." },
+      { key: "unidade_medida", label: "Unidade de medida", required: true, hint: "Exemplos: UN, PAR, CX, KG ou L." },
+      { key: "controla_tamanho", label: "Controla tamanho", hint: "SIM ou NÃO. Use SIM para uniformes e itens dimensionados." },
+      { key: "controla_lote", label: "Controla lote", hint: "SIM ou NÃO." },
+      { key: "controla_validade", label: "Controla validade", hint: "SIM ou NÃO." },
+      { key: "controla_ca", label: "Controla CA", hint: "SIM ou NÃO. Use SIM quando o EPI exigir Certificado de Aprovação." },
       { key: "ativo", label: "Ativo", hint: "SIM ou NÃO. Em branco equivale a SIM." },
     ],
   },
@@ -72,4 +78,11 @@ export function parseActive(value: string) {
   if (!normalized || ["sim", "s", "true", "1", "ativo"].includes(normalized)) return { valid: true, value: true };
   if (["não", "nao", "n", "false", "0", "inativo"].includes(normalized)) return { valid: true, value: false };
   return { valid: false, value: true };
+}
+
+export function parseYesNo(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || ["não", "nao", "n", "false", "0"].includes(normalized)) return { valid: true, value: false };
+  if (["sim", "s", "true", "1"].includes(normalized)) return { valid: true, value: true };
+  return { valid: false, value: false };
 }

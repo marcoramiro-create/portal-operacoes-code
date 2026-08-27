@@ -9,4 +9,12 @@ describe("portal navigation", () => {
   it("uses a dedicated route for the Protheus application", () => {
     expect(applicationPaths["compras-protheus"]).toBe("/compras/protheus");
   });
+
+  it("organizes the stock references as individual entries under Cadastros", () => {
+    expect(applicationPaths["cadastros-empresas"]).toBe("/cadastros/empresas");
+    expect(applicationPaths["cadastros-filiais"]).toBe("/cadastros/filiais");
+    expect(applicationPaths["cadastros-armazens"]).toBe("/cadastros/armazens");
+    expect(applicationPaths["cadastros-locais-estoque"]).toBe("/cadastros/locais-estoque");
+    expect(applicationPaths["cadastros-estrutura-estoque"]).toBeUndefined();
+  });
 });

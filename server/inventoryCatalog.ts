@@ -9,8 +9,8 @@ function trimRequired(value: string, label: string) {
   return normalized;
 }
 
-async function assertCatalogManagement(identity: PortalIdentity) {
-  await assertApplicationPermission(identity, "cadastros-estrutura-estoque", "manage");
+async function assertCatalogManagement(identity: PortalIdentity, nodeKey: string) {
+  await assertApplicationPermission(identity, nodeKey, "manage");
 }
 
 async function audit(identity: PortalIdentity, entityType: string, entityId: string, action: string, details: Record<string, unknown>) {
@@ -23,7 +23,7 @@ function rethrowDuplicate(error: unknown, label: string): never {
 }
 
 export async function listInventoryCatalog(identity: PortalIdentity) {
-  await assertApplicationPermission(identity, "cadastros-estrutura-estoque", "view");
+  await assertApplicationPermission(identity, "cadastros", "view");
   const database = getSupabasePool();
   const [productTypes, orgUnits, costCenters, companies, branches, warehouses, stockLocations, products] = await Promise.all([
     database.query<{ id: string; code: string; name: string; description: string | null; stock_controlled: boolean; active: boolean }>("select id, code, name, description, stock_controlled, active from public.product_types order by code"),
@@ -48,7 +48,7 @@ export async function listInventoryCatalog(identity: PortalIdentity) {
 }
 
 export async function createProductType(input: CatalogInput & { description?: string; stockControlled: boolean }, identity: PortalIdentity) {
-  await assertCatalogManagement(identity);
+  await assertCatalogManagement(identity, "cadastros-tipos-produto");
   const code = trimRequired(input.code, "Código");
   const name = trimRequired(input.name, "Nome");
   try {
@@ -59,7 +59,7 @@ export async function createProductType(input: CatalogInput & { description?: st
 }
 
 export async function createOrgUnit(input: CatalogInput, identity: PortalIdentity) {
-  await assertCatalogManagement(identity);
+  await assertCatalogManagement(identity, "cadastros-unidades");
   const code = trimRequired(input.code, "Código");
   const name = trimRequired(input.name, "Nome");
   try {
@@ -70,7 +70,7 @@ export async function createOrgUnit(input: CatalogInput, identity: PortalIdentit
 }
 
 export async function createCostCenter(input: CatalogInput & { unitId?: string }, identity: PortalIdentity) {
-  await assertCatalogManagement(identity);
+  await assertCatalogManagement(identity, "cadastros-centros-custo");
   const code = trimRequired(input.code, "Código");
   const name = trimRequired(input.name, "Nome");
   try {
@@ -81,7 +81,7 @@ export async function createCostCenter(input: CatalogInput & { unitId?: string }
 }
 
 export async function createCompany(input: { code: string; legalName: string; tradeName?: string; taxId?: string }, identity: PortalIdentity) {
-  await assertCatalogManagement(identity);
+  await assertCatalogManagement(identity, "cadastros-empresas");
   const code = trimRequired(input.code, "Código");
   const legalName = trimRequired(input.legalName, "Razão social");
   try {
@@ -92,7 +92,7 @@ export async function createCompany(input: { code: string; legalName: string; tr
 }
 
 export async function createBranch(input: CatalogInput & { companyId: string; taxId?: string }, identity: PortalIdentity) {
-  await assertCatalogManagement(identity);
+  await assertCatalogManagement(identity, "cadastros-filiais");
   const code = trimRequired(input.code, "Código");
   const name = trimRequired(input.name, "Nome");
   try {
@@ -103,7 +103,7 @@ export async function createBranch(input: CatalogInput & { companyId: string; ta
 }
 
 export async function createWarehouse(input: CatalogInput & { branchId: string }, identity: PortalIdentity) {
-  await assertCatalogManagement(identity);
+  await assertCatalogManagement(identity, "cadastros-armazens");
   const code = trimRequired(input.code, "Código");
   const name = trimRequired(input.name, "Nome");
   try {
@@ -114,7 +114,7 @@ export async function createWarehouse(input: CatalogInput & { branchId: string }
 }
 
 export async function createStockLocation(input: CatalogInput & { warehouseId: string }, identity: PortalIdentity) {
-  await assertCatalogManagement(identity);
+  await assertCatalogManagement(identity, "cadastros-locais-estoque");
   const code = trimRequired(input.code, "Código");
   const name = trimRequired(input.name, "Nome");
   try {
@@ -125,7 +125,7 @@ export async function createStockLocation(input: CatalogInput & { warehouseId: s
 }
 
 export async function configureInventoryProduct(input: { productId: string; productTypeId: string; inventoryControlCategory: "consumable" | "epi" | "uniform" | "tool" | "other"; unitOfMeasure: string; requiresSize: boolean; requiresLot: boolean; requiresExpiration: boolean; requiresCa: boolean }, identity: PortalIdentity) {
-  await assertCatalogManagement(identity);
+  await assertCatalogManagement(identity, "produtos");
   const unitOfMeasure = trimRequired(input.unitOfMeasure, "Unidade de medida").toUpperCase();
   const result = await getSupabasePool().query<{ id: string }>("update public.products set product_type_id = $2, inventory_control_category = $3, unit_of_measure = $4, requires_size = $5, requires_lot = $6, requires_expiration = $7, requires_ca = $8, updated_at = now() where id = $1 returning id", [input.productId, input.productTypeId, input.inventoryControlCategory, unitOfMeasure, input.requiresSize, input.requiresLot, input.requiresExpiration, input.requiresCa]);
   if (!result.rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Produto não encontrado." });
