@@ -13,10 +13,23 @@ describe("validação de leiautes de cadastro", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("aceita uma linha de fornecedor preenchida com os campos mínimos", () => {
-    const result = validateRegistrationRows("suppliers", [{ codigo_fornecedor: "FOR-001", razao_social: "Fornecedor de Teste", nome_fantasia: "", cnpj_cpf: "", ativo: "SIM" }]);
+  it("aceita uma linha de fornecedor preenchida com código e loja", () => {
+    const result = validateRegistrationRows("suppliers", [{ codigo_fornecedor: "FOR-001", loja_fornecedor: "01", razao_social: "Fornecedor de Teste", nome_fantasia: "", cnpj_cpf: "", ativo: "SIM" }]);
     expect(result.valid).toBe(true);
     expect(result.totalRows).toBe(1);
+  });
+
+  it("permite o mesmo código em lojas diferentes e bloqueia somente a repetição da combinação", () => {
+    const distinctStores = validateRegistrationRows("suppliers", [
+      { codigo_fornecedor: "FOR-001", loja_fornecedor: "01", razao_social: "Fornecedor Loja 01", nome_fantasia: "", cnpj_cpf: "111", ativo: "SIM" },
+      { codigo_fornecedor: "FOR-001", loja_fornecedor: "02", razao_social: "Fornecedor Loja 02", nome_fantasia: "", cnpj_cpf: "222", ativo: "SIM" },
+    ]);
+    const repeatedStore = validateRegistrationRows("suppliers", [
+      { codigo_fornecedor: "FOR-001", loja_fornecedor: "01", razao_social: "Fornecedor Loja 01", nome_fantasia: "", cnpj_cpf: "111", ativo: "SIM" },
+      { codigo_fornecedor: "FOR-001", loja_fornecedor: "01", razao_social: "Fornecedor Loja 01 Atualizado", nome_fantasia: "", cnpj_cpf: "222", ativo: "SIM" },
+    ]);
+    expect(distinctStores.valid).toBe(true);
+    expect(repeatedStore.valid).toBe(false);
   });
 
   it("valida a data e a liberação de requisição no cadastro de funcionário", () => {

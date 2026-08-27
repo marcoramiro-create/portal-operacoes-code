@@ -46,12 +46,13 @@ export const registrationLayouts: Record<RegistrationType, RegistrationLayout> =
     ],
   },
   suppliers: {
-    key: "suppliers", label: "Fornecedores", sheetName: "Fornecedores", fileName: "leiaute-fornecedores", description: "Cadastro básico de fornecedores para recebimentos, rankings e análises futuras.",
+    key: "suppliers", label: "Fornecedores", sheetName: "Fornecedores", fileName: "leiaute-fornecedores", description: "Cadastro de fornecedores do Protheus identificado pela combinação de código e loja, para recebimentos, rankings e análises futuras.",
     columns: [
-      { key: "codigo_fornecedor", label: "Código do fornecedor", required: true, hint: "Código único do fornecedor." },
+      { key: "codigo_fornecedor", label: "Código do fornecedor", required: true, hint: "Código do fornecedor no Protheus. A identificação é composta com a loja." },
+      { key: "loja_fornecedor", label: "Loja do fornecedor", required: true, hint: "Loja do fornecedor no Protheus; por exemplo, 01 ou 0001." },
       { key: "razao_social", label: "Razão social", required: true, hint: "Nome empresarial completo." },
       { key: "nome_fantasia", label: "Nome fantasia", hint: "Nome comercial, se houver." },
-      { key: "cnpj_cpf", label: "CNPJ ou CPF", hint: "Somente números ou pontuação; deve ser único quando informado." },
+      { key: "cnpj_cpf", label: "CNPJ ou CPF", hint: "Somente números ou pontuação. Pode ser diferente entre lojas do mesmo código." },
       { key: "ativo", label: "Ativo", hint: "SIM ou NÃO. Em branco equivale a SIM." },
     ],
   },

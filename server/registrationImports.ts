@@ -43,7 +43,7 @@ export function validateRegistrationRows(type: RegistrationType, rawRows: Import
       if (row.categoria_operacional && !parseProductCategory(row.categoria_operacional)) issues.push({ row: rowNumber, field: "Categoria operacional", message: "Use consumível, EPI, uniforme, ferramenta ou outro." });
       (["controla_tamanho", "controla_lote", "controla_validade", "controla_ca"] as const).forEach(field => { if (!parseYesNo(row[field]).valid) issues.push({ row: rowNumber, field, message: "Use SIM ou NÃO." }); });
     }
-    const uniqueKey = type === "users" ? row.email.toLowerCase() : type === "employees" ? row.codigo_funcionario : type === "suppliers" ? row.codigo_fornecedor : row.codigo_produto;
+    const uniqueKey = type === "users" ? row.email.toLowerCase() : type === "employees" ? row.codigo_funcionario : type === "suppliers" ? `${row.codigo_fornecedor}|${row.loja_fornecedor}` : row.codigo_produto;
     if (uniqueKey && seen.has(uniqueKey)) issues.push({ row: rowNumber, field: "Código ou e-mail", message: "Valor duplicado dentro da planilha." });
     if (uniqueKey) seen.add(uniqueKey);
   });
@@ -98,10 +98,6 @@ async function validateReferences(type: RegistrationType, rows: ImportRow[]) {
           if (existing.rows[0]) issues.push({ row: index + 2, field: "E-mail", message: "Este e-mail já pertence a outro código de funcionário." });
         }
       }
-      if (type === "suppliers" && row.cnpj_cpf) {
-        const existing = await client.query<{ supplier_code: string }>("select supplier_code from public.suppliers where document_number = $1 and supplier_code <> $2", [row.cnpj_cpf, row.codigo_fornecedor]);
-        if (existing.rows[0]) issues.push({ row: index + 2, field: "CNPJ ou CPF", message: "Este documento já pertence a outro código de fornecedor." });
-      }
       if (type === "products" && !(await resolveProductType(client, row.codigo_tipo_produto))) issues.push({ row: index + 2, field: "Código do tipo de produto", message: "Tipo de produto ativo não encontrado." });
       if (type === "users") {
         const existing = await client.query<{ is_development_admin: boolean }>("select is_development_admin from public.portal_users where lower(email) = lower($1)", [row.email]);
@@ -138,9 +134,9 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
           values ($1, $2, nullif($3, ''), $4, $5, $6, $7, nullif($8, ''), nullif($9, ''), $10, nullif($11, '')::date, $12, $13)
           on conflict (employee_code) do update set full_name = excluded.full_name, email = excluded.email, company_id = excluded.company_id, branch_id = excluded.branch_id, unit_id = excluded.unit_id, cost_center_id = excluded.cost_center_id, department = excluded.department, job_title = excluded.job_title, manager_employee_id = excluded.manager_employee_id, admission_date = excluded.admission_date, is_inventory_requester = excluded.is_inventory_requester, active = excluded.active, updated_at = now()`, [row.codigo_funcionario, row.nome_completo, row.email, companyId, branchId, unitId, costCenterId, row.departamento, row.cargo, managerId, row.data_admissao, parseYesNo(row.requisitante_almoxarifado).value, active]);
       }
-      if (type === "suppliers") await client.query(`insert into public.suppliers (supplier_code, legal_name, trade_name, document_number, active)
-        values ($1, $2, nullif($3, ''), nullif($4, ''), $5)
-        on conflict (supplier_code) do update set legal_name = excluded.legal_name, trade_name = excluded.trade_name, document_number = excluded.document_number, active = excluded.active, updated_at = now()`, [row.codigo_fornecedor, row.razao_social, row.nome_fantasia, row.cnpj_cpf, active]);
+      if (type === "suppliers") await client.query(`insert into public.suppliers (supplier_code, store_code, legal_name, trade_name, document_number, active)
+        values ($1, $2, $3, nullif($4, ''), nullif($5, ''), $6)
+        on conflict (supplier_code, store_code) do update set legal_name = excluded.legal_name, trade_name = excluded.trade_name, document_number = excluded.document_number, active = excluded.active, updated_at = now()`, [row.codigo_fornecedor, row.loja_fornecedor, row.razao_social, row.nome_fantasia, row.cnpj_cpf, active]);
       if (type === "products") {
         const productType = await resolveProductType(client, row.codigo_tipo_produto);
         const category = parseProductCategory(row.categoria_operacional);
@@ -174,7 +170,7 @@ export async function listRegistrationRecords(type: RegistrationType) {
     return result.rows;
   }
   if (type === "suppliers") {
-    const result = await database.query("select supplier_code as code, legal_name as name, trade_name as nome_fantasia, document_number as cnpj_cpf, active, updated_at as updated_at from public.suppliers order by legal_name limit 200");
+    const result = await database.query("select supplier_code as code, store_code as loja_fornecedor, legal_name as name, trade_name as nome_fantasia, document_number as cnpj_cpf, active, updated_at as updated_at from public.suppliers order by supplier_code, store_code, legal_name limit 200");
     return result.rows;
   }
   if (type === "products") {
@@ -187,11 +183,14 @@ export async function listRegistrationRecords(type: RegistrationType) {
   return result.rows;
 }
 
-export async function setRegistrationRecordActive(type: RegistrationType, code: string, active: boolean, actor: PortalIdentity) {
+export async function setRegistrationRecordActive(type: RegistrationType, code: string, active: boolean, actor: PortalIdentity, storeCode?: string) {
   const database = getSupabasePool();
   let affected = 0;
   if (type === "employees") affected = (await database.query("update public.employees set active = $2, updated_at = now() where employee_code = $1", [code, active])).rowCount ?? 0;
-  if (type === "suppliers") affected = (await database.query("update public.suppliers set active = $2, updated_at = now() where supplier_code = $1", [code, active])).rowCount ?? 0;
+  if (type === "suppliers") {
+    if (!storeCode?.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe a loja para alterar o status do fornecedor." });
+    affected = (await database.query("update public.suppliers set active = $3, updated_at = now() where supplier_code = $1 and store_code = $2", [code, storeCode, active])).rowCount ?? 0;
+  }
   if (type === "products") affected = (await database.query("update public.products set active = $2, updated_at = now() where product_code = $1", [code, active])).rowCount ?? 0;
   if (type === "users") {
     const result = await database.query<{ is_development_admin: boolean }>("select is_development_admin from public.portal_users where email = $1", [code]);
@@ -199,6 +198,6 @@ export async function setRegistrationRecordActive(type: RegistrationType, code: 
     affected = (await database.query("update public.portal_users set status = $2, updated_at = now() where email = $1", [code, active ? "active" : "inactive"])).rowCount ?? 0;
   }
   if (!affected) throw new TRPCError({ code: "NOT_FOUND", message: "Registro não encontrado." });
-  await database.query("insert into public.audit_events (actor_user_id, entity_type, action, details) values ($1, $2, 'status_updated', jsonb_build_object('code', $3::text, 'active', $4::boolean))", [actor.id, type, code, active]);
+  await database.query("insert into public.audit_events (actor_user_id, entity_type, action, details) values ($1, $2, 'status_updated', jsonb_build_object('code', $3::text, 'store_code', $4::text, 'active', $5::boolean))", [actor.id, type, code, storeCode ?? null, active]);
   return { success: true as const, active };
 }

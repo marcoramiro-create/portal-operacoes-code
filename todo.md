@@ -170,3 +170,6 @@
 - [ ] Validar a carga ordenada das referências sem inserir dados fictícios na homologação.
 - [x] Ampliar Funcionários com empresa, filial, departamento, cargo, gestor, admissão e indicação de requisitante.
 - [x] Validar o vínculo entre usuário e funcionário ativo antes de liberar uma requisição de almoxarifado.
+- [ ] Alterar o cadastro de Fornecedores para usar código e loja como identificação operacional única.
+- [ ] Permitir o mesmo código de fornecedor em lojas diferentes, inclusive com CNPJ diferente, preservando validações de duplicidade por combinação.
+- [ ] Receber e pré-validar a exportação de fornecedores do Protheus antes de qualquer importação na homologação.
