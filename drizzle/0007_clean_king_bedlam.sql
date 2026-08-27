@@ -1,0 +1,1 @@
+ALTER TABLE `protheusImports` ADD `status` enum('pending','approved','archived') DEFAULT 'pending' NOT NULL;

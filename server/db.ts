@@ -35,10 +35,20 @@ export async function getUserByOpenId(openId: string) {
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
 }
 
+export type ProtheusImportStatus = "pending" | "approved" | "archived";
+
 export async function listProtheusImports() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(protheusImports).orderBy(desc(protheusImports.importedAt));
+}
+
+export async function updateProtheusImportStatus(id: number, status: ProtheusImportStatus) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const result = await db.update(protheusImports).set({ status }).where(eq(protheusImports.id, id));
+  if (!result[0]?.affectedRows) throw new Error("Versão de carga não encontrada.");
+  return (await db.select().from(protheusImports).where(eq(protheusImports.id, id)).limit(1))[0];
 }
 
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
@@ -75,7 +85,7 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
       })));
     }
   });
-  return { rowCount: records.length, importedAt, fileName };
+  return { rowCount: records.length, importedAt, fileName, versionName, status: "pending" as const };
 }
 
 type Curve = "A" | "B" | "C" | "D" | "E";
@@ -88,8 +98,8 @@ type StockQuality = { stockWithoutSalesValue: number; lowCoverageStockValue: num
 async function getLatestImportId(selectedId?: number) {
   const db = await getDb();
   if (!db) return undefined;
-  if (selectedId) return (await db.select({ id: protheusImports.id }).from(protheusImports).where(eq(protheusImports.id, selectedId)).limit(1))[0]?.id;
-  return (await db.select({ id: protheusImports.id }).from(protheusImports).orderBy(desc(protheusImports.importedAt)).limit(1))[0]?.id;
+  if (selectedId) return (await db.select({ id: protheusImports.id }).from(protheusImports).where(and(eq(protheusImports.id, selectedId), eq(protheusImports.status, "approved"))).limit(1))[0]?.id;
+  return (await db.select({ id: protheusImports.id }).from(protheusImports).where(eq(protheusImports.status, "approved")).orderBy(desc(protheusImports.importedAt)).limit(1))[0]?.id;
 }
 const asNumber = (value: unknown) => Number(value ?? 0);
 const normalizeLabel = (value: string) => value || "Não informado";
@@ -137,7 +147,7 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
 export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "importId">) {
   const db = await getDb();
   if (!db) return [];
-  const conditions = [inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
+  const conditions = [eq(protheusImports.status, "approved"), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
   if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
   if (filters.productType) conditions.push(eq(inventoryAnalytics.productType, filters.productType));

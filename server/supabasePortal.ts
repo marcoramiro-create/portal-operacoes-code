@@ -62,6 +62,10 @@ export async function getPortalIdentity(authorizationHeader?: string): Promise<P
   return { id: row.id, email: row.email, displayName: row.display_name, isDevelopmentAdmin: row.is_development_admin, profiles: row.profile_keys ?? [] };
 }
 
+export async function recordPortalAudit(actor: PortalIdentity, entityType: string, entityId: string, action: string, details: Record<string, unknown> = {}) {
+  await getSupabasePool().query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, $2, $3, $4, $5::jsonb)", [actor.id, entityType, entityId, action, JSON.stringify(details)]);
+}
+
 export function assertPortalAdministrator(identity: PortalIdentity) {
   if (!identity.isDevelopmentAdmin && !identity.profiles.includes("operations-admin")) {
     throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem gerenciar usuários." });

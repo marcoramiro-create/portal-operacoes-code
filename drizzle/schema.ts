@@ -63,6 +63,7 @@ export const protheusImports = mysqlTable("protheusImports", {
   id: int("id").autoincrement().primaryKey(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   versionName: varchar("versionName", { length: 32 }).notNull().default("Compras - legado"),
+  status: mysqlEnum("status", ["pending", "approved", "archived"]).notNull().default("pending"),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
   rowCount: int("rowCount").notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
