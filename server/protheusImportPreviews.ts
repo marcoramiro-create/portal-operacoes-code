@@ -1,5 +1,5 @@
 import { validateRegistrationRows } from "./registrationImports";
-import { IGNORED_SI3_BRANCH_CODES, parseAgra045Xml, parseMata020Csv, parseSi3Csv, SourceIssue } from "./protheusRegistrationParsers";
+import { IGNORED_SI3_BRANCH_CODES, parseAgra045Xml, parseMata020, parseSi3Csv, SourceIssue } from "./protheusRegistrationParsers";
 import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
 import { importCatalogEntries } from "./inventoryCatalogImports";
 import { TRPCError } from "@trpc/server";
@@ -32,7 +32,7 @@ export function filterSi3Rows<T extends { codigo_filial: string }>(rows: T[]) {
 }
 
 export async function previewMata020Suppliers(content: string): Promise<ImportPreview> {
-  const parsed = parseMata020Csv(content);
+  const parsed = parseMata020(content);
   const validated = validateRegistrationRows("suppliers", parsed.rows);
   const issues = [...parsed.issues, ...validated.issues];
   if (issues.length) return { valid: false, sourceRows: parsed.sourceRows, acceptedRows: parsed.rows.length, skippedRows: parsed.skippedRows, issues, toCreate: 0, toUpdate: 0, unchanged: 0, samples: [] };
@@ -119,7 +119,7 @@ export async function previewSi3CostCenters(content: string): Promise<ImportPrev
 export async function commitMata020Suppliers(content: string, identity: PortalIdentity) {
   const preview = await previewMata020Suppliers(content);
   if (!preview.valid) throw new TRPCError({ code: "BAD_REQUEST", message: "A prévia da MATA020 possui inconsistências. Revise antes de importar." });
-  const parsed = parseMata020Csv(content);
+  const parsed = parseMata020(content);
   const client = await getSupabasePool().connect();
   try {
     await client.query("begin");

@@ -70,6 +70,7 @@ export function parseMata020Xml(xml: string): Mata020ParseResult {
     }
 
     if (!cells.some(Boolean)) continue;
+    if (headerIndex(cells, ["codigo", "codigofornecedor"]) >= 0 && headerIndex(cells, ["loja", "lojafornecedor"]) >= 0 && headerIndex(cells, ["razaosocial", "razaosocialfornecedor"]) >= 0) continue;
     sourceRows += 1;
     const code = cells[headerIndex(header, ["codigo", "codigofornecedor"])]?.trim() ?? "";
     const store = cells[headerIndex(header, ["loja", "lojafornecedor"])]?.trim() ?? "";

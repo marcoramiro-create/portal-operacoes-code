@@ -1,8 +1,8 @@
 import { readFile } from "node:fs/promises";
-import { parseAgra045Xml, parseMata020Csv } from "../server/protheusRegistrationParsers";
+import { parseAgra045Xml, parseMata020 } from "../server/protheusRegistrationParsers";
 
 const [supplierPath, locationPath] = process.argv.slice(2);
-if (!supplierPath || !locationPath) throw new Error("Informe os caminhos do CSV MATA020 e XML AGRA045.");
+if (!supplierPath || !locationPath) throw new Error("Informe os caminhos do arquivo MATA020 (CSV ou XML) e XML AGRA045.");
 
 function countDuplicates(values: string[]) {
   const seen = new Set<string>();
@@ -18,7 +18,7 @@ const [supplierContent, locationContent] = await Promise.all([
   readFile(supplierPath, "utf8"),
   readFile(locationPath, "utf8"),
 ]);
-const suppliers = parseMata020Csv(supplierContent);
+const suppliers = parseMata020(supplierContent);
 const locations = parseAgra045Xml(locationContent);
 
 console.log(JSON.stringify({

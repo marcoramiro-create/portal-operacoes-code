@@ -8,6 +8,13 @@ const xml = `<?xml version="1.0"?><Workbook><Worksheet ss:Name="MATA020"><Table>
 </Table></Worksheet></Workbook>`;
 
 describe("leitor XML MATA020", () => {
+  it("ignora cabeçalhos repetidos entre páginas da exportação", () => {
+    const repeatedHeaderXml = `<?xml version="1.0"?><Workbook><Worksheet ss:Name="MATA020"><Table><Row><Cell><Data><![CDATA[Codigo]]></Data></Cell><Cell><Data><![CDATA[Loja]]></Data></Cell><Cell><Data><![CDATA[CNPJ/CPF]]></Data></Cell><Cell><Data><![CDATA[Razao Social]]></Data></Cell><Cell><Data><![CDATA[N Fantasia]]></Data></Cell></Row><Row><Cell><Data><![CDATA[000001]]></Data></Cell><Cell><Data><![CDATA[01]]></Data></Cell><Cell><Data><![CDATA[111]]></Data></Cell><Cell><Data><![CDATA[Fornecedor A]]></Data></Cell><Cell><Data><![CDATA[Comercial A]]></Data></Cell></Row><Row><Cell><Data><![CDATA[Codigo]]></Data></Cell><Cell><Data><![CDATA[Loja]]></Data></Cell><Cell><Data><![CDATA[CNPJ/CPF]]></Data></Cell><Cell><Data><![CDATA[Razao Social]]></Data></Cell><Cell><Data><![CDATA[N Fantasia]]></Data></Cell></Row><Row><Cell><Data><![CDATA[000002]]></Data></Cell><Cell><Data><![CDATA[01]]></Data></Cell><Cell><Data><![CDATA[222]]></Data></Cell><Cell><Data><![CDATA[Fornecedor B]]></Data></Cell><Cell><Data><![CDATA[Comercial B]]></Data></Cell></Row></Table></Worksheet></Workbook>`;
+    const result = parseMata020Xml(repeatedHeaderXml);
+    expect(result.sourceRows).toBe(2);
+    expect(result.rows.map(row => row.codigo_fornecedor)).toEqual(["000001", "000002"]);
+  });
+
   it("mapeia fornecedores ativos por código e loja, mantendo CNPJ distintos", () => {
     const result = parseMata020Xml(xml);
     expect(result.sourceRows).toBe(2);

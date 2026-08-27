@@ -201,3 +201,8 @@
 - [x] Remover o limite genérico de 500 linhas do importador SI3 e aceitar o CSV Protheus completo em prévia e importação assistida.
 - [x] Cobrir em teste o limite ampliado do SI3 e manter o limite padrão nos demais cadastros.
 - [x] Executar a importação confirmada dos 805 Centros de custo elegíveis do scftlvt0.csv e verificar a auditoria da carga.
+- [x] Revisar e validar o cadastro de Fornecedores por Código + Loja com o arquivo real MATA020, mantendo importação assistida antes da gravação.
+- [x] Cobrir em teste a detecção automática do formato XML e a preservação do suporte ao CSV na MATA020.
+- [x] Ignorar cabeçalhos repetidos entre páginas do XML MATA020 e validar novamente a prévia real de Fornecedores.
+- [x] Atualizar o utilitário local de prévia MATA020 para usar a detecção automática CSV/XML.
+- [x] Aumentar com segurança o limite de requisição para o XML MATA020 real, preservando limites menores nos demais fluxos.

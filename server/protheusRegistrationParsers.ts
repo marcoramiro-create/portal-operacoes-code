@@ -1,5 +1,7 @@
 export type SourceIssue = { row: number; field: string; message: string };
 
+import { parseMata020Xml } from "./mata020Xml";
+
 export type ProtheusSupplierRow = {
   codigo_fornecedor: string;
   loja_fornecedor: string;
@@ -188,6 +190,10 @@ export function parseMata020Csv(content: string): ParseResult<ProtheusSupplierRo
     result.rows.push({ codigo_fornecedor: code, loja_fornecedor: store, cnpj_cpf: documentIndex >= 0 ? (row[documentIndex]?.trim() ?? "") : "", razao_social: legalName, nome_fantasia: tradeNameIndex >= 0 ? (row[tradeNameIndex]?.trim() ?? "") : "", ativo: "SIM" });
   }
   return result;
+}
+
+export function parseMata020(content: string): ParseResult<ProtheusSupplierRow> {
+  return content.trimStart().startsWith("<") ? parseMata020Xml(content) : parseMata020Csv(content);
 }
 
 export function parseAgra045Xml(xml: string): ParseResult<ProtheusWarehouseRow> {

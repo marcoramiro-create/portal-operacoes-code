@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { filterSi3Rows } from "./protheusImportPreviews";
-import { IGNORED_SI3_BRANCH_CODES, parseAgra045Xml, parseMata020Csv, parseSi3Csv } from "./protheusRegistrationParsers";
+import { IGNORED_SI3_BRANCH_CODES, parseAgra045Xml, parseMata020, parseMata020Csv, parseSi3Csv } from "./protheusRegistrationParsers";
 
 describe("leitores de cadastros Protheus", () => {
   it("mapeia automaticamente o CSV MATA020 pelo nome dos cabeçalhos", () => {
@@ -9,6 +9,11 @@ describe("leitores de cadastros Protheus", () => {
       { codigo_fornecedor: "000001", loja_fornecedor: "01", razao_social: "Fornecedor A", cnpj_cpf: "111", nome_fantasia: "Comercial A", ativo: "SIM" },
       { codigo_fornecedor: "000001", loja_fornecedor: "02", razao_social: "Fornecedor B", cnpj_cpf: "222", nome_fantasia: "Comercial B", ativo: "SIM" },
     ]);
+  });
+
+  it("detecta e mapeia automaticamente o XML SpreadsheetML da MATA020", () => {
+    const xml = `<?xml version="1.0"?><Workbook><Worksheet ss:Name="MATA020"><Table><Row><Cell ss:Index="1"><Data><![CDATA[Codigo]]></Data></Cell><Cell ss:Index="2"><Data><![CDATA[Loja]]></Data></Cell><Cell ss:Index="3"><Data><![CDATA[CNPJ/CPF]]></Data></Cell><Cell ss:Index="4"><Data><![CDATA[Razao Social]]></Data></Cell><Cell ss:Index="5"><Data><![CDATA[N Fantasia]]></Data></Cell></Row><Row><Cell><Data><![CDATA[000001]]></Data></Cell><Cell><Data><![CDATA[01]]></Data></Cell><Cell><Data><![CDATA[111]]></Data></Cell><Cell><Data><![CDATA[Fornecedor A]]></Data></Cell><Cell><Data><![CDATA[Comercial A]]></Data></Cell></Row></Table></Worksheet></Workbook>`;
+    expect(parseMata020(xml).rows).toEqual([{ codigo_fornecedor: "000001", loja_fornecedor: "01", cnpj_cpf: "111", razao_social: "Fornecedor A", nome_fantasia: "Comercial A", ativo: "SIM" }]);
   });
 
   it("mantém a lista de filiais SI3 descontinuadas centralizada", () => {
