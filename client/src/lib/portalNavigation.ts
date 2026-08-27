@@ -2,6 +2,7 @@ export const PORTAL_HOME_PATH = "/";
 
 export const applicationPaths: Record<string, string> = {
   "compras-protheus": "/compras/protheus",
+  "importacoes-compras-protheus": "/importacoes/compras-protheus",
   administracao: "/usuarios",
   "usuarios-solicitacoes": "/usuarios",
   "perfis-acesso": "/perfis-acesso",

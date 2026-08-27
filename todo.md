@@ -224,3 +224,10 @@
 - [x] Registrar auditoria das ações administrativas sobre versões e cobrir as permissões em testes.
 - [x] Renomear as três cargas históricas existentes para Compras - aaaaMMddHHmm, preservando os nomes originais nos metadados e sem exclusão.
 - [x] Cobrir em teste a visibilidade exclusiva do ADM para aprovar e arquivar versões Protheus.
+- [x] Confirmar ausência de conector nativo do OneDrive na tela de Integrações e escolher alternativa segura para armazenamento versionado no OneDrive pessoal.
+- [ ] Implementar a integração escolhida para salvar e rastrear cargas Compras - aaaaMMddHHmm no armazenamento externo autorizado.
+- [x] Adotar importação manual assistida das versões Protheus como fluxo principal, com validação, aprovação do ADM e preservação histórica.
+- [x] Documentar o OneDrive como cópia externa manual, sem exigir acesso ao Microsoft Graph.
+- [x] Criar uma árvore central de Importações no menu, com Compras Protheus e futuros importadores organizados por fonte e cadastro.
+- [x] Garantir que o importador de Compras Protheus fique visível para usuários com permissão de consulta/importação, sem exigir acesso indevido ao dashboard.
+- [x] Testar as rotas e permissões da árvore central de importadores em desktop e mobile.

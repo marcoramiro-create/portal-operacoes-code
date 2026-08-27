@@ -27,7 +27,8 @@ function Router() {
   return <Switch>
     <Route path={PORTAL_HOME_PATH}><WithLayout><Home /></WithLayout></Route>
     <Route path="/compras/protheus"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus"><Dashboard /></ApplicationRouteGuard></WithLayout></Route>
-    <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/compras-protheus"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
     <Route path="/recebimentos/nf"><WithLayout><ApplicationRouteGuard nodeKey="chaves-nf"><NfReceipts /></ApplicationRouteGuard></WithLayout></Route>

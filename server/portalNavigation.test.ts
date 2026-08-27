@@ -10,6 +10,10 @@ describe("portal navigation", () => {
     expect(applicationPaths["compras-protheus"]).toBe("/compras/protheus");
   });
 
+  it("exposes the Protheus importer in the central Importações tree", () => {
+    expect(applicationPaths["importacoes-compras-protheus"]).toBe("/importacoes/compras-protheus");
+  });
+
   it("organizes the stock references as individual entries under Cadastros", () => {
     expect(applicationPaths["cadastros-empresas"]).toBe("/cadastros/empresas");
     expect(applicationPaths["cadastros-filiais"]).toBe("/cadastros/filiais");
