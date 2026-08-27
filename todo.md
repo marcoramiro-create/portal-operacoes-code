@@ -197,3 +197,4 @@
 - [x] Revalidar o SI3 real somente com as filiais operacionais após aplicar a regra de exclusão.
 - [x] Atualizar o leiaute Excel e a exportação de Centros de custo para incluir codigo_filial como parte da chave composta.
 - [x] Cobrir em teste a exclusão das filiais SI3 descontinuadas e a preservação das filiais operacionais.
+- [x] Corrigir a mensagem e o direcionamento quando um CSV SI3 for selecionado no importador Excel genérico de Centros de custo.
