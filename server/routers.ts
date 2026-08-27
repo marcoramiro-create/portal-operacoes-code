@@ -8,6 +8,7 @@ import { portalRouter } from "./routers/portal";
 import { nfReceiptsRouter } from "./routers/nfReceipts";
 import { inventoryCatalogRouter } from "./routers/inventoryCatalog";
 import { inventoryOperationsRouter } from "./routers/inventoryOperations";
+import { inventoryToolsRouter } from "./routers/inventoryTools";
 
 export const appRouter = router({
   system: systemRouter,
@@ -25,6 +26,7 @@ export const appRouter = router({
   nfReceipts: nfReceiptsRouter,
   inventoryCatalog: inventoryCatalogRouter,
   inventoryOperations: inventoryOperationsRouter,
+  inventoryTools: inventoryToolsRouter,
 });
 
 export type AppRouter = typeof appRouter;
