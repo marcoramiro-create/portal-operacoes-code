@@ -1,4 +1,4 @@
-import { commitRegistrationImport, validateRegistrationRows } from "./registrationImports";
+import { validateRegistrationRows } from "./registrationImports";
 import { parseAgra045Xml, parseMata020Csv, SourceIssue } from "./protheusRegistrationParsers";
 import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
 import { importCatalogEntries } from "./inventoryCatalogImports";
@@ -80,7 +80,20 @@ export async function commitMata020Suppliers(content: string, identity: PortalId
   const preview = await previewMata020Suppliers(content);
   if (!preview.valid) throw new TRPCError({ code: "BAD_REQUEST", message: "A prévia da MATA020 possui inconsistências. Revise antes de importar." });
   const parsed = parseMata020Csv(content);
-  return commitRegistrationImport("suppliers", parsed.rows, identity, "protheus");
+  const client = await getSupabasePool().connect();
+  try {
+    await client.query("begin");
+    for (let start = 0; start < parsed.rows.length; start += 500) {
+      const batch = parsed.rows.slice(start, start + 500).map(row => ({ ...row, cnpj_cpf: row.cnpj_cpf.replace(/\D/g, "") }));
+      await client.query(`insert into public.suppliers (supplier_code, store_code, legal_name, trade_name, document_number, active)
+        select codigo_fornecedor, loja_fornecedor, razao_social, nullif(nome_fantasia, ''), nullif(cnpj_cpf, ''), true
+        from jsonb_to_recordset($1::jsonb) as source(codigo_fornecedor text, loja_fornecedor text, cnpj_cpf text, razao_social text, nome_fantasia text, ativo text)
+        on conflict (supplier_code, store_code) do update set legal_name = excluded.legal_name, trade_name = excluded.trade_name, document_number = excluded.document_number, active = true, updated_at = now()`, [JSON.stringify(batch)]);
+    }
+    await client.query("insert into public.audit_events (actor_user_id, entity_type, action, details) values ($1, 'suppliers', 'protheus_imported', jsonb_build_object('source', 'MATA020', 'rows', $2::int))", [identity.id, parsed.rows.length]);
+    await client.query("commit");
+    return { success: true as const, importedRows: parsed.rows.length };
+  } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
 }
 
 export async function commitAgra045Warehouses(content: string, identity: PortalIdentity) {

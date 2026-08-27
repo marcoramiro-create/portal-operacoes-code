@@ -186,3 +186,4 @@
 - [ ] Analisar e mapear automaticamente o CSV SI3 para Centros de custo, preservando seus vínculos organizacionais quando informados.
 - [ ] Mostrar prévia de inclusões e alterações do CSV SI3 antes de gravar centros de custo na homologação.
 - [x] Exibir erro orientado na tela de Cadastros quando as permissões ou registros não puderem ser carregados, evitando conteúdo vazio.
+- [x] Processar a carga confirmada de fornecedores da MATA020 em lote, mantendo validação e auditoria da atualização recorrente.
