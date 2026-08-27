@@ -233,3 +233,5 @@
 - [x] Testar as rotas e permissões da árvore central de importadores em desktop e mobile.
 - [x] Corrigir o feedback de aprovação e arquivamento para não apresentar erro quando a mutação já tiver sido concluída.
 - [x] Validar o padrão do nome Compras - aaaaMMddHHmm sem renomear o arquivo e usar a data/hora do nome como data histórica da carga.
+- [x] Corrigir a lista de cargas para exibir o nome original uma única vez, sem duplicar versionName e fileName.
+- [x] Normalizar a apresentação das cargas históricas antigas sem alterar os arquivos armazenados.
