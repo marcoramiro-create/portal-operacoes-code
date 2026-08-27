@@ -209,3 +209,12 @@
 - [x] Gravar e verificar os 6.772 fornecedores da MATA020 confirmados pelo usuário, com auditoria e unicidade por Código + Loja.
 - [x] Validar e, após confirmação, importar o AGRA045 real como cadastro de Armazéns, preservando vínculos de empresa e filial e mantendo Locais de estoque internos ao portal.
 - [x] Gravar os 28 Armazéns AGRA045 autorizados pelo usuário e verificar vínculo à filial 0101 e auditoria da carga.
+
+- [ ] Retomar Compras e análise Protheus com versões históricas, filtro MRP Sim/Não, dimensões opcionais de família/subfamília, evolução do giro e análise de qualidade do estoque.
+- [ ] Definir nomenclatura Compras - aaaaMMddHHmm e estratégia de armazenamento versionado no OneDrive.
+- [ ] Produzir recomendações analíticas de qualidade do estoque baseadas nos dados reais carregados.
+- [x] Adicionar filtro MRP Sim/Não ao parser, modelo, API e painel analítico.
+- [x] Permitir seleção de versão histórica e mostrar a evolução do giro por carga importada.
+- [x] Permitir mostrar ou ocultar as dimensões de família e subfamília na tela.
+- [x] Exibir indicadores transparentes de qualidade do estoque para orientar análises futuras.
+- [x] Criar e executar testes de MRP e do padrão de nomenclatura das versões.

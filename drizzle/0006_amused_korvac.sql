@@ -1,0 +1,1 @@
+ALTER TABLE `protheusImports` ADD `versionName` varchar(32) DEFAULT 'Compras - legado' NOT NULL;

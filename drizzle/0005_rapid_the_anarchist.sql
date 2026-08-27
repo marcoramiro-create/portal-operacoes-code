@@ -1,0 +1,1 @@
+ALTER TABLE `inventoryAnalytics` ADD `mrp` enum('Sim','Não') DEFAULT 'Não' NOT NULL;

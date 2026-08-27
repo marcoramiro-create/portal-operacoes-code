@@ -5,6 +5,7 @@ export type ProtheusInventoryRecord = {
   description: string;
   branch: string;
   productType: "ME" | "PE";
+  mrp: "Sim" | "Não";
   family: string;
   subfamily: string;
   curve: "A" | "B" | "C" | "D" | "E";
@@ -58,6 +59,9 @@ export function parseProtheusWorkbook(buffer: Buffer): ProtheusInventoryRecord[]
     const description = asText(valueOf("Descricao"));
     const branch = asText(valueOf("Filial"));
     const productType = asText(valueOf("Tipo")).toUpperCase() as ProtheusInventoryRecord["productType"];
+    const rawMrp = asText(headerPositions.has("MRP") ? valueOf("MRP") : "").toUpperCase();
+    if (rawMrp && rawMrp !== "SIM" && rawMrp !== "NÃO" && rawMrp !== "NAO") throw new Error(`A linha ${line} possui MRP inválido; use Sim ou Não.`);
+    const mrp: ProtheusInventoryRecord["mrp"] = rawMrp === "SIM" ? "Sim" : "Não";
     const curve = asText(valueOf("Classe ABC")).toUpperCase() as ProtheusInventoryRecord["curve"];
     if (!code || !description || !branch || !allowedCurves.has(curve)) throw new Error(`A linha ${line} não possui Codigo, Descricao, Filial ou Classe ABCDE válidos.`);
     if (!allowedProductTypes.has(productType)) throw new Error(`A linha ${line} possui Tipo de produto inválido.`);
@@ -71,6 +75,7 @@ export function parseProtheusWorkbook(buffer: Buffer): ProtheusInventoryRecord[]
       description,
       branch,
       productType,
+      mrp,
       family: asText(valueOf("Família")),
       subfamily: asText(valueOf("SubFamília")),
       curve,

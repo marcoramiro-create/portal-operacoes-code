@@ -62,6 +62,7 @@ export const deliveries = mysqlTable("deliveries", {
 export const protheusImports = mysqlTable("protheusImports", {
   id: int("id").autoincrement().primaryKey(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
+  versionName: varchar("versionName", { length: 32 }).notNull().default("Compras - legado"),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
   rowCount: int("rowCount").notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
@@ -76,6 +77,7 @@ export const inventoryAnalytics = mysqlTable(
     description: varchar("description", { length: 1000 }).notNull(),
     branch: varchar("branch", { length: 24 }).notNull(),
     productType: mysqlEnum("productType", ["ME", "PE"]).notNull().default("ME"),
+    mrp: mysqlEnum("mrp", ["Sim", "Não"]).notNull().default("Não"),
     family: varchar("family", { length: 255 }).notNull().default(""),
     subfamily: varchar("subfamily", { length: 255 }).notNull().default(""),
     curve: mysqlEnum("curve", ["A", "B", "C", "D", "E"]).notNull(),
