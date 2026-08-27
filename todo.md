@@ -238,3 +238,4 @@
 - [x] Agrupar os importadores existentes em um único galho Importações, preservando os módulos operacionais separados.
 - [x] Cruzar o CNPJ extraído da chave de NF com o cadastro central de fornecedores e exibir o fornecedor identificado.
 - [x] Fazer o menu lateral fechar automaticamente após a seleção no mobile e aplicar comportamento acessível no desktop.
+- [x] Padronizar o número da NF em 9 dígitos, preservando zeros à esquerda na tela e na exportação.

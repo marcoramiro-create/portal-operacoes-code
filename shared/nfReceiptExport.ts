@@ -20,6 +20,8 @@ const captureMethodLabels: Record<NfReceiptExportSource["captureMethod"], string
   barcode_reader: "Leitor de mesa",
 };
 
+export const formatNfNumber = (value: string | number | null | undefined) => String(value ?? "").replace(/\D/g, "").padStart(9, "0").slice(-9);
+
 const formatDateTime = (value: Date | null) => value ? value.toLocaleString("pt-BR") : "";
 
 export function formatNfReceiptExportRows(rows: NfReceiptExportSource[]) {
@@ -31,7 +33,7 @@ export function formatNfReceiptExportRows(rows: NfReceiptExportSource[]) {
     "Loja fornecedor": row.supplier?.store ?? "",
     "Modelo NF": row.invoiceModel,
     "Série NF": row.invoiceSeries,
-    "Número NF": row.invoiceNumber,
+    "Número NF": formatNfNumber(row.invoiceNumber),
     "Ano/mês emissão": row.issuedYearMonth,
     "Modo de coleta": captureMethodLabels[row.captureMethod],
     "Usuário da leitura": row.capturedBy ?? "Usuário do portal",

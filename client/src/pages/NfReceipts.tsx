@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { createNfBarcodeScannerConfig, normalizeNfBarcodeValue } from "@/lib/nfBarcodeScanner";
 import Quagga, { type QuaggaJSResultCallbackFunction } from "@ericblade/quagga2";
-import { formatNfReceiptExportRows } from "../../../shared/nfReceiptExport";
+import { formatNfNumber, formatNfReceiptExportRows } from "../../../shared/nfReceiptExport";
 import { Barcode, Camera, CheckCircle2, Download, Keyboard, LoaderCircle, ScanLine, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -48,7 +48,7 @@ export default function NfReceipts() {
 
   const capture = trpc.nfReceipts.capture.useMutation({
     onSuccess: data => {
-      toast.success(`NF registrada às ${new Date(data.capturedAt).toLocaleTimeString("pt-BR")}.`);
+      toast.success(`NF ${formatNfNumber(data.invoiceNumber)} registrada às ${new Date(data.capturedAt).toLocaleTimeString("pt-BR")}.`);
       utils.nfReceipts.recent.invalidate();
       setAccessKey("");
       stopCamera();
@@ -195,7 +195,7 @@ export default function NfReceipts() {
             </div>
             <Button size="sm" variant="outline" onClick={() => void exportReadings()} disabled={exportRows.isFetching}><Download className="mr-2 h-4 w-4" />{exportRows.isFetching ? "Preparando…" : "Exportar Excel"}</Button>
           </div>
-          {recent.isLoading ? <div className="flex items-center gap-2 p-7 text-sm font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando leituras…</div> : recent.data?.length ? <div className="divide-y divide-slate-100">{recent.data.map(item => <div className="px-5 py-4 sm:px-7" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-bold tracking-[0.08em] text-slate-800">{item.accessKey}</p><p className="mt-1 text-xs font-semibold text-slate-500">NF {Number(item.invoiceNumber)} · Série {Number(item.invoiceSeries)} · CNPJ {item.issuerCnpj}</p>{item.supplier ? <p className="mt-1 text-xs font-bold text-slate-700">Fornecedor: {item.supplier.tradeName || item.supplier.legalName} · Código {item.supplier.code} · Loja {item.supplier.store}</p> : <p className="mt-1 text-xs font-semibold text-amber-700">Fornecedor não identificado no cadastro ativo.</p>}</div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-600">{labels[item.captureMethod]}</span></div><p className="mt-2 text-xs font-semibold text-slate-500">{new Date(item.capturedAt).toLocaleString("pt-BR")} · {item.capturedBy ?? "Usuário do portal"}</p></div>)}</div> : <div className="p-7 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-500">Nenhuma chave foi registrada ainda.</p></div>}
+          {recent.isLoading ? <div className="flex items-center gap-2 p-7 text-sm font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando leituras…</div> : recent.data?.length ? <div className="divide-y divide-slate-100">{recent.data.map(item => <div className="px-5 py-4 sm:px-7" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-bold tracking-[0.08em] text-slate-800">{item.accessKey}</p><p className="mt-1 text-xs font-semibold text-slate-500">NF {formatNfNumber(item.invoiceNumber)} · Série {item.invoiceSeries} · CNPJ {item.issuerCnpj}</p>{item.supplier ? <p className="mt-1 text-xs font-bold text-slate-700">Fornecedor: {item.supplier.tradeName || item.supplier.legalName} · Código {item.supplier.code} · Loja {item.supplier.store}</p> : <p className="mt-1 text-xs font-semibold text-amber-700">Fornecedor não identificado no cadastro ativo.</p>}</div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-600">{labels[item.captureMethod]}</span></div><p className="mt-2 text-xs font-semibold text-slate-500">{new Date(item.capturedAt).toLocaleString("pt-BR")} · {item.capturedBy ?? "Usuário do portal"}</p></div>)}</div> : <div className="p-7 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-500">Nenhuma chave foi registrada ainda.</p></div>}
         </section>
       </div>
     </div>

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { formatNfReceiptExportRows } from "../shared/nfReceiptExport";
+import { formatNfNumber, formatNfReceiptExportRows } from "../shared/nfReceiptExport";
 
 describe("exportação de recebimentos de NF", () => {
+  it("formata o número da NF sempre com nove dígitos", () => {
+    expect(formatNfNumber("123")).toBe("000000123");
+    expect(formatNfNumber("000000123")).toBe("000000123");
+    expect(formatNfNumber("123456789")).toBe("123456789");
+  });
+
   it("preserva a chave como texto e inclui os dados de auditoria", () => {
     const rows = formatNfReceiptExportRows([{
       accessKey: "35240812345678000199550010000001234567890123",
