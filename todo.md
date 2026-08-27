@@ -207,3 +207,5 @@
 - [x] Atualizar o utilitário local de prévia MATA020 para usar a detecção automática CSV/XML.
 - [x] Aumentar com segurança o limite de requisição para o XML MATA020 real, preservando limites menores nos demais fluxos.
 - [x] Gravar e verificar os 6.772 fornecedores da MATA020 confirmados pelo usuário, com auditoria e unicidade por Código + Loja.
+- [x] Validar e, após confirmação, importar o AGRA045 real como cadastro de Armazéns, preservando vínculos de empresa e filial e mantendo Locais de estoque internos ao portal.
+- [x] Gravar os 28 Armazéns AGRA045 autorizados pelo usuário e verificar vínculo à filial 0101 e auditoria da carga.
