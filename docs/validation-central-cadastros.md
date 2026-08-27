@@ -9,3 +9,7 @@ Na primeira abertura da rota publicada de Empresas após a inclusão dos control
 Após aguardar a propagação e recarregar a página, o cadastro básico continuou visível, enquanto os controles de arquivo ainda não foram renderizados. O checkpoint contém os controles, portanto a verificação deve ser repetida após a confirmação de disponibilidade da implantação.
 
 Após a confirmação de disponibilidade e uma nova recarga, o cadastro publicado de Empresas exibiu corretamente os cartões de baixar leiaute Excel, exportar registros e selecionar/importar planilha, sem criar dados de demonstração.
+
+Na primeira abertura da rota publicada de Funcionários após a ampliação, foram exibidos os campos anteriores. A página será recarregada após a janela de propagação antes de concluir a validação visual.
+
+Após a implantação ser confirmada, o cadastro publicado de Funcionários exibiu corretamente empresa, filial, unidade, centro de custo, departamento, cargo, gestor, data de admissão e a seleção de requisitante de almoxarifado. Nenhum registro de demonstração foi inserido.
