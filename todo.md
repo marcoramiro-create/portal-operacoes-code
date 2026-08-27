@@ -239,3 +239,8 @@
 - [x] Cruzar o CNPJ extraído da chave de NF com o cadastro central de fornecedores e exibir o fornecedor identificado.
 - [x] Fazer o menu lateral fechar automaticamente após a seleção no mobile e aplicar comportamento acessível no desktop.
 - [x] Padronizar o número da NF em 9 dígitos, preservando zeros à esquerda na tela e na exportação.
+- [x] Usar automaticamente a versão aprovada mais recente para todos os usuários do dashboard Protheus.
+- [x] Adicionar gráfico evolutivo de giro respeitando os filtros selecionados.
+- [x] Substituir os checkboxes de família e subfamília por controles de seleção mais claros e persistentes.
+- [x] Memorizar por usuário as opções selecionadas de família e subfamília.
+- [x] Exibir a data real de atualização extraída do nome da carga em vez de “Versão analisada”.
