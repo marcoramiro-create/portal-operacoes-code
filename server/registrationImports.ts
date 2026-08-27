@@ -13,7 +13,7 @@ function parseProductCategory(value: string) {
   return productCategories[value.trim().toLowerCase()] ?? null;
 }
 
-export function registrationValidationMessage(source: "spreadsheet" | "direct", issues: ImportIssue[]) {
+export function registrationValidationMessage(source: "spreadsheet" | "direct" | "protheus", issues: ImportIssue[]) {
   if (source === "spreadsheet") return "A planilha contém erros. Corrija-os antes de importar.";
   const details = issues.slice(0, 3).map(issue => `${issue.field}: ${issue.message}`).join(" ");
   return `Corrija o cadastro antes de salvar. ${details}`;
@@ -114,7 +114,7 @@ export async function previewRegistrationImport(type: RegistrationType, rawRows:
   return { valid: result.valid && referenceIssues.length === 0, totalRows: result.totalRows, rows: result.rows, issues: [...result.issues, ...referenceIssues] };
 }
 
-export async function commitRegistrationImport(type: RegistrationType, rawRows: ImportRow[], actor: PortalIdentity, source: "spreadsheet" | "direct" = "spreadsheet") {
+export async function commitRegistrationImport(type: RegistrationType, rawRows: ImportRow[], actor: PortalIdentity, source: "spreadsheet" | "direct" | "protheus" = "spreadsheet") {
   const preview = await previewRegistrationImport(type, rawRows);
   if (!preview.valid) {
     throw new TRPCError({ code: "BAD_REQUEST", message: registrationValidationMessage(source, preview.issues) });
@@ -156,7 +156,7 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
         await client.query("insert into public.user_profile_assignments (user_id, profile_id, assigned_by_user_id) values ($1, $2, $3)", [portalUser.rows[0].id, profile.rows[0].id, actor.id]);
       }
     }
-    await client.query("insert into public.audit_events (actor_user_id, entity_type, action, details) values ($1, $2, $3, jsonb_build_object('rows', $4::int))", [actor.id, type, source === "direct" ? "direct_saved" : "spreadsheet_imported", preview.totalRows]);
+    await client.query("insert into public.audit_events (actor_user_id, entity_type, action, details) values ($1, $2, $3, jsonb_build_object('rows', $4::int))", [actor.id, type, source === "direct" ? "direct_saved" : source === "protheus" ? "protheus_imported" : "spreadsheet_imported", preview.totalRows]);
     await client.query("commit");
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
   return { success: true as const, importedRows: preview.totalRows };

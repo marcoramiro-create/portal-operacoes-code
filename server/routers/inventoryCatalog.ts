@@ -3,6 +3,7 @@ import { publicProcedure, router } from "../_core/trpc";
 import { CatalogEntryUpdate, configureInventoryProduct, createBranch, createCompany, createCostCenter, createOrgUnit, createProductType, createStockLocation, createWarehouse, listInventoryCatalog, setCatalogEntryActive, updateCatalogEntry } from "../inventoryCatalog";
 import { getPortalIdentity } from "../supabasePortal";
 import { importCatalogEntries } from "../inventoryCatalogImports";
+import { commitAgra045Warehouses, previewAgra045Warehouses } from "../protheusImportPreviews";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 const text = z.string().trim().min(1).max(120);
@@ -29,5 +30,7 @@ export const inventoryCatalogRouter = router({
   updateEntry: publicProcedure.input(catalogEntryUpdateSchema).mutation(async ({ ctx, input }) => updateCatalogEntry(input as CatalogEntryUpdate, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
   setEntryActive: publicProcedure.input(z.object({ entity: z.enum(["productType", "orgUnit", "costCenter", "company", "branch", "warehouse", "stockLocation"]), id: z.string().uuid(), active: z.boolean() })).mutation(async ({ ctx, input }) => setCatalogEntryActive(input, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
   importEntries: publicProcedure.input(z.object({ entity: z.enum(["productType", "orgUnit", "costCenter", "company", "branch", "warehouse", "stockLocation"]), rows: z.array(z.record(z.string(), z.string())).min(1).max(500) })).mutation(async ({ ctx, input }) => importCatalogEntries(input, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
+  previewAgra045: publicProcedure.input(z.object({ content: z.string().min(1).max(1_000_000) })).mutation(async ({ ctx, input }) => { const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers)); return previewAgra045Warehouses(input.content, identity); }),
+  commitAgra045: publicProcedure.input(z.object({ content: z.string().min(1).max(1_000_000) })).mutation(async ({ ctx, input }) => commitAgra045Warehouses(input.content, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
   configureProduct: publicProcedure.input(z.object({ productId: z.string().uuid(), productTypeId: z.string().uuid(), inventoryControlCategory: z.enum(["consumable", "epi", "uniform", "tool", "other"]), unitOfMeasure: text.max(12), requiresSize: z.boolean(), requiresLot: z.boolean(), requiresExpiration: z.boolean(), requiresCa: z.boolean() })).mutation(async ({ ctx, input }) => configureInventoryProduct(input, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
 });

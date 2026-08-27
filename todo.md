@@ -173,3 +173,15 @@
 - [x] Alterar o cadastro de Fornecedores para usar código e loja como identificação operacional única.
 - [x] Permitir o mesmo código de fornecedor em lojas diferentes, inclusive com CNPJ diferente, preservando validações de duplicidade por combinação.
 - [ ] Receber e pré-validar a exportação de fornecedores do Protheus antes de qualquer importação na homologação.
+- [ ] Definir se a rotina recorrente de cadastros usará planilha Excel ou arquivo XML do Protheus.
+- [ ] Implementar uma prévia auditável das inclusões, alterações e inativações antes de cada atualização de cadastro.
+- [ ] Criar leitor do XML exportado pela MATA020 para fornecedores ativos, usando código e loja como identificação.
+- [ ] Mostrar prévia de inclusões e alterações do XML da MATA020 antes de gravar fornecedores na homologação.
+- [ ] Analisar e mapear o XML AGRA045 para atualizar os Locais de estoque vinculados à estrutura já cadastrada.
+- [ ] Mostrar prévia de inclusões e alterações do XML AGRA045 antes de gravar locais de estoque na homologação.
+- [ ] Adotar o CSV exportado do Protheus como fonte operacional de atualização de Fornecedores, mantendo o XML original apenas para conferência.
+- [ ] Reconhecer e mapear automaticamente os cabeçalhos dos arquivos do Protheus, sem tratamento manual de colunas pelo usuário.
+- [ ] Importar o AGRA045 como cadastro de Armazéns do Protheus, e não como locais de estoque.
+- [ ] Manter Locais de estoque como referências internas do portal, vinculadas a armazém e independentes do Protheus.
+- [ ] Analisar e mapear automaticamente o CSV SI3 para Centros de custo, preservando seus vínculos organizacionais quando informados.
+- [ ] Mostrar prévia de inclusões e alterações do CSV SI3 antes de gravar centros de custo na homologação.
