@@ -9,6 +9,7 @@ import {
   getPortalIdentity,
   listAccessProfiles,
   listAccessRequests,
+  listActiveEmployees,
   listApplicationTreeForUser,
   listPortalUsers,
   listProfileNodePermissions,
@@ -55,11 +56,15 @@ export const portalRouter = router({
     await administrator(ctx);
     return listPortalUsers();
   }),
+  employeeOptions: publicProcedure.query(async ({ ctx }) => {
+    await administrator(ctx);
+    return listActiveEmployees();
+  }),
   createUser: publicProcedure.input(z.object({ email: z.string().email(), displayName: z.string().trim().min(3).max(160), profileKey })).mutation(async ({ ctx, input }) => {
     const identity = await administrator(ctx);
     return createPortalUser(input, identity);
   }),
-  updateUser: publicProcedure.input(z.object({ userId: z.string().uuid(), status: z.enum(["active", "inactive"]), profileKey })).mutation(async ({ ctx, input }) => {
+  updateUser: publicProcedure.input(z.object({ userId: z.string().uuid(), status: z.enum(["active", "inactive"]), profileKey, canFulfillInventoryRequests: z.boolean().optional(), employeeId: z.string().uuid().optional() })).mutation(async ({ ctx, input }) => {
     const identity = await administrator(ctx);
     return updatePortalUser(input.userId, input, identity);
   }),

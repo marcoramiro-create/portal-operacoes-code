@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { Pool } from "pg";
 
 type ApplicationNodeRow = { id: string; node_key: string; label: string; parent_id: string | null; sort_order: number };
-type PortalUserRow = { id: string; auth_user_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; profile_keys: string[] | null; profile_key?: string | null; email_confirmed_at?: Date | null };
+type PortalUserRow = { id: string; auth_user_id: string | null; employee_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; can_fulfill_inventory_requests: boolean; profile_keys: string[] | null; profile_key?: string | null; email_confirmed_at?: Date | null };
 type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
 type RequestRow = { id: string; requested_email: string; status: "pending" | "approved" | "rejected" | "cancelled"; reason: string | null; created_at: Date; display_name: string | null; active_user_exists?: boolean };
 type Permission = "view" | "manage" | "approve";
@@ -170,7 +170,7 @@ export async function updateUserNodePermission(input: { userId: string; nodeId: 
 
 export async function listPortalUsers() {
   const result = await getSupabasePool().query<PortalUserRow>(
-    `select u.id, u.auth_user_id, u.email, u.display_name, u.status, u.is_development_admin, auth.email_confirmed_at,
+    `select u.id, u.auth_user_id, u.employee_id, u.email, u.display_name, u.status, u.is_development_admin, u.can_fulfill_inventory_requests, auth.email_confirmed_at,
        coalesce(array_agg(p.profile_key) filter (where p.profile_key is not null), '{}') as profile_keys
      from public.portal_users u
      left join auth.users auth on auth.id = u.auth_user_id
@@ -179,7 +179,12 @@ export async function listPortalUsers() {
      group by u.id, auth.email_confirmed_at
      order by u.created_at asc`,
   );
-  return result.rows.map(row => ({ id: row.id, authUserId: row.auth_user_id, email: row.email, displayName: row.display_name, status: row.status, isDevelopmentAdmin: row.is_development_admin, activation: row.email_confirmed_at ? "confirmed" : "pending", profiles: row.profile_keys ?? [] }));
+  return result.rows.map(row => ({ id: row.id, authUserId: row.auth_user_id, employeeId: row.employee_id, email: row.email, displayName: row.display_name, status: row.status, isDevelopmentAdmin: row.is_development_admin, canFulfillInventoryRequests: row.can_fulfill_inventory_requests, activation: row.email_confirmed_at ? "confirmed" : "pending", profiles: row.profile_keys ?? [] }));
+}
+
+export async function listActiveEmployees() {
+  const result = await getSupabasePool().query<{ id: string; employee_code: string | null; full_name: string }>("select id, employee_code, full_name from public.employees where active = true order by full_name");
+  return result.rows.map(row => ({ id: row.id, label: `${row.employee_code ? `${row.employee_code} · ` : ""}${row.full_name}` }));
 }
 
 async function ensureAuthInvitation(email: string, displayName: string) {
@@ -220,9 +225,9 @@ export async function assignProfile(userId: string, profileKey: string, actor: P
   await database.query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, 'portal_user', $2, 'profile_assigned', jsonb_build_object('profile', $3::text))", [actor.id, userId, profileKey]);
 }
 
-export async function updatePortalUser(userId: string, input: { status: "active" | "inactive"; profileKey: string }, actor: PortalIdentity) {
+export async function updatePortalUser(userId: string, input: { status: "active" | "inactive"; profileKey: string; canFulfillInventoryRequests?: boolean; employeeId?: string }, actor: PortalIdentity) {
   const database = getSupabasePool();
-  await database.query("update public.portal_users set status = $2, updated_at = now() where id = $1", [userId, input.status]);
+  await database.query("update public.portal_users set status = $2, can_fulfill_inventory_requests = coalesce($3, can_fulfill_inventory_requests), employee_id = coalesce($4::uuid, employee_id), updated_at = now() where id = $1", [userId, input.status, input.canFulfillInventoryRequests ?? null, input.employeeId ?? null]);
   await assignProfile(userId, input.profileKey, actor);
   return { success: true } as const;
 }

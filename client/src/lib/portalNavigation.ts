@@ -10,4 +10,10 @@ export const applicationPaths: Record<string, string> = {
   fornecedores: "/cadastros/fornecedores",
   produtos: "/cadastros/produtos",
   "chaves-nf": "/recebimentos/nf",
+  almoxarifado: "/almoxarifado/requisicoes",
+  "almoxarifado-requisicoes": "/almoxarifado/requisicoes",
+  "almoxarifado-atendimentos": "/almoxarifado/atendimentos",
+  "almoxarifado-movimentacoes": "/almoxarifado/movimentacoes",
+  "almoxarifado-estoque": "/almoxarifado/estoque",
+  "almoxarifado-cadastros": "/almoxarifado/cadastros",
 };

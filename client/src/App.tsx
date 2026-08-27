@@ -15,6 +15,8 @@ import UserManagement from "./pages/UserManagement";
 import AccessProfiles from "./pages/AccessProfiles";
 import { ApplicationRouteGuard } from "./components/ApplicationRouteGuard";
 import NfReceipts from "./pages/NfReceipts";
+import InventoryCatalog from "./pages/InventoryCatalog";
+import { InventoryFulfillments, InventoryMovements, InventoryRequisitions, InventoryStock } from "./pages/InventoryOperations";
 import { Route, Switch } from "wouter";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
@@ -27,6 +29,11 @@ function Router() {
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
     <Route path="/recebimentos/nf"><WithLayout><ApplicationRouteGuard nodeKey="chaves-nf"><NfReceipts /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/cadastros"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-cadastros"><InventoryCatalog /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/requisicoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-requisicoes"><InventoryRequisitions /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/atendimentos"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-atendimentos"><InventoryFulfillments /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/movimentacoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-movimentacoes"><InventoryMovements /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/estoque"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-estoque"><InventoryStock /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/cadastros/usuarios"><WithLayout><RegistrationImport type="users" /></WithLayout></Route>
     <Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
     <Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>

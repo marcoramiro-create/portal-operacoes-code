@@ -126,3 +126,27 @@
 - [ ] Garantir leitura automática da chave de NF por câmera em iOS, Android e computador.
 - [x] Manter a evolução da leitura por câmera de NF suspensa até nova priorização.
 - [x] Exportar o histórico de leituras de NF em planilha com chave, usuário, data/hora e modo de coleta.
+- [x] Definir as regras operacionais do controle de consumíveis, EPIs, uniformes e ferramentas.
+- [ ] Criar a aplicação e as permissões de consulta, movimentação e aprovação para o novo controle.
+- [ ] Registrar entradas, saídas, transferências e devoluções com histórico auditável.
+- [ ] Controlar a responsabilidade por ferramentas, EPIs e uniformes vinculados aos funcionários.
+- [ ] Criar consultas e exportação Excel para posição e movimentações do novo controle.
+- [x] Criar cadastros em tabela para empresa, filial, armazém e múltiplos locais de estoque.
+- [ ] Ampliar o cadastro de funcionários para identificar requisitantes e dados operacionais reutilizáveis nos próximos módulos.
+- [ ] Controlar tamanho, CA, lote, validade e demais atributos aplicáveis a EPIs e uniformes.
+- [ ] Registrar para ferramentas o funcionário responsável, datas, atendente e estado de entrega e devolução.
+- [ ] Implementar requisição por usuário requisitante e atendimento pelo usuário do almoxarifado, sem aprovação inicial.
+- [x] Criar cadastro de tipos de produto reutilizável pelos módulos futuros.
+- [ ] Utilizar o item de compra do produto como base de saldo e movimentação de ferramentas, consumíveis, EPIs e uniformes.
+- [ ] Criar operações exclusivas e auditáveis de requisição, entrada por compra/NF, transferência, entrega e devolução.
+- [x] Controlar data prevista de retirada sugerida a partir da abertura da requisição e permitir atendimento parcial.
+- [ ] Controlar estoque mínimo, máximo, segurança de 30 dias e cobertura de 60 dias por unidade de estoque.
+- [x] Modelar armazéns com níveis próprios de estoque, inclusive os armazéns 10 e 11 vinculados às filiais 0101 e 0103 sem consolidação automática.
+- [x] Identificar no cadastro de usuários quem está autorizado a entregar itens pelo almoxarifado.
+- [x] Permitir entrada por compra/NF com itens e quantidades informados pelo almoxarife e vínculo opcional à chave de NF.
+- [ ] Criar inventário inicial e ajuste de estoque com justificativa e histórico auditável.
+- [ ] Implementar edição, ativação/inativação e importação/exportação para empresas, filiais, armazéns, locais e tipos de produto.
+- [ ] Cadastrar e validar explicitamente os armazéns 10 e 11 vinculados às filiais 0101 e 0103 na homologação.
+- [ ] Validar funcionalmente os novos cadastros estruturados do almoxarifado além dos contratos de entrada.
+- [ ] Vincular usuários a funcionários requisitantes e validar o fluxo real de requisição e atendimento.
+- [ ] Exigir justificativa também no inventário inicial e exibir o histórico auditável de operações e movimentos no portal.
