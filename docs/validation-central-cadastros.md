@@ -13,3 +13,5 @@ Após a confirmação de disponibilidade e uma nova recarga, o cadastro publicad
 Na primeira abertura da rota publicada de Funcionários após a ampliação, foram exibidos os campos anteriores. A página será recarregada após a janela de propagação antes de concluir a validação visual.
 
 Após a implantação ser confirmada, o cadastro publicado de Funcionários exibiu corretamente empresa, filial, unidade, centro de custo, departamento, cargo, gestor, data de admissão e a seleção de requisitante de almoxarifado. Nenhum registro de demonstração foi inserido.
+
+O cadastro publicado de Fornecedores exibe o campo obrigatório Loja do fornecedor, identifica a chave como Código + Loja e informa que o CNPJ ou CPF pode ser diferente entre lojas do mesmo código. Nenhum fornecedor foi criado durante a verificação.
