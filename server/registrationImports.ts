@@ -8,6 +8,12 @@ export type ImportIssue = { row: number; field: string; message: string };
 
 const allowedProfileKeys = new Set(["operations-admin", "manager", "operator", "viewer"]);
 
+export function registrationValidationMessage(source: "spreadsheet" | "direct", issues: ImportIssue[]) {
+  if (source === "spreadsheet") return "A planilha contém erros. Corrija-os antes de importar.";
+  const details = issues.slice(0, 3).map(issue => `${issue.field}: ${issue.message}`).join(" ");
+  return `Corrija o cadastro antes de salvar. ${details}`;
+}
+
 function normalizeRows(type: RegistrationType, rows: ImportRow[]) {
   const layout = registrationLayouts[type];
   return rows.map(row => Object.fromEntries(layout.columns.map(column => [column.key, normalizeCell(row[column.key])])));
@@ -70,9 +76,11 @@ export async function previewRegistrationImport(type: RegistrationType, rawRows:
   return { valid: result.valid && referenceIssues.length === 0, totalRows: result.totalRows, rows: result.rows, issues: [...result.issues, ...referenceIssues] };
 }
 
-export async function commitRegistrationImport(type: RegistrationType, rawRows: ImportRow[], actor: PortalIdentity) {
+export async function commitRegistrationImport(type: RegistrationType, rawRows: ImportRow[], actor: PortalIdentity, source: "spreadsheet" | "direct" = "spreadsheet") {
   const preview = await previewRegistrationImport(type, rawRows);
-  if (!preview.valid) throw new TRPCError({ code: "BAD_REQUEST", message: "A planilha contém erros. Corrija-os antes de importar." });
+  if (!preview.valid) {
+    throw new TRPCError({ code: "BAD_REQUEST", message: registrationValidationMessage(source, preview.issues) });
+  }
   const client = await getSupabasePool().connect();
   try {
     await client.query("begin");
@@ -102,7 +110,7 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
         await client.query("insert into public.user_profile_assignments (user_id, profile_id, assigned_by_user_id) values ($1, $2, $3)", [portalUser.rows[0].id, profile.rows[0].id, actor.id]);
       }
     }
-    await client.query("insert into public.audit_events (actor_user_id, entity_type, action, details) values ($1, $2, 'spreadsheet_imported', jsonb_build_object('rows', $3::int))", [actor.id, type, preview.totalRows]);
+    await client.query("insert into public.audit_events (actor_user_id, entity_type, action, details) values ($1, $2, $3, jsonb_build_object('rows', $4::int))", [actor.id, type, source === "direct" ? "direct_saved" : "spreadsheet_imported", preview.totalRows]);
     await client.query("commit");
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
   return { success: true as const, importedRows: preview.totalRows };

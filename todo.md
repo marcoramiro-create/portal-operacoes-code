@@ -158,3 +158,4 @@
 - [x] Definir categoria operacional explícita para EPI e uniforme na configuração do produto.
 - [x] Criar responsabilidades de EPI e uniforme com base na categoria operacional explícita e testes de contrato.
 - [ ] Validar no portal uma entrega e devolução real de EPI ou uniforme categorizado corretamente.
+- [x] Corrigir o cadastro direto de funcionário para não disparar a validação de importação por planilha.

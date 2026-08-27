@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateRegistrationRows } from "./registrationImports";
+import { registrationValidationMessage, validateRegistrationRows } from "./registrationImports";
 
 describe("validação de leiautes de cadastro", () => {
   it("aponta campos obrigatórios de uma linha de produto incompleta", () => {
@@ -18,5 +18,12 @@ describe("validação de leiautes de cadastro", () => {
     const result = validateRegistrationRows("users", [{ nome: "Usuário de Teste", email: "teste@empresa.com", perfil: "admin", ativo: "SIM" }]);
     expect(result.valid).toBe(false);
     expect(result.issues[0]?.field).toBe("Perfil");
+  });
+
+  it("diferencia o erro de cadastro direto do erro de importação por planilha", () => {
+    const issue = [{ row: 2, field: "Código da unidade", message: "Unidade ativa não encontrada." }];
+    expect(registrationValidationMessage("direct", issue)).toContain("Corrija o cadastro antes de salvar");
+    expect(registrationValidationMessage("direct", issue)).toContain("Código da unidade");
+    expect(registrationValidationMessage("spreadsheet", issue)).toContain("planilha");
   });
 });
