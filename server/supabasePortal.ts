@@ -183,8 +183,8 @@ export async function listPortalUsers() {
 }
 
 export async function listActiveEmployees() {
-  const result = await getSupabasePool().query<{ id: string; employee_code: string | null; full_name: string }>("select id, employee_code, full_name from public.employees where active = true order by full_name");
-  return result.rows.map(row => ({ id: row.id, label: `${row.employee_code ? `${row.employee_code} · ` : ""}${row.full_name}` }));
+  const result = await getSupabasePool().query<{ id: string; employee_code: string | null; full_name: string; is_inventory_requester: boolean }>("select id, employee_code, full_name, is_inventory_requester from public.employees where active = true order by full_name");
+  return result.rows.map(row => ({ id: row.id, canRequestInventory: row.is_inventory_requester, label: `${row.employee_code ? `${row.employee_code} · ` : ""}${row.full_name}${row.is_inventory_requester ? " · requisitante" : " · não requisitante"}` }));
 }
 
 async function ensureAuthInvitation(email: string, displayName: string) {
@@ -225,9 +225,15 @@ export async function assignProfile(userId: string, profileKey: string, actor: P
   await database.query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, 'portal_user', $2, 'profile_assigned', jsonb_build_object('profile', $3::text))", [actor.id, userId, profileKey]);
 }
 
-export async function updatePortalUser(userId: string, input: { status: "active" | "inactive"; profileKey: string; canFulfillInventoryRequests?: boolean; employeeId?: string }, actor: PortalIdentity) {
+export async function updatePortalUser(userId: string, input: { status: "active" | "inactive"; profileKey: string; canFulfillInventoryRequests?: boolean; employeeId?: string | null }, actor: PortalIdentity) {
   const database = getSupabasePool();
-  await database.query("update public.portal_users set status = $2, can_fulfill_inventory_requests = coalesce($3, can_fulfill_inventory_requests), employee_id = coalesce($4::uuid, employee_id), updated_at = now() where id = $1", [userId, input.status, input.canFulfillInventoryRequests ?? null, input.employeeId ?? null]);
+  if (input.employeeId) {
+    const employee = await database.query<{ id: string }>("select id from public.employees where id = $1 and active = true", [input.employeeId]);
+    if (!employee.rows[0]) throw new TRPCError({ code: "BAD_REQUEST", message: "Selecione um funcionário ativo para o vínculo operacional." });
+  }
+  const hasEmployeeChange = Object.prototype.hasOwnProperty.call(input, "employeeId");
+  await database.query("update public.portal_users set status = $2, can_fulfill_inventory_requests = coalesce($3, can_fulfill_inventory_requests), employee_id = case when $4::boolean then $5::uuid else employee_id end, updated_at = now() where id = $1", [userId, input.status, input.canFulfillInventoryRequests ?? null, hasEmployeeChange, input.employeeId ?? null]);
+  await database.query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, 'portal_user', $2, 'updated', jsonb_build_object('employee_link_changed', $3::boolean))", [actor.id, userId, hasEmployeeChange]);
   await assignProfile(userId, input.profileKey, actor);
   return { success: true } as const;
 }

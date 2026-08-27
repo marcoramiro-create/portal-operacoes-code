@@ -64,7 +64,7 @@ export const portalRouter = router({
     const identity = await administrator(ctx);
     return createPortalUser(input, identity);
   }),
-  updateUser: publicProcedure.input(z.object({ userId: z.string().uuid(), status: z.enum(["active", "inactive"]), profileKey, canFulfillInventoryRequests: z.boolean().optional(), employeeId: z.string().uuid().optional() })).mutation(async ({ ctx, input }) => {
+  updateUser: publicProcedure.input(z.object({ userId: z.string().uuid(), status: z.enum(["active", "inactive"]), profileKey, canFulfillInventoryRequests: z.boolean().optional(), employeeId: z.string().uuid().nullable().optional() })).mutation(async ({ ctx, input }) => {
     const identity = await administrator(ctx);
     return updatePortalUser(input.userId, input, identity);
   }),

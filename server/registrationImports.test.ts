@@ -19,6 +19,12 @@ describe("validação de leiautes de cadastro", () => {
     expect(result.totalRows).toBe(1);
   });
 
+  it("valida a data e a liberação de requisição no cadastro de funcionário", () => {
+    const invalid = validateRegistrationRows("employees", [{ codigo_funcionario: "0001", nome_completo: "Pessoa", email: "", codigo_empresa: "", codigo_filial: "", codigo_unidade: "", codigo_centro_custo: "", departamento: "", cargo: "", codigo_gestor: "", data_admissao: "01/01/2026", requisitante_almoxarifado: "TALVEZ", ativo: "SIM" }]);
+    expect(invalid.valid).toBe(false);
+    expect(invalid.issues.map(issue => issue.field)).toEqual(expect.arrayContaining(["Data de admissão", "Pode requisitar almoxarifado"]));
+  });
+
   it("rejeita um perfil de usuário fora do catálogo permitido", () => {
     const result = validateRegistrationRows("users", [{ nome: "Usuário de Teste", email: "teste@empresa.com", perfil: "admin", ativo: "SIM" }]);
     expect(result.valid).toBe(false);

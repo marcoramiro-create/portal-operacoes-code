@@ -34,6 +34,10 @@ export function validateRegistrationRows(type: RegistrationType, rawRows: Import
     layout.columns.filter(column => column.required && !row[column.key]).forEach(column => issues.push({ row: rowNumber, field: column.label, message: "Campo obrigatório não preenchido." }));
     if (row.email && !/^\S+@\S+\.\S+$/.test(row.email)) issues.push({ row: rowNumber, field: "E-mail", message: "Informe um e-mail válido." });
     if (row.ativo && !parseActive(row.ativo).valid) issues.push({ row: rowNumber, field: "Ativo", message: "Use SIM ou NÃO." });
+    if (type === "employees") {
+      if (row.requisitante_almoxarifado && !parseYesNo(row.requisitante_almoxarifado).valid) issues.push({ row: rowNumber, field: "Pode requisitar almoxarifado", message: "Use SIM ou NÃO." });
+      if (row.data_admissao && !/^\d{4}-\d{2}-\d{2}$/.test(row.data_admissao)) issues.push({ row: rowNumber, field: "Data de admissão", message: "Use o formato AAAA-MM-DD." });
+    }
     if (type === "users" && row.perfil && !allowedProfileKeys.has(row.perfil)) issues.push({ row: rowNumber, field: "Perfil", message: "Use operations-admin, manager, operator ou viewer." });
     if (type === "products") {
       if (row.categoria_operacional && !parseProductCategory(row.categoria_operacional)) issues.push({ row: rowNumber, field: "Categoria operacional", message: "Use consumível, EPI, uniforme, ferramenta ou outro." });
@@ -57,6 +61,24 @@ async function resolveProductType(client: PoolClient, code: string) {
   return result.rows[0] ?? null;
 }
 
+async function resolveCompany(client: PoolClient, code: string) {
+  if (!code) return null;
+  const result = await client.query<{ id: string }>("select id from public.companies where code = $1 and active = true limit 1", [code]);
+  return result.rows[0]?.id ?? null;
+}
+
+async function resolveBranch(client: PoolClient, companyCode: string, branchCode: string) {
+  if (!branchCode) return null;
+  const result = await client.query<{ id: string }>("select branch.id from public.branches branch join public.companies company on company.id = branch.company_id where company.code = $1 and branch.code = $2 and company.active and branch.active limit 1", [companyCode, branchCode]);
+  return result.rows[0]?.id ?? null;
+}
+
+async function resolveManager(client: PoolClient, code: string) {
+  if (!code) return null;
+  const result = await client.query<{ id: string }>("select id from public.employees where employee_code = $1 and active = true limit 1", [code]);
+  return result.rows[0]?.id ?? null;
+}
+
 async function validateReferences(type: RegistrationType, rows: ImportRow[]) {
   const client = await getSupabasePool().connect();
   try {
@@ -66,6 +88,11 @@ async function validateReferences(type: RegistrationType, rows: ImportRow[]) {
       if (type === "employees") {
         if (row.codigo_unidade && !(await resolveReference(client, "org_units", row.codigo_unidade))) issues.push({ row: index + 2, field: "Código da unidade", message: "Unidade ativa não encontrada." });
         if (row.codigo_centro_custo && !(await resolveReference(client, "cost_centers", row.codigo_centro_custo))) issues.push({ row: index + 2, field: "Código do centro de custo", message: "Centro de custo ativo não encontrado." });
+        if (row.codigo_empresa && !(await resolveCompany(client, row.codigo_empresa))) issues.push({ row: index + 2, field: "Código da empresa", message: "Empresa ativa não encontrada." });
+        if (row.codigo_filial && !row.codigo_empresa) issues.push({ row: index + 2, field: "Código da filial", message: "Informe também o código da empresa." });
+        if (row.codigo_filial && row.codigo_empresa && !(await resolveBranch(client, row.codigo_empresa, row.codigo_filial))) issues.push({ row: index + 2, field: "Código da filial", message: "Filial ativa não encontrada na empresa informada." });
+        if (row.codigo_gestor && row.codigo_gestor === row.codigo_funcionario) issues.push({ row: index + 2, field: "Código do gestor", message: "O funcionário não pode ser seu próprio gestor." });
+        if (row.codigo_gestor && !(await resolveManager(client, row.codigo_gestor))) issues.push({ row: index + 2, field: "Código do gestor", message: "Gestor ativo não encontrado." });
         if (row.email) {
           const existing = await client.query<{ employee_code: string }>("select employee_code from public.employees where lower(email) = lower($1) and employee_code <> $2", [row.email, row.codigo_funcionario]);
           if (existing.rows[0]) issues.push({ row: index + 2, field: "E-mail", message: "Este e-mail já pertence a outro código de funcionário." });
@@ -104,9 +131,12 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
       if (type === "employees") {
         const unitId = await resolveReference(client, "org_units", row.codigo_unidade);
         const costCenterId = await resolveReference(client, "cost_centers", row.codigo_centro_custo);
-        await client.query(`insert into public.employees (employee_code, full_name, email, unit_id, cost_center_id, active)
-          values ($1, $2, nullif($3, ''), $4, $5, $6)
-          on conflict (employee_code) do update set full_name = excluded.full_name, email = excluded.email, unit_id = excluded.unit_id, cost_center_id = excluded.cost_center_id, active = excluded.active, updated_at = now()`, [row.codigo_funcionario, row.nome_completo, row.email, unitId, costCenterId, active]);
+        const companyId = await resolveCompany(client, row.codigo_empresa);
+        const branchId = await resolveBranch(client, row.codigo_empresa, row.codigo_filial);
+        const managerId = await resolveManager(client, row.codigo_gestor);
+        await client.query(`insert into public.employees (employee_code, full_name, email, company_id, branch_id, unit_id, cost_center_id, department, job_title, manager_employee_id, admission_date, is_inventory_requester, active)
+          values ($1, $2, nullif($3, ''), $4, $5, $6, $7, nullif($8, ''), nullif($9, ''), $10, nullif($11, '')::date, $12, $13)
+          on conflict (employee_code) do update set full_name = excluded.full_name, email = excluded.email, company_id = excluded.company_id, branch_id = excluded.branch_id, unit_id = excluded.unit_id, cost_center_id = excluded.cost_center_id, department = excluded.department, job_title = excluded.job_title, manager_employee_id = excluded.manager_employee_id, admission_date = excluded.admission_date, is_inventory_requester = excluded.is_inventory_requester, active = excluded.active, updated_at = now()`, [row.codigo_funcionario, row.nome_completo, row.email, companyId, branchId, unitId, costCenterId, row.departamento, row.cargo, managerId, row.data_admissao, parseYesNo(row.requisitante_almoxarifado).value, active]);
       }
       if (type === "suppliers") await client.query(`insert into public.suppliers (supplier_code, legal_name, trade_name, document_number, active)
         values ($1, $2, nullif($3, ''), nullif($4, ''), $5)
@@ -139,8 +169,8 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
 export async function listRegistrationRecords(type: RegistrationType) {
   const database = getSupabasePool();
   if (type === "employees") {
-    const result = await database.query(`select employee.employee_code as code, employee.full_name as name, employee.email, unit.code as codigo_unidade, cost_center.code as codigo_centro_custo, employee.active, employee.updated_at as updated_at
-      from public.employees employee left join public.org_units unit on unit.id = employee.unit_id left join public.cost_centers cost_center on cost_center.id = employee.cost_center_id order by employee.full_name limit 200`);
+    const result = await database.query(`select employee.employee_code as code, employee.full_name as name, employee.email, company.code as codigo_empresa, branch.code as codigo_filial, unit.code as codigo_unidade, cost_center.code as codigo_centro_custo, employee.department as departamento, employee.job_title as cargo, manager.employee_code as codigo_gestor, employee.admission_date as data_admissao, employee.is_inventory_requester as requisitante_almoxarifado, employee.active, employee.updated_at as updated_at
+      from public.employees employee left join public.companies company on company.id = employee.company_id left join public.branches branch on branch.id = employee.branch_id left join public.org_units unit on unit.id = employee.unit_id left join public.cost_centers cost_center on cost_center.id = employee.cost_center_id left join public.employees manager on manager.id = employee.manager_employee_id order by employee.full_name limit 200`);
     return result.rows;
   }
   if (type === "suppliers") {

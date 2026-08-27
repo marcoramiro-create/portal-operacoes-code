@@ -168,3 +168,5 @@
 - [x] Permitir editar e ativar ou inativar cada empresa, filial, armazém, local de estoque e tipo de produto sem apagar histórico.
 - [x] Disponibilizar leiautes, importação validada e exportação Excel individuais para cada cadastro estrutural.
 - [ ] Validar a carga ordenada das referências sem inserir dados fictícios na homologação.
+- [ ] Ampliar Funcionários com empresa, filial, departamento, cargo, gestor, admissão e indicação de requisitante.
+- [ ] Validar o vínculo entre usuário e funcionário ativo antes de liberar uma requisição de almoxarifado.
