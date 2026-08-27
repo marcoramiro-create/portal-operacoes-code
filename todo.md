@@ -235,3 +235,6 @@
 - [x] Validar o padrão do nome Compras - aaaaMMddHHmm sem renomear o arquivo e usar a data/hora do nome como data histórica da carga.
 - [x] Corrigir a lista de cargas para exibir o nome original uma única vez, sem duplicar versionName e fileName.
 - [x] Normalizar a apresentação das cargas históricas antigas sem alterar os arquivos armazenados.
+- [x] Agrupar os importadores existentes em um único galho Importações, preservando os módulos operacionais separados.
+- [x] Cruzar o CNPJ extraído da chave de NF com o cadastro central de fornecedores e exibir o fornecedor identificado.
+- [x] Fazer o menu lateral fechar automaticamente após a seleção no mobile e aplicar comportamento acessível no desktop.

@@ -11,6 +11,7 @@ export type NfReceiptExportSource = {
   protheusSc7Reference: string | null;
   nfLegalReference: string | null;
   matchedAt: Date | null;
+  supplier: { code: string; store: string | null; legalName: string | null; tradeName: string | null } | null;
 };
 
 const captureMethodLabels: Record<NfReceiptExportSource["captureMethod"], string> = {
@@ -25,6 +26,9 @@ export function formatNfReceiptExportRows(rows: NfReceiptExportSource[]) {
   return rows.map(row => ({
     "Chave de acesso": row.accessKey,
     "CNPJ emitente": row.issuerCnpj,
+    "Fornecedor": row.supplier?.tradeName || row.supplier?.legalName || "Não identificado",
+    "Código fornecedor": row.supplier?.code ?? "",
+    "Loja fornecedor": row.supplier?.store ?? "",
     "Modelo NF": row.invoiceModel,
     "Série NF": row.invoiceSeries,
     "Número NF": row.invoiceNumber,

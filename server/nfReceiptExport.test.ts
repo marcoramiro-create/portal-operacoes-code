@@ -16,6 +16,7 @@ describe("exportação de recebimentos de NF", () => {
       protheusSc7Reference: null,
       nfLegalReference: null,
       matchedAt: null,
+      supplier: { code: "000123", store: "01", legalName: "Fornecedor Teste Ltda.", tradeName: "Fornecedor Teste" },
     }]);
     expect(rows[0]).toMatchObject({
       "Chave de acesso": "35240812345678000199550010000001234567890123",
@@ -23,6 +24,9 @@ describe("exportação de recebimentos de NF", () => {
       "Modo de coleta": "Digitação",
       "Usuário da leitura": "Usuário de homologação",
       "Referência SC7 Protheus": "",
+      "Fornecedor": "Fornecedor Teste",
+      "Código fornecedor": "000123",
+      "Loja fornecedor": "01",
     });
   });
 });

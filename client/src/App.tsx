@@ -28,6 +28,17 @@ function Router() {
     <Route path={PORTAL_HOME_PATH}><WithLayout><Home /></WithLayout></Route>
     <Route path="/compras/protheus"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus"><Dashboard /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/compras-protheus"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/empresas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-empresas" level="manage"><InventoryCatalog initialTab="companies" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/filiais"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-filiais" level="manage"><InventoryCatalog initialTab="branches" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/armazens"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-armazens" level="manage"><InventoryCatalog initialTab="warehouses" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/locais-estoque"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-locais-estoque" level="manage"><InventoryCatalog initialTab="locations" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/unidades"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-unidades" level="manage"><InventoryCatalog initialTab="orgUnits" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/centros-custo"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-centros-custo" level="manage"><InventoryCatalog initialTab="costCenters" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/tipos-produto"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-tipos-produto" level="manage"><InventoryCatalog initialTab="types" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/usuarios"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-usuarios" level="manage"><RegistrationImport type="users" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/funcionarios"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-funcionarios" level="manage"><RegistrationImport type="employees" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/fornecedores"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-fornecedores" level="manage"><RegistrationImport type="suppliers" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/produtos"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-produtos" level="manage"><RegistrationImport type="products" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
