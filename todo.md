@@ -145,7 +145,7 @@
 - [x] Identificar no cadastro de usuários quem está autorizado a entregar itens pelo almoxarifado.
 - [x] Permitir entrada por compra/NF com itens e quantidades informados pelo almoxarife e vínculo opcional à chave de NF.
 - [x] Criar inventário inicial e ajuste de estoque com justificativa e histórico auditável.
-- [ ] Implementar edição, ativação/inativação e importação/exportação para empresas, filiais, armazéns, locais e tipos de produto.
+- [x] Implementar edição, ativação/inativação e importação/exportação para empresas, filiais, armazéns, locais e tipos de produto.
 - [ ] Cadastrar e validar explicitamente os armazéns 10 e 11 vinculados às filiais 0101 e 0103 na homologação.
 - [ ] Validar funcionalmente os novos cadastros estruturados do almoxarifado além dos contratos de entrada.
 - [ ] Vincular usuários a funcionários requisitantes e validar o fluxo real de requisição e atendimento.
@@ -165,6 +165,6 @@
 - [x] Exibir empresa, filial, armazém, local de estoque, unidade, centro de custo e tipo de produto como itens próprios na árvore de Cadastros.
 - [x] Evoluir o cadastro central de Produtos com tipo e controles de almoxarifado, sem duplicar produtos em outro módulo.
 - [x] Revisar dependências de dados, navegação e permissões do portal antes de cada novo módulo ou alteração estrutural.
-- [ ] Permitir editar e ativar ou inativar cada empresa, filial, armazém, local de estoque e tipo de produto sem apagar histórico.
-- [ ] Disponibilizar leiautes, importação validada e exportação Excel individuais para cada cadastro estrutural.
+- [x] Permitir editar e ativar ou inativar cada empresa, filial, armazém, local de estoque e tipo de produto sem apagar histórico.
+- [x] Disponibilizar leiautes, importação validada e exportação Excel individuais para cada cadastro estrutural.
 - [ ] Validar a carga ordenada das referências sem inserir dados fictícios na homologação.
