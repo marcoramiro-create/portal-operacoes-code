@@ -15,3 +15,7 @@ Na primeira abertura da rota publicada de Funcionários após a ampliação, for
 Após a implantação ser confirmada, o cadastro publicado de Funcionários exibiu corretamente empresa, filial, unidade, centro de custo, departamento, cargo, gestor, data de admissão e a seleção de requisitante de almoxarifado. Nenhum registro de demonstração foi inserido.
 
 O cadastro publicado de Fornecedores exibe o campo obrigatório Loja do fornecedor, identifica a chave como Código + Loja e informa que o CNPJ ou CPF pode ser diferente entre lojas do mesmo código. Nenhum fornecedor foi criado durante a verificação.
+
+## Importações do Protheus
+
+Na verificação inicial da versão `bcb003f8`, o domínio publicado ainda apresentou a interface anterior do cadastro de Fornecedores. A publicação contém no código a prévia automática do CSV MATA020 e do XML AGRA045; a validação visual deve ser repetida após a propagação do pacote de produção, sem confirmar nem aplicar importações.
