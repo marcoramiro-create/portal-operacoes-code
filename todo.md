@@ -200,3 +200,4 @@
 - [x] Corrigir a mensagem e o direcionamento quando um CSV SI3 for selecionado no importador Excel genérico de Centros de custo.
 - [x] Remover o limite genérico de 500 linhas do importador SI3 e aceitar o CSV Protheus completo em prévia e importação assistida.
 - [x] Cobrir em teste o limite ampliado do SI3 e manter o limite padrão nos demais cadastros.
+- [x] Executar a importação confirmada dos 805 Centros de custo elegíveis do scftlvt0.csv e verificar a auditoria da carga.
