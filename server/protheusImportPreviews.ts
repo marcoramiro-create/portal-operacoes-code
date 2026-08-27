@@ -1,5 +1,5 @@
 import { validateRegistrationRows } from "./registrationImports";
-import { parseAgra045Xml, parseMata020Csv, parseSi3Csv, SourceIssue } from "./protheusRegistrationParsers";
+import { IGNORED_SI3_BRANCH_CODES, parseAgra045Xml, parseMata020Csv, parseSi3Csv, SourceIssue } from "./protheusRegistrationParsers";
 import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
 import { importCatalogEntries } from "./inventoryCatalogImports";
 import { TRPCError } from "@trpc/server";
@@ -15,10 +15,20 @@ type ImportPreview = {
   toUpdate: number;
   unchanged: number;
   samples: PreviewSample[];
+  ignoredRows?: number;
+  ignoredBranchCodes?: string[];
 };
 
 function isDifferent(current: string | null, next: string) {
   return (current ?? "") !== next;
+}
+
+const ignoredSi3BranchCodes = new Set<string>(IGNORED_SI3_BRANCH_CODES);
+
+export function filterSi3Rows<T extends { codigo_filial: string }>(rows: T[]) {
+  const eligibleRows = rows.filter(row => !ignoredSi3BranchCodes.has(row.codigo_filial));
+  const ignoredBranchCodes = Array.from(new Set(rows.filter(row => ignoredSi3BranchCodes.has(row.codigo_filial)).map(row => row.codigo_filial)));
+  return { eligibleRows, ignoredRows: rows.length - eligibleRows.length, ignoredBranchCodes };
 }
 
 export async function previewMata020Suppliers(content: string): Promise<ImportPreview> {
@@ -78,8 +88,9 @@ export async function previewAgra045Warehouses(content: string, identity?: Porta
 
 export async function previewSi3CostCenters(content: string): Promise<ImportPreview> {
   const parsed = parseSi3Csv(content);
+  const filtered = filterSi3Rows(parsed.rows);
   const issues = [...parsed.issues];
-  const branchCodes = Array.from(new Set(parsed.rows.map(row => row.codigo_filial)));
+  const branchCodes = Array.from(new Set(filtered.eligibleRows.map(row => row.codigo_filial)));
   const branches = await getSupabasePool().query<{ id: string; code: string }>("select branch.id, branch.code from public.branches branch join public.companies company on company.id = branch.company_id where branch.code = any($1::text[]) and company.active = true and branch.active = true", [branchCodes]);
   const branchByCode = new Map<string, string>();
   for (const branch of branches.rows) {
@@ -87,22 +98,22 @@ export async function previewSi3CostCenters(content: string): Promise<ImportPrev
     else branchByCode.set(branch.code, branch.id);
   }
   const missingBranches = new Set<string>();
-  for (const row of parsed.rows) if (!branchByCode.has(row.codigo_filial)) missingBranches.add(row.codigo_filial);
+  for (const row of filtered.eligibleRows) if (!branchByCode.has(row.codigo_filial)) missingBranches.add(row.codigo_filial);
   for (const branchCode of Array.from(missingBranches)) issues.push({ row: 0, field: "Filial", message: `A filial ativa ${branchCode} ainda não está cadastrada no portal.` });
-  if (issues.length) return { valid: false, sourceRows: parsed.sourceRows, acceptedRows: parsed.rows.length, skippedRows: parsed.skippedRows, issues, toCreate: 0, toUpdate: 0, unchanged: 0, samples: [] };
+  if (issues.length) return { valid: false, sourceRows: parsed.sourceRows, acceptedRows: filtered.eligibleRows.length, skippedRows: parsed.skippedRows, issues, toCreate: 0, toUpdate: 0, unchanged: 0, samples: [], ignoredRows: filtered.ignoredRows, ignoredBranchCodes: filtered.ignoredBranchCodes };
   const current = await getSupabasePool().query<{ branch_id: string; code: string; name: string; active: boolean }>("select branch_id, code, name, active from public.cost_centers where branch_id = any($1::uuid[])", [Array.from(branchByCode.values())]);
   const existing = new Map(current.rows.map(row => [`${row.branch_id}:${row.code}`, row]));
   let toCreate = 0;
   let toUpdate = 0;
   let unchanged = 0;
   const samples: PreviewSample[] = [];
-  for (const row of parsed.rows) {
+  for (const row of filtered.eligibleRows) {
     const found = existing.get(`${branchByCode.get(row.codigo_filial)}:${row.codigo}`);
     if (!found) { toCreate += 1; if (samples.length < 20) samples.push({ code: row.codigo, name: row.nome, secondary: `Filial ${row.codigo_filial}`, action: "incluir" }); }
     else if (!found.active || isDifferent(found.name, row.nome)) { toUpdate += 1; if (samples.length < 20) samples.push({ code: row.codigo, name: row.nome, secondary: `Filial ${row.codigo_filial}`, action: "alterar" }); }
     else unchanged += 1;
   }
-  return { valid: true, sourceRows: parsed.sourceRows, acceptedRows: parsed.rows.length, skippedRows: parsed.skippedRows, issues: [], toCreate, toUpdate, unchanged, samples };
+  return { valid: true, sourceRows: parsed.sourceRows, acceptedRows: filtered.eligibleRows.length, skippedRows: parsed.skippedRows, issues: [], toCreate, toUpdate, unchanged, samples, ignoredRows: filtered.ignoredRows, ignoredBranchCodes: filtered.ignoredBranchCodes };
 }
 
 export async function commitMata020Suppliers(content: string, identity: PortalIdentity) {
@@ -129,7 +140,8 @@ export async function commitSi3CostCenters(content: string, identity: PortalIden
   const preview = await previewSi3CostCenters(content);
   if (!preview.valid) throw new TRPCError({ code: "BAD_REQUEST", message: "A prévia da SI3 possui inconsistências. Revise antes de importar." });
   const parsed = parseSi3Csv(content);
-  return importCatalogEntries({ entity: "costCenter", rows: parsed.rows.map(row => ({ codigo_filial: row.codigo_filial, codigo: row.codigo, nome: row.nome, ativo: row.ativo })) }, identity);
+  const filtered = filterSi3Rows(parsed.rows);
+  return importCatalogEntries({ entity: "costCenter", rows: filtered.eligibleRows.map(row => ({ codigo_filial: row.codigo_filial, codigo: row.codigo, nome: row.nome, ativo: row.ativo })) }, identity);
 }
 
 export async function commitAgra045Warehouses(content: string, identity: PortalIdentity) {

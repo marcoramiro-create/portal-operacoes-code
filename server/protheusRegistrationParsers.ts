@@ -17,6 +17,8 @@ export type ProtheusWarehouseRow = {
   ativo: "SIM";
 };
 
+export const IGNORED_SI3_BRANCH_CODES = ["0201", "0302", "0801", "0901"] as const;
+
 export type ParseResult<T> = {
   rows: T[];
   sourceRows: number;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseAgra045Xml, parseMata020Csv, parseSi3Csv } from "./protheusRegistrationParsers";
+import { filterSi3Rows } from "./protheusImportPreviews";
+import { IGNORED_SI3_BRANCH_CODES, parseAgra045Xml, parseMata020Csv, parseSi3Csv } from "./protheusRegistrationParsers";
 
 describe("leitores de cadastros Protheus", () => {
   it("mapeia automaticamente o CSV MATA020 pelo nome dos cabeçalhos", () => {
@@ -8,6 +9,17 @@ describe("leitores de cadastros Protheus", () => {
       { codigo_fornecedor: "000001", loja_fornecedor: "01", razao_social: "Fornecedor A", cnpj_cpf: "111", nome_fantasia: "Comercial A", ativo: "SIM" },
       { codigo_fornecedor: "000001", loja_fornecedor: "02", razao_social: "Fornecedor B", cnpj_cpf: "222", nome_fantasia: "Comercial B", ativo: "SIM" },
     ]);
+  });
+
+  it("mantém a lista de filiais SI3 descontinuadas centralizada", () => {
+    expect(IGNORED_SI3_BRANCH_CODES).toEqual(["0201", "0302", "0801", "0901"]);
+  });
+
+  it("filtra filiais descontinuadas sem remover filiais operacionais", () => {
+    const result = filterSi3Rows([{ codigo_filial: "0101", codigo: "1" }, { codigo_filial: "0201", codigo: "1" }, { codigo_filial: "0303", codigo: "2" }, { codigo_filial: "0901", codigo: "2" }]);
+    expect(result.eligibleRows.map(row => row.codigo_filial)).toEqual(["0101", "0303"]);
+    expect(result.ignoredRows).toBe(2);
+    expect(result.ignoredBranchCodes).toEqual(["0201", "0901"]);
   });
 
   it("mapeia automaticamente o CSV SI3 por filial, código e descrição do centro de custo", () => {
