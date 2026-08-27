@@ -161,3 +161,4 @@
 - [x] Corrigir o cadastro direto de funcionário para não disparar a validação de importação por planilha.
 - [ ] Preparar a carga ordenada de empresa, filial, armazém, local, centro de custo, tipo de produto e produto antes do teste de almoxarifado.
 - [x] Disponibilizar cadastros estruturados de unidades e centros de custo para preparar o vínculo dos funcionários.
+- [x] Centralizar todos os cadastros existentes e futuros na área única de Cadastros, removendo-os do Almoxarifado operacional.

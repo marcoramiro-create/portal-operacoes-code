@@ -17,5 +17,5 @@ export const applicationPaths: Record<string, string> = {
   "almoxarifado-movimentacoes": "/almoxarifado/movimentacoes",
   "almoxarifado-estoque": "/almoxarifado/estoque",
   "almoxarifado-ferramentas": "/almoxarifado/ferramentas",
-  "almoxarifado-cadastros": "/almoxarifado/cadastros",
+  "cadastros-estrutura-estoque": "/cadastros/estrutura-estoque",
 };

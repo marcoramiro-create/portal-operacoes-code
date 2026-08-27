@@ -10,7 +10,7 @@ function trimRequired(value: string, label: string) {
 }
 
 async function assertCatalogManagement(identity: PortalIdentity) {
-  await assertApplicationPermission(identity, "almoxarifado-cadastros", "manage");
+  await assertApplicationPermission(identity, "cadastros-estrutura-estoque", "manage");
 }
 
 async function audit(identity: PortalIdentity, entityType: string, entityId: string, action: string, details: Record<string, unknown>) {
@@ -23,7 +23,7 @@ function rethrowDuplicate(error: unknown, label: string): never {
 }
 
 export async function listInventoryCatalog(identity: PortalIdentity) {
-  await assertApplicationPermission(identity, "almoxarifado-cadastros", "view");
+  await assertApplicationPermission(identity, "cadastros-estrutura-estoque", "view");
   const database = getSupabasePool();
   const [productTypes, orgUnits, costCenters, companies, branches, warehouses, stockLocations, products] = await Promise.all([
     database.query<{ id: string; code: string; name: string; description: string | null; stock_controlled: boolean; active: boolean }>("select id, code, name, description, stock_controlled, active from public.product_types order by code"),

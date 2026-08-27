@@ -27,7 +27,7 @@ function SectionTitle({ icon: Icon, title, description }: { icon: typeof Boxes; 
 export default function InventoryCatalog() {
   const [tab, setTab] = useState<CatalogTab>("types");
   const utils = trpc.useUtils();
-  const permissions = trpc.portal.applicationPermissions.useQuery({ nodeKey: "almoxarifado-cadastros" });
+  const permissions = trpc.portal.applicationPermissions.useQuery({ nodeKey: "cadastros-estrutura-estoque" });
   const catalog = trpc.inventoryCatalog.list.useQuery(undefined, { retry: false });
   const refresh = () => utils.inventoryCatalog.list.invalidate();
   const canManage = Boolean(permissions.data?.manage);
@@ -53,8 +53,8 @@ export default function InventoryCatalog() {
   if (catalog.error) return <div className="page-wrap"><div className="sc-surface p-6 text-sm font-semibold text-rose-700">{catalog.error.message}</div></div>;
 
   const submit = (event: FormEvent<HTMLFormElement>, action: () => void) => { event.preventDefault(); action(); };
-  return <ApplicationRouteGuard nodeKey="almoxarifado-cadastros"><div className="page-wrap">
-    <header className="mb-7"><p className="eyebrow">Almoxarifado · Cadastros</p><h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">Estrutura de estoque</h1><p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">Cadastre as referências obrigatórias para controlar saldos em múltiplos locais, definir níveis por armazém e registrar as operações de almoxarifado.</p></header>
+  return <ApplicationRouteGuard nodeKey="cadastros-estrutura-estoque"><div className="page-wrap">
+    <header className="mb-7"><p className="eyebrow">Cadastros · Estrutura organizacional e estoque</p><h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">Referências para operações e estoque</h1><p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">Cadastre as referências obrigatórias para controlar saldos em múltiplos locais, definir níveis por armazém e registrar as operações de almoxarifado.</p></header>
     {!canManage && <div className="mb-5 rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm font-semibold text-slate-700">Seu acesso permite consulta. Para incluir ou alterar cadastros, solicite a liberação de <strong>Administrar</strong> neste submódulo.</div>}
     <div className="sc-surface overflow-hidden"><div className="flex gap-1 overflow-x-auto border-b border-slate-100 p-2">{tabs.map(item => { const Icon = item.icon; return <Button key={item.key} type="button" size="sm" variant={tab === item.key ? "default" : "ghost"} className={tab === item.key ? "shrink-0 bg-slate-950 hover:bg-slate-800" : "shrink-0"} onClick={() => setTab(item.key)}><Icon className="mr-1.5 h-3.5 w-3.5" />{item.label}</Button>; })}</div>
       <div className="p-5 sm:p-7">

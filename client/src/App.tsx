@@ -31,7 +31,7 @@ function Router() {
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
     <Route path="/recebimentos/nf"><WithLayout><ApplicationRouteGuard nodeKey="chaves-nf"><NfReceipts /></ApplicationRouteGuard></WithLayout></Route>
-    <Route path="/almoxarifado/cadastros"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-cadastros"><InventoryCatalog /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/cadastros/estrutura-estoque"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-estrutura-estoque"><InventoryCatalog /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/almoxarifado/requisicoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-requisicoes"><InventoryRequisitions /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/almoxarifado/atendimentos"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-atendimentos"><InventoryFulfillments /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/almoxarifado/devolucoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-devolucoes"><InventoryReturns /></ApplicationRouteGuard></WithLayout></Route>
