@@ -20,4 +20,13 @@ describe("contratos do catálogo de almoxarifado", () => {
   it("rejeita configuração de produto sem referências UUID válidas", async () => {
     await expect(caller.inventoryCatalog.configureProduct({ productId: "invalido", productTypeId: "invalido", unitOfMeasure: "UN", requiresSize: false, requiresLot: false, requiresExpiration: false, requiresCa: false })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
+
+  it("rejeita manutenção estrutural sem identificador UUID válido", async () => {
+    await expect(caller.inventoryCatalog.updateEntry({ entity: "company", id: "invalido", code: "001", legalName: "Empresa" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.inventoryCatalog.setEntryActive({ entity: "warehouse", id: "invalido", active: false })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("rejeita uma importação estrutural sem linhas", async () => {
+    await expect(caller.inventoryCatalog.importEntries({ entity: "company", rows: [] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
 });

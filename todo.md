@@ -165,3 +165,6 @@
 - [x] Exibir empresa, filial, armazém, local de estoque, unidade, centro de custo e tipo de produto como itens próprios na árvore de Cadastros.
 - [x] Evoluir o cadastro central de Produtos com tipo e controles de almoxarifado, sem duplicar produtos em outro módulo.
 - [x] Revisar dependências de dados, navegação e permissões do portal antes de cada novo módulo ou alteração estrutural.
+- [ ] Permitir editar e ativar ou inativar cada empresa, filial, armazém, local de estoque e tipo de produto sem apagar histórico.
+- [ ] Disponibilizar leiautes, importação validada e exportação Excel individuais para cada cadastro estrutural.
+- [ ] Validar a carga ordenada das referências sem inserir dados fictícios na homologação.
