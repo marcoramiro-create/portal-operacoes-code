@@ -192,3 +192,4 @@
 
 - [x] Concluir a migração SI3 para identificar Centros de custo por Filial + Código, incluindo prévia, importação e formulários.
 - [ ] Validar a prévia real do arquivo SI3 do OneDrive e confirmar a carga assistida após revisão.
+- [x] Cobrir em teste o mesmo código de Centro de custo repetido em filiais distintas.
