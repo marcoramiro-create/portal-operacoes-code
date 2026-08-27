@@ -187,3 +187,8 @@
 - [ ] Mostrar prévia de inclusões e alterações do CSV SI3 antes de gravar centros de custo na homologação.
 - [x] Exibir erro orientado na tela de Cadastros quando as permissões ou registros não puderem ser carregados, evitando conteúdo vazio.
 - [x] Processar a carga confirmada de fornecedores da MATA020 em lote, mantendo validação e auditoria da atualização recorrente.
+- [ ] Adaptar Centros de custo para identificação por filial e código, permitindo códigos repetidos entre filiais sem perder histórico.
+- [ ] Revalidar a prévia real do SI3 após a migração, sem gravar registros até confirmação explícita.
+
+- [x] Concluir a migração SI3 para identificar Centros de custo por Filial + Código, incluindo prévia, importação e formulários.
+- [ ] Validar a prévia real do arquivo SI3 do OneDrive e confirmar a carga assistida após revisão.

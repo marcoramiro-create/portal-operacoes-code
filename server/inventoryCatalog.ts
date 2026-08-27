@@ -6,7 +6,7 @@ export type CatalogEntity = "productType" | "orgUnit" | "costCenter" | "company"
 export type CatalogEntryUpdate =
   | { entity: "productType"; id: string; code: string; name: string; description?: string; stockControlled: boolean }
   | { entity: "orgUnit"; id: string; code: string; name: string }
-  | { entity: "costCenter"; id: string; code: string; name: string; unitId?: string }
+  | { entity: "costCenter"; id: string; code: string; name: string; unitId?: string; branchId: string }
   | { entity: "company"; id: string; code: string; legalName: string; tradeName?: string; taxId?: string }
   | { entity: "branch"; id: string; companyId: string; code: string; name: string; taxId?: string }
   | { entity: "warehouse"; id: string; branchId: string; code: string; name: string }
@@ -59,7 +59,7 @@ export async function listInventoryCatalog(identity: PortalIdentity) {
   const [productTypes, orgUnits, costCenters, companies, branches, warehouses, stockLocations, products] = await Promise.all([
     database.query<{ id: string; code: string; name: string; description: string | null; stock_controlled: boolean; active: boolean }>("select id, code, name, description, stock_controlled, active from public.product_types order by code"),
     database.query<{ id: string; code: string; name: string; active: boolean }>("select id, code, name, active from public.org_units order by code"),
-    database.query<{ id: string; unit_id: string | null; unit_code: string | null; code: string; name: string; active: boolean }>("select center.id, center.unit_id, unit.code as unit_code, center.code, center.name, center.active from public.cost_centers center left join public.org_units unit on unit.id = center.unit_id order by center.code"),
+    database.query<{ id: string; unit_id: string | null; unit_code: string | null; branch_id: string | null; branch_code: string | null; code: string; name: string; active: boolean }>("select center.id, center.unit_id, unit.code as unit_code, center.branch_id, branch.code as branch_code, center.code, center.name, center.active from public.cost_centers center left join public.org_units unit on unit.id = center.unit_id left join public.branches branch on branch.id = center.branch_id order by branch.code nulls last, center.code"),
     database.query<{ id: string; code: string; legal_name: string; trade_name: string | null; tax_id: string | null; active: boolean }>("select id, code, legal_name, trade_name, tax_id, active from public.companies order by code"),
     database.query<{ id: string; company_id: string; company_code: string; code: string; name: string; tax_id: string | null; active: boolean }>("select branch.id, branch.company_id, company.code as company_code, branch.code, branch.name, branch.tax_id, branch.active from public.branches branch join public.companies company on company.id = branch.company_id order by company.code, branch.code"),
     database.query<{ id: string; branch_id: string; company_code: string; branch_code: string; code: string; name: string; active: boolean }>("select warehouse.id, warehouse.branch_id, company.code as company_code, branch.code as branch_code, warehouse.code, warehouse.name, warehouse.active from public.warehouses warehouse join public.branches branch on branch.id = warehouse.branch_id join public.companies company on company.id = branch.company_id order by company.code, branch.code, warehouse.code"),
@@ -69,7 +69,7 @@ export async function listInventoryCatalog(identity: PortalIdentity) {
   return {
     productTypes: productTypes.rows.map(row => ({ id: row.id, code: row.code, name: row.name, description: row.description, stockControlled: row.stock_controlled, active: row.active })),
     orgUnits: orgUnits.rows.map(row => ({ id: row.id, code: row.code, name: row.name, active: row.active })),
-    costCenters: costCenters.rows.map(row => ({ id: row.id, unitId: row.unit_id, unitCode: row.unit_code, code: row.code, name: row.name, active: row.active })),
+    costCenters: costCenters.rows.map(row => ({ id: row.id, unitId: row.unit_id, unitCode: row.unit_code, branchId: row.branch_id, branchCode: row.branch_code, code: row.code, name: row.name, active: row.active })),
     companies: companies.rows.map(row => ({ id: row.id, code: row.code, legalName: row.legal_name, tradeName: row.trade_name, taxId: row.tax_id, active: row.active })),
     branches: branches.rows.map(row => ({ id: row.id, companyId: row.company_id, companyCode: row.company_code, code: row.code, name: row.name, taxId: row.tax_id, active: row.active })),
     warehouses: warehouses.rows.map(row => ({ id: row.id, branchId: row.branch_id, companyCode: row.company_code, branchCode: row.branch_code, code: row.code, name: row.name, active: row.active })),
@@ -86,9 +86,9 @@ export async function createOrgUnit(input: CatalogInput, identity: PortalIdentit
   await assertCatalogManagement(identity, "cadastros-unidades"); const code = trimRequired(input.code, "Código"); const name = trimRequired(input.name, "Nome");
   try { const result = await getSupabasePool().query<{ id: string }>("insert into public.org_units (code, name) values ($1, $2) returning id", [code, name]); await audit(identity, "org_unit", result.rows[0].id, "created", { code, name }); return { id: result.rows[0].id }; } catch (error) { return rethrowDuplicate(error, "A unidade"); }
 }
-export async function createCostCenter(input: CatalogInput & { unitId?: string }, identity: PortalIdentity) {
-  await assertCatalogManagement(identity, "cadastros-centros-custo"); const code = trimRequired(input.code, "Código"); const name = trimRequired(input.name, "Nome");
-  try { const result = await getSupabasePool().query<{ id: string }>("insert into public.cost_centers (code, name, unit_id) values ($1, $2, $3) returning id", [code, name, input.unitId || null]); await audit(identity, "cost_center", result.rows[0].id, "created", { code, name, unitId: input.unitId || null }); return { id: result.rows[0].id }; } catch (error) { return rethrowDuplicate(error, "O centro de custo"); }
+export async function createCostCenter(input: CatalogInput & { unitId?: string; branchId: string }, identity: PortalIdentity) {
+  await assertCatalogManagement(identity, "cadastros-centros-custo"); await assertActiveReference("branches", input.branchId, "A filial informada"); const code = trimRequired(input.code, "Código"); const name = trimRequired(input.name, "Nome");
+  try { const result = await getSupabasePool().query<{ id: string }>("insert into public.cost_centers (branch_id, code, name, unit_id) values ($1, $2, $3, $4) returning id", [input.branchId, code, name, input.unitId || null]); await audit(identity, "cost_center", result.rows[0].id, "created", { code, name, branchId: input.branchId, unitId: input.unitId || null }); return { id: result.rows[0].id }; } catch (error) { return rethrowDuplicate(error, "O centro de custo"); }
 }
 export async function createCompany(input: { code: string; legalName: string; tradeName?: string; taxId?: string }, identity: PortalIdentity) {
   await assertCatalogManagement(identity, "cadastros-empresas"); const code = trimRequired(input.code, "Código"); const legalName = trimRequired(input.legalName, "Razão social");
@@ -113,7 +113,7 @@ export async function updateCatalogEntry(input: CatalogEntryUpdate, identity: Po
     let result: { rows: Array<{ id: string }> };
     if (input.entity === "productType") result = await database.query("update public.product_types set code = $2, name = $3, description = $4, stock_controlled = $5, updated_at = now() where id = $1 returning id", [input.id, code, trimRequired(input.name, "Nome"), input.description?.trim() || null, input.stockControlled]);
     else if (input.entity === "orgUnit") result = await database.query("update public.org_units set code = $2, name = $3, updated_at = now() where id = $1 returning id", [input.id, code, trimRequired(input.name, "Nome")]);
-    else if (input.entity === "costCenter") result = await database.query("update public.cost_centers set code = $2, name = $3, unit_id = $4, updated_at = now() where id = $1 returning id", [input.id, code, trimRequired(input.name, "Nome"), input.unitId || null]);
+    else if (input.entity === "costCenter") { await assertActiveReference("branches", input.branchId, "A filial informada"); result = await database.query("update public.cost_centers set branch_id = $2, code = $3, name = $4, unit_id = $5, updated_at = now() where id = $1 returning id", [input.id, input.branchId, code, trimRequired(input.name, "Nome"), input.unitId || null]); }
     else if (input.entity === "company") result = await database.query("update public.companies set code = $2, legal_name = $3, trade_name = $4, tax_id = $5, updated_at = now() where id = $1 returning id", [input.id, code, trimRequired(input.legalName, "Razão social"), input.tradeName?.trim() || null, input.taxId?.replace(/\D/g, "") || null]);
     else if (input.entity === "branch") { await assertActiveReference("companies", input.companyId, "A empresa informada"); result = await database.query("update public.branches set company_id = $2, code = $3, name = $4, tax_id = $5, updated_at = now() where id = $1 returning id", [input.id, input.companyId, code, trimRequired(input.name, "Nome"), input.taxId?.replace(/\D/g, "") || null]); }
     else if (input.entity === "warehouse") { await assertActiveReference("branches", input.branchId, "A filial informada"); result = await database.query("update public.warehouses set branch_id = $2, code = $3, name = $4, updated_at = now() where id = $1 returning id", [input.id, input.branchId, code, trimRequired(input.name, "Nome")]); }

@@ -96,6 +96,57 @@ function requireHeaders(headers: string[], required: Array<{ field: string; alia
   if (missing.length) throw new Error(`O arquivo não possui os cabeçalhos esperados: ${missing.map(item => item.field).join(", ")}.`);
 }
 
+export type ProtheusCostCenterRow = {
+  codigo_filial: string;
+  codigo: string;
+  nome: string;
+  codigo_municipio: string;
+  percentual_empresa: string;
+  retencao_11: string;
+  ativo: "SIM";
+};
+
+export function parseSi3Csv(content: string): ParseResult<ProtheusCostCenterRow> {
+  const allRows = parseCsv(content);
+  const headerPosition = allRows.findIndex(row => (
+    findHeader(row, ["filial", "codigofilial"]) >= 0
+    && findHeader(row, ["codcusto", "codcentrocusto", "centrodecusto"]) >= 0
+    && findHeader(row, ["descccusto", "descricaocentrocusto", "descricaocentrodecusto"]) >= 0
+  ));
+  if (headerPosition < 0) throw new Error("O arquivo CSV não possui os cabeçalhos Filial, Cod Custo e Desc CCusto esperados na exportação SI3.");
+  const headers = allRows[headerPosition];
+  requireHeaders(headers, [
+    { field: "Filial", aliases: ["filial", "codigofilial"] },
+    { field: "Cod Custo", aliases: ["codcusto", "codcentrocusto", "centrodecusto"] },
+    { field: "Desc CCusto", aliases: ["descccusto", "descricaocentrocusto", "descricaocentrodecusto"] },
+  ]);
+  const branchIndex = findHeader(headers, ["filial", "codigofilial"]);
+  const codeIndex = findHeader(headers, ["codcusto", "codcentrocusto", "centrodecusto"]);
+  const nameIndex = findHeader(headers, ["descccusto", "descricaocentrocusto", "descricaocentrodecusto"]);
+  const municipalityIndex = findHeader(headers, ["codmunic", "codigomunicipio"]);
+  const percentageIndex = findHeader(headers, ["empresa", "percentualempresa"]);
+  const retentionIndex = findHeader(headers, ["ret11", "retencao11"]);
+  const result: ParseResult<ProtheusCostCenterRow> = { rows: [], sourceRows: 0, skippedRows: 0, issues: [] };
+  for (let offset = 0; offset < allRows.slice(headerPosition + 1).length; offset += 1) {
+    const row = allRows[headerPosition + offset + 1];
+    if (!row.some(Boolean)) continue;
+    result.sourceRows += 1;
+    const branch = row[branchIndex]?.trim() ?? "";
+    const code = row[codeIndex]?.trim() ?? "";
+    const name = row[nameIndex]?.trim() ?? "";
+    if (!branch || !code || !name) {
+      result.skippedRows += 1;
+      const sourceRow = headerPosition + offset + 2;
+      if (!branch) result.issues.push({ row: sourceRow, field: "Filial", message: "Centro de custo sem filial." });
+      if (!code) result.issues.push({ row: sourceRow, field: "Cod Custo", message: "Centro de custo sem código." });
+      if (!name) result.issues.push({ row: sourceRow, field: "Desc CCusto", message: "Centro de custo sem descrição." });
+      continue;
+    }
+    result.rows.push({ codigo_filial: branch, codigo: code, nome: name, codigo_municipio: municipalityIndex >= 0 ? (row[municipalityIndex]?.trim() ?? "") : "", percentual_empresa: percentageIndex >= 0 ? (row[percentageIndex]?.trim() ?? "") : "", retencao_11: retentionIndex >= 0 ? (row[retentionIndex]?.trim() ?? "") : "", ativo: "SIM" });
+  }
+  return result;
+}
+
 export function parseMata020Csv(content: string): ParseResult<ProtheusSupplierRow> {
   const allRows = parseCsv(content);
   const headerPosition = allRows.findIndex(row => (

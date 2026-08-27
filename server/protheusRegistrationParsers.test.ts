@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAgra045Xml, parseMata020Csv } from "./protheusRegistrationParsers";
+import { parseAgra045Xml, parseMata020Csv, parseSi3Csv } from "./protheusRegistrationParsers";
 
 describe("leitores de cadastros Protheus", () => {
   it("mapeia automaticamente o CSV MATA020 pelo nome dos cabeçalhos", () => {
@@ -8,6 +8,11 @@ describe("leitores de cadastros Protheus", () => {
       { codigo_fornecedor: "000001", loja_fornecedor: "01", razao_social: "Fornecedor A", cnpj_cpf: "111", nome_fantasia: "Comercial A", ativo: "SIM" },
       { codigo_fornecedor: "000001", loja_fornecedor: "02", razao_social: "Fornecedor B", cnpj_cpf: "222", nome_fantasia: "Comercial B", ativo: "SIM" },
     ]);
+  });
+
+  it("mapeia automaticamente o CSV SI3 por filial, código e descrição do centro de custo", () => {
+    const csv = `SI3\r\n"Filial","Cod Custo","Desc CCusto","Cod.Munic.","% Empresa","Ret.11%"\r\n"0101","10101","GERENCIA ADMINISTRATIVA","","0",""`;
+    expect(parseSi3Csv(csv).rows).toEqual([{ codigo_filial: "0101", codigo: "10101", nome: "GERENCIA ADMINISTRATIVA", codigo_municipio: "", percentual_empresa: "0", retencao_11: "", ativo: "SIM" }]);
   });
 
   it("mapeia armazéns do XML AGRA045 por empresa, filial, código e descrição", () => {
