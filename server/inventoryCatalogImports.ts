@@ -7,6 +7,10 @@ export type CatalogImportRow = Record<string, string>;
 
 const nodeKeys: Record<CatalogImportEntity, string> = { productType: "cadastros-tipos-produto", orgUnit: "cadastros-unidades", costCenter: "cadastros-centros-custo", company: "cadastros-empresas", branch: "cadastros-filiais", warehouse: "cadastros-armazens", stockLocation: "cadastros-locais-estoque" };
 
+export function getCatalogImportMaxRows(entity: CatalogImportEntity) {
+  return entity === "costCenter" ? 10_000 : 500;
+}
+
 function required(row: CatalogImportRow, field: string, rowNumber: number) {
   const value = String(row[field] ?? "").trim();
   if (!value) throw new TRPCError({ code: "BAD_REQUEST", message: `Linha ${rowNumber}: ${field} é obrigatório.` });
@@ -29,7 +33,8 @@ async function findId(client: { query: Function }, table: string, clauses: strin
 
 export async function importCatalogEntries(input: { entity: CatalogImportEntity; rows: CatalogImportRow[] }, identity: PortalIdentity) {
   await assertApplicationPermission(identity, nodeKeys[input.entity], "manage");
-  if (!input.rows.length || input.rows.length > 500) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe de 1 a 500 linhas para importar." });
+  const maxRows = getCatalogImportMaxRows(input.entity);
+  if (!input.rows.length || input.rows.length > maxRows) throw new TRPCError({ code: "BAD_REQUEST", message: `Informe de 1 a ${maxRows.toLocaleString("pt-BR")} linhas para importar.` });
   const client = await getSupabasePool().connect();
   try {
     await client.query("begin");

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { appRouter } from "./routers";
+import { getCatalogImportMaxRows } from "./inventoryCatalogImports";
 
 const caller = appRouter.createCaller({} as never);
 
@@ -24,6 +25,12 @@ describe("contratos do catálogo de almoxarifado", () => {
   it("rejeita manutenção estrutural sem identificador UUID válido", async () => {
     await expect(caller.inventoryCatalog.updateEntry({ entity: "company", id: "invalido", code: "001", legalName: "Empresa" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(caller.inventoryCatalog.setEntryActive({ entity: "warehouse", id: "invalido", active: false })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("aceita limite ampliado somente para importação de Centros de custo SI3", () => {
+    expect(getCatalogImportMaxRows("costCenter")).toBe(10_000);
+    expect(getCatalogImportMaxRows("company")).toBe(500);
+    expect(getCatalogImportMaxRows("warehouse")).toBe(500);
   });
 
   it("rejeita uma importação estrutural sem linhas", async () => {

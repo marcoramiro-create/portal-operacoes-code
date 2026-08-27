@@ -198,3 +198,5 @@
 - [x] Atualizar o leiaute Excel e a exportação de Centros de custo para incluir codigo_filial como parte da chave composta.
 - [x] Cobrir em teste a exclusão das filiais SI3 descontinuadas e a preservação das filiais operacionais.
 - [x] Corrigir a mensagem e o direcionamento quando um CSV SI3 for selecionado no importador Excel genérico de Centros de custo.
+- [x] Remover o limite genérico de 500 linhas do importador SI3 e aceitar o CSV Protheus completo em prévia e importação assistida.
+- [x] Cobrir em teste o limite ampliado do SI3 e manter o limite padrão nos demais cadastros.
