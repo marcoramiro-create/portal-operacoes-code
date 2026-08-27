@@ -206,3 +206,4 @@
 - [x] Ignorar cabeçalhos repetidos entre páginas do XML MATA020 e validar novamente a prévia real de Fornecedores.
 - [x] Atualizar o utilitário local de prévia MATA020 para usar a detecção automática CSV/XML.
 - [x] Aumentar com segurança o limite de requisição para o XML MATA020 real, preservando limites menores nos demais fluxos.
+- [x] Gravar e verificar os 6.772 fornecedores da MATA020 confirmados pelo usuário, com auditoria e unicidade por Código + Loja.
