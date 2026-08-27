@@ -159,3 +159,5 @@
 - [x] Criar responsabilidades de EPI e uniforme com base na categoria operacional explícita e testes de contrato.
 - [ ] Validar no portal uma entrega e devolução real de EPI ou uniforme categorizado corretamente.
 - [x] Corrigir o cadastro direto de funcionário para não disparar a validação de importação por planilha.
+- [ ] Preparar a carga ordenada de empresa, filial, armazém, local, centro de custo, tipo de produto e produto antes do teste de almoxarifado.
+- [x] Disponibilizar cadastros estruturados de unidades e centros de custo para preparar o vínculo dos funcionários.

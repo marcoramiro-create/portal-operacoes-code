@@ -25,8 +25,10 @@ function rethrowDuplicate(error: unknown, label: string): never {
 export async function listInventoryCatalog(identity: PortalIdentity) {
   await assertApplicationPermission(identity, "almoxarifado-cadastros", "view");
   const database = getSupabasePool();
-  const [productTypes, companies, branches, warehouses, stockLocations, products] = await Promise.all([
+  const [productTypes, orgUnits, costCenters, companies, branches, warehouses, stockLocations, products] = await Promise.all([
     database.query<{ id: string; code: string; name: string; description: string | null; stock_controlled: boolean; active: boolean }>("select id, code, name, description, stock_controlled, active from public.product_types order by code"),
+    database.query<{ id: string; code: string; name: string; active: boolean }>("select id, code, name, active from public.org_units order by code"),
+    database.query<{ id: string; unit_id: string | null; unit_code: string | null; code: string; name: string; active: boolean }>("select center.id, center.unit_id, unit.code as unit_code, center.code, center.name, center.active from public.cost_centers center left join public.org_units unit on unit.id = center.unit_id order by center.code"),
     database.query<{ id: string; code: string; legal_name: string; trade_name: string | null; tax_id: string | null; active: boolean }>("select id, code, legal_name, trade_name, tax_id, active from public.companies order by code"),
     database.query<{ id: string; company_id: string; company_code: string; code: string; name: string; tax_id: string | null; active: boolean }>("select branch.id, branch.company_id, company.code as company_code, branch.code, branch.name, branch.tax_id, branch.active from public.branches branch join public.companies company on company.id = branch.company_id order by company.code, branch.code"),
     database.query<{ id: string; branch_id: string; branch_code: string; code: string; name: string; active: boolean }>("select warehouse.id, warehouse.branch_id, branch.code as branch_code, warehouse.code, warehouse.name, warehouse.active from public.warehouses warehouse join public.branches branch on branch.id = warehouse.branch_id order by branch.code, warehouse.code"),
@@ -35,6 +37,8 @@ export async function listInventoryCatalog(identity: PortalIdentity) {
   ]);
   return {
     productTypes: productTypes.rows.map(row => ({ id: row.id, code: row.code, name: row.name, description: row.description, stockControlled: row.stock_controlled, active: row.active })),
+    orgUnits: orgUnits.rows.map(row => ({ id: row.id, code: row.code, name: row.name, active: row.active })),
+    costCenters: costCenters.rows.map(row => ({ id: row.id, unitId: row.unit_id, unitCode: row.unit_code, code: row.code, name: row.name, active: row.active })),
     companies: companies.rows.map(row => ({ id: row.id, code: row.code, legalName: row.legal_name, tradeName: row.trade_name, taxId: row.tax_id, active: row.active })),
     branches: branches.rows.map(row => ({ id: row.id, companyId: row.company_id, companyCode: row.company_code, code: row.code, name: row.name, taxId: row.tax_id, active: row.active })),
     warehouses: warehouses.rows.map(row => ({ id: row.id, branchId: row.branch_id, branchCode: row.branch_code, code: row.code, name: row.name, active: row.active })),
@@ -52,6 +56,28 @@ export async function createProductType(input: CatalogInput & { description?: st
     await audit(identity, "product_type", result.rows[0].id, "created", { code, name });
     return { id: result.rows[0].id };
   } catch (error) { return rethrowDuplicate(error, "O tipo de produto"); }
+}
+
+export async function createOrgUnit(input: CatalogInput, identity: PortalIdentity) {
+  await assertCatalogManagement(identity);
+  const code = trimRequired(input.code, "Código");
+  const name = trimRequired(input.name, "Nome");
+  try {
+    const result = await getSupabasePool().query<{ id: string }>("insert into public.org_units (code, name) values ($1, $2) returning id", [code, name]);
+    await audit(identity, "org_unit", result.rows[0].id, "created", { code, name });
+    return { id: result.rows[0].id };
+  } catch (error) { return rethrowDuplicate(error, "A unidade"); }
+}
+
+export async function createCostCenter(input: CatalogInput & { unitId?: string }, identity: PortalIdentity) {
+  await assertCatalogManagement(identity);
+  const code = trimRequired(input.code, "Código");
+  const name = trimRequired(input.name, "Nome");
+  try {
+    const result = await getSupabasePool().query<{ id: string }>("insert into public.cost_centers (code, name, unit_id) values ($1, $2, $3) returning id", [code, name, input.unitId || null]);
+    await audit(identity, "cost_center", result.rows[0].id, "created", { code, name, unitId: input.unitId || null });
+    return { id: result.rows[0].id };
+  } catch (error) { return rethrowDuplicate(error, "O centro de custo"); }
 }
 
 export async function createCompany(input: { code: string; legalName: string; tradeName?: string; taxId?: string }, identity: PortalIdentity) {

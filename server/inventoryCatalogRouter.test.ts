@@ -12,6 +12,11 @@ describe("contratos do catálogo de almoxarifado", () => {
     await expect(caller.inventoryCatalog.createBranch({ companyId: "invalido", code: "0101", name: "Filial teste" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("rejeita unidade e centro de custo sem código", async () => {
+    await expect(caller.inventoryCatalog.createOrgUnit({ code: "", name: "Unidade teste" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(caller.inventoryCatalog.createCostCenter({ code: "", name: "Centro teste" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
   it("rejeita configuração de produto sem referências UUID válidas", async () => {
     await expect(caller.inventoryCatalog.configureProduct({ productId: "invalido", productTypeId: "invalido", unitOfMeasure: "UN", requiresSize: false, requiresLot: false, requiresExpiration: false, requiresCa: false })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
