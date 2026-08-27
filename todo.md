@@ -231,3 +231,5 @@
 - [x] Criar uma árvore central de Importações no menu, com Compras Protheus e futuros importadores organizados por fonte e cadastro.
 - [x] Garantir que o importador de Compras Protheus fique visível para usuários com permissão de consulta/importação, sem exigir acesso indevido ao dashboard.
 - [x] Testar as rotas e permissões da árvore central de importadores em desktop e mobile.
+- [x] Corrigir o feedback de aprovação e arquivamento para não apresentar erro quando a mutação já tiver sido concluída.
+- [x] Validar o padrão do nome Compras - aaaaMMddHHmm sem renomear o arquivo e usar a data/hora do nome como data histórica da carga.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import { parseProtheusWorkbook } from "./protheusImport";
-import { formatPurchaseVersionName } from "./db";
+import { formatPurchaseVersionName, parsePurchaseHistoryDate } from "./db";
 
 function workbookBuffer(rows: unknown[][]) {
   const workbook = XLSX.utils.book_new();
@@ -14,6 +14,15 @@ const headers = ["Codigo", "Descricao", "Filial", "Tipo", "Qtd13M", "CustoTot13M
 describe("versionamento das cargas Protheus", () => {
   it("gera o nome Compras - aaaaMMddHHmm em UTC", () => {
     expect(formatPurchaseVersionName(new Date("2026-08-27T16:05:09.000Z"))).toBe("Compras - 202608271605");
+  });
+
+  it("extrai a data histórica UTC do nome original sem renomeá-lo", () => {
+    expect(parsePurchaseHistoryDate("Compras - 202608271605.xlsx").toISOString()).toBe("2026-08-27T16:05:00.000Z");
+  });
+
+  it("rejeita nome fora do padrão histórico ou data impossível", () => {
+    expect(() => parsePurchaseHistoryDate("Compras - 202608271605.xls")).toThrow("Compras - aaaaMMddHHmm.xlsx");
+    expect(() => parsePurchaseHistoryDate("Compras - 202613321605.xlsx")).toThrow("data/hora");
   });
 });
 

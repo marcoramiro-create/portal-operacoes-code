@@ -55,11 +55,10 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   const records = parseProtheusWorkbook(fileBuffer);
+  const importedAt = parsePurchaseHistoryDate(fileName);
+  const versionName = fileName.replace(/\.xlsx$/i, "");
   const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const storedFile = await storagePut(`protheus-imports/${Date.now()}-${safeFileName}`, fileBuffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  const importedAt = new Date();
-  const versionName = formatPurchaseVersionName(importedAt);
-
   await db.transaction(async tx => {
     await tx.insert(protheusImports).values({ fileName, versionName, fileKey: storedFile.key, rowCount: records.length, importedAt });
     const createdImport = await tx.select({ id: protheusImports.id }).from(protheusImports).where(eq(protheusImports.fileKey, storedFile.key)).limit(1);
@@ -104,6 +103,18 @@ async function getLatestImportId(selectedId?: number) {
 const asNumber = (value: unknown) => Number(value ?? 0);
 const normalizeLabel = (value: string) => value || "Não informado";
 export function formatPurchaseVersionName(date: Date) { const pad = (value: number) => String(value).padStart(2, "0"); return `Compras - ${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}`; }
+
+const PURCHASE_FILE_NAME_PATTERN = /^Compras - (\d{4})(\d{2})(\d{2})(\d{2})(\d{2})\.xlsx$/i;
+export function parsePurchaseHistoryDate(fileName: string) {
+  const match = fileName.match(PURCHASE_FILE_NAME_PATTERN);
+  if (!match) throw new Error("O nome deve seguir o padrão Compras - aaaaMMddHHmm.xlsx.");
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)));
+  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day) || date.getUTCHours() !== Number(hour) || date.getUTCMinutes() !== Number(minute)) {
+    throw new Error("A data/hora no nome da planilha não é válida.");
+  }
+  return date;
+}
 
 export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
