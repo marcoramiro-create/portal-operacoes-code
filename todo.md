@@ -223,3 +223,4 @@
 - [x] Permitir que somente o ADM aprove, selecione a versão vigente e retire versões do uso analítico, preservando o histórico.
 - [x] Registrar auditoria das ações administrativas sobre versões e cobrir as permissões em testes.
 - [x] Renomear as três cargas históricas existentes para Compras - aaaaMMddHHmm, preservando os nomes originais nos metadados e sem exclusão.
+- [x] Cobrir em teste a visibilidade exclusiva do ADM para aprovar e arquivar versões Protheus.
