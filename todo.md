@@ -298,3 +298,8 @@
 - [x] Reorganizar a aplicação Empilhadeiras em seções e fluxos mais claros, sem remover funcionalidades.
 - [ ] Aplicar o mesmo padrão às aplicações Equipamentos, Ferramentas, Almoxarifado, Recebimentos, Cadastros e Protheus.
 - [ ] Testar responsividade, estados vazios, carregamento, erros e fluxos críticos após a revisão UX.
+
+- [x] Mover os cadastros de Empilhadeiras, Equipamentos da indústria e Ferramentas para a árvore Cadastros.
+- [x] Separar as tarefas de manutenção por tipo dentro de Ativos e manutenção, mantendo solicitação e ordens fora dos cadastros.
+- [x] Auditar o nó inativo Consumíveis, EPIs e uniformes e definir sua exibição, rota e finalidade sem deixar item sem ação.
+- [x] Alinhar permissões, rotas e experiência das novas separações e validar no portal.
