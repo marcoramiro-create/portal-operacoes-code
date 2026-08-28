@@ -25,6 +25,7 @@ const modeHelp: Record<CaptureMethod, string> = {
 export default function NfReceipts() {
   const [accessKey, setAccessKey] = useState("");
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>("manual");
+  const [activeView, setActiveView] = useState<"capture" | "history">("capture");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -133,8 +134,10 @@ export default function NfReceipts() {
         <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">Registre a chave de acesso da NF. O portal grava automaticamente o usuário autenticado, a data e a hora da leitura, além de preparar campos para cruzamento futuro com SC7 e NF Legal.</p>
       </header>
 
+      <nav aria-label="Seções do recebimento" className="mb-5 grid max-w-md grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1"><button type="button" onClick={() => setActiveView("capture")} className={`rounded-xl px-4 py-2.5 text-xs font-extrabold transition ${activeView === "capture" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}>Capturar chave</button><button type="button" onClick={() => setActiveView("history")} className={`rounded-xl px-4 py-2.5 text-xs font-extrabold transition ${activeView === "history" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}>Histórico e exportação</button></nav>
+
       <div className="grid gap-5 xl:grid-cols-[1.06fr_.94fr]">
-        <section className="sc-surface p-5 sm:p-7">
+        {activeView === "capture" && <section className="sc-surface p-5 sm:p-7">
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f1ccd7] text-slate-950"><ScanLine className="h-5 w-5" /></span>
             <div>
@@ -182,9 +185,9 @@ export default function NfReceipts() {
               {cameraError && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{cameraError}</p>}
             </div>
           )}
-        </section>
+        </section>}
 
-        <section className="sc-surface overflow-hidden">
+        {activeView === "history" && <section className="sc-surface overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-7">
             <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#d8ebfa] text-slate-950"><ShieldCheck className="h-5 w-5" /></span>
@@ -196,7 +199,7 @@ export default function NfReceipts() {
             <Button size="sm" variant="outline" onClick={() => void exportReadings()} disabled={exportRows.isFetching}><Download className="mr-2 h-4 w-4" />{exportRows.isFetching ? "Preparando…" : "Exportar Excel"}</Button>
           </div>
           {recent.isLoading ? <div className="flex items-center gap-2 p-7 text-sm font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando leituras…</div> : recent.data?.length ? <div className="divide-y divide-slate-100">{recent.data.map(item => <div className="px-5 py-4 sm:px-7" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-bold tracking-[0.08em] text-slate-800">{item.accessKey}</p><p className="mt-1 text-xs font-semibold text-slate-500">NF {formatNfNumber(item.invoiceNumber)} · Série {item.invoiceSeries} · CNPJ {item.issuerCnpj}</p>{item.supplier ? <p className="mt-1 text-xs font-bold text-slate-700">Fornecedor: {item.supplier.tradeName || item.supplier.legalName} · Código {item.supplier.code} · Loja {item.supplier.store}</p> : <p className="mt-1 text-xs font-semibold text-amber-700">Fornecedor não identificado no cadastro ativo.</p>}</div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-600">{labels[item.captureMethod]}</span></div><p className="mt-2 text-xs font-semibold text-slate-500">{new Date(item.capturedAt).toLocaleString("pt-BR")} · {item.capturedBy ?? "Usuário do portal"}</p></div>)}</div> : <div className="p-7 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-500">Nenhuma chave foi registrada ainda.</p></div>}
-        </section>
+        </section>}
       </div>
     </div>
   );
