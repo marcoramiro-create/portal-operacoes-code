@@ -272,13 +272,23 @@
 - [x] Auditar e consolidar perfis de acesso duplicados, preservando a aplicabilidade correta por módulo e operação.
 - [x] Remover os controles redundantes de importação das telas de cadastros e manter os importadores somente no galho Importações.
 - [x] Corrigir o acesso e a usabilidade das aplicações Empilhadeiras, Equipamentos da indústria e Ferramentas no portal publicado.
-- [ ] Validar a árvore de aplicações e as permissões após a consolidação dos perfis.
+- [x] Validar a árvore de aplicações e as permissões após a consolidação dos perfis.
 
 - [x] Auditar e consolidar perfis de acesso duplicados, preservando a aplicabilidade correta por módulo e operação.
 - [x] Remover os controles redundantes de importação das telas de cadastros e manter os importadores somente no galho Importações.
 - [x] Corrigir o acesso e a usabilidade das aplicações Empilhadeiras, Equipamentos da indústria e Ferramentas no portal publicado.
-- [ ] Validar a árvore de aplicações e as permissões após a consolidação dos perfis.
+- [x] Validar a árvore de aplicações e as permissões após a consolidação dos perfis.
 
 - [x] Corrigir a duplicação visual de aplicações operacionais e importadores, mantendo cada nó na hierarquia correta.
 - [x] Consolidar a exibição de perfis e permissões para que Empilhadeiras e demais módulos não apareçam como perfis duplicados.
-- [ ] Validar no portal publicado a árvore operacional e a árvore Importações após a correção.
+- [x] Validar no portal publicado a árvore operacional e a árvore Importações após a correção.
+
+- [x] Auditar todos os nós, parâmetros, rotas e permissões da árvore atual.
+- [x] Separar estruturalmente Cadastros, Importações e Tarefas/Operações sem sobreposição de funções.
+- [x] Remover nós, parâmetros e atalhos redundantes identificados na auditoria.
+- [x] Alinhar rotas e permissões à nova taxonomia exclusiva e validar a árvore publicada.
+
+- [x] Criar as três raízes oficiais Cadastros, Importações e Tarefas e operações conforme aprovação do usuário.
+- [x] Mover módulos operacionais para Tarefas e operações, mantendo Cadastros e Importações exclusivos.
+- [x] Migrar permissões para as novas raízes e preservar o histórico dos nós antigos sem duplicação ativa.
+- [x] Alinhar o mapa de rotas e a árvore visual à nova taxonomia.
