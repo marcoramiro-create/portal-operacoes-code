@@ -292,3 +292,9 @@
 - [x] Mover módulos operacionais para Tarefas e operações, mantendo Cadastros e Importações exclusivos.
 - [x] Migrar permissões para as novas raízes e preservar o histórico dos nós antigos sem duplicação ativa.
 - [x] Alinhar o mapa de rotas e a árvore visual à nova taxonomia.
+
+- [ ] Inventariar a poluição visual, fluxos e ações das aplicações do Portal Operações.
+- [ ] Definir padrão UX comum para separar ação principal, consulta, configuração e histórico.
+- [x] Reorganizar a aplicação Empilhadeiras em seções e fluxos mais claros, sem remover funcionalidades.
+- [ ] Aplicar o mesmo padrão às aplicações Equipamentos, Ferramentas, Almoxarifado, Recebimentos, Cadastros e Protheus.
+- [ ] Testar responsividade, estados vazios, carregamento, erros e fluxos críticos após a revisão UX.
