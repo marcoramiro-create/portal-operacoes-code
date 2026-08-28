@@ -17,7 +17,7 @@ try {
     const importers = [['importacoes-ativos-empilhadeiras', 'Importar · Empilhadeiras', 70], ['importacoes-ativos-equipamentos-industria', 'Importar · Equipamentos da indústria', 80], ['importacoes-ativos-ferramentas', 'Importar · Ferramentas', 90]];
     for (const [nodeKey, label, sortOrder] of importers) await client.query(`INSERT INTO public.application_nodes (node_key, label, parent_id, sort_order, active) VALUES ($1, $2, $3, $4, true) ON CONFLICT (node_key) DO UPDATE SET label = EXCLUDED.label, parent_id = EXCLUDED.parent_id, active = true`, [nodeKey, label, importRoot.rows[0].id, sortOrder]);
   }
-  const profiles = await client.query(`SELECT id, profile_key FROM public.access_profiles WHERE active = true AND profile_key IN ('admin', 'administrator', 'operations-admin')`);
+  const profiles = await client.query(`SELECT id, profile_key FROM public.access_profiles WHERE active = true AND profile_key IN ('development-admin', 'admin', 'administrator', 'operations-admin')`);
   const nodes = await client.query(`SELECT id FROM public.application_nodes WHERE node_key = ANY($1::text[])`, [['ativos-manutencao', ...children.map(item => item[0]), ...catalogNodes.map(item => item[0]), 'importacoes-ativos-empilhadeiras', 'importacoes-ativos-equipamentos-industria', 'importacoes-ativos-ferramentas']]);
   for (const profile of profiles.rows) for (const node of nodes.rows) for (const permission of ['view', 'manage', 'approve']) await client.query(`INSERT INTO public.profile_node_permissions (profile_id, node_id, permission) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`, [profile.id, node.id, permission]);
   await client.query('COMMIT');

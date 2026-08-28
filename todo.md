@@ -303,3 +303,7 @@
 - [x] Separar as tarefas de manutenção por tipo dentro de Ativos e manutenção, mantendo solicitação e ordens fora dos cadastros.
 - [x] Auditar o nó inativo Consumíveis, EPIs e uniformes e definir sua exibição, rota e finalidade sem deixar item sem ação.
 - [x] Alinhar permissões, rotas e experiência das novas separações e validar no portal.
+
+- [x] Corrigir a publicação e as permissões para exibir Empilhadeiras, Equipamentos da indústria e Ferramentas dentro de Cadastros na conta operacional.
+- [x] Invalidar ou atualizar o carregamento da árvore após a criação dos nós de cadastro de Ativos.
+- [ ] Validar as três rotas de cadastro no portal publicado com a conta do usuário.
