@@ -1,4 +1,4 @@
-import { decimal, int, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
+import { date, decimal, int, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -93,7 +93,52 @@ export const inventoryAnalytics = mysqlTable(
   table => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
 );
 
+export const costEvolutionImports = mysqlTable("costEvolutionImports", {
+  id: int("id").autoincrement().primaryKey(),
+  segment: mysqlEnum("segment", ["auto_parts", "industry"]).notNull(),
+  fileName: varchar("fileName", { length: 255 }).notNull(),
+  fileKey: varchar("fileKey", { length: 512 }).notNull(),
+  status: mysqlEnum("status", ["pending", "approved", "archived"]).notNull().default("pending"),
+  itemCount: int("itemCount").notNull(),
+  observationCount: int("observationCount").notNull(),
+  periodStart: date("periodStart").notNull(),
+  periodEnd: date("periodEnd").notNull(),
+  importedBy: varchar("importedBy", { length: 320 }).notNull(),
+  importedAt: timestamp("importedAt").defaultNow().notNull(),
+});
+
+export const costEvolutionItems = mysqlTable(
+  "costEvolutionItems",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    importId: int("importId").notNull().references(() => costEvolutionImports.id),
+    branch: varchar("branch", { length: 24 }).notNull(),
+    aggregateCode: varchar("aggregateCode", { length: 120 }).notNull(),
+    code: varchar("code", { length: 120 }).notNull(),
+    mrp: mysqlEnum("mrp", ["Sim", "Não"]).notNull().default("Não"),
+    description: varchar("description", { length: 1000 }).notNull(),
+    buyer: varchar("buyer", { length: 320 }).notNull().default(""),
+    lastPurchaseDate: date("lastPurchaseDate"),
+    lastPurchasePrice: decimal("lastPurchasePrice", { precision: 20, scale: 6 }),
+  },
+  table => [uniqueIndex("costEvolutionItems_import_business_key_unique").on(table.importId, table.branch, table.aggregateCode, table.code)],
+);
+
+export const costEvolutionObservations = mysqlTable(
+  "costEvolutionObservations",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    itemId: int("itemId").notNull().references(() => costEvolutionItems.id),
+    balanceDate: date("balanceDate").notNull(),
+    cost: decimal("cost", { precision: 20, scale: 6 }).notNull(),
+  },
+  table => [uniqueIndex("costEvolutionObservations_item_date_unique").on(table.itemId, table.balanceDate)],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type AnalyticsImport = typeof protheusImports.$inferSelect;
 export type InventoryAnalytics = typeof inventoryAnalytics.$inferSelect;
+export type CostEvolutionImport = typeof costEvolutionImports.$inferSelect;
+export type CostEvolutionItem = typeof costEvolutionItems.$inferSelect;
+export type CostEvolutionObservation = typeof costEvolutionObservations.$inferSelect;

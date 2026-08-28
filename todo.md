@@ -306,11 +306,11 @@
 
 - [x] Corrigir a publicação e as permissões para exibir Empilhadeiras, Equipamentos da indústria e Ferramentas dentro de Cadastros na conta operacional.
 - [x] Invalidar ou atualizar o carregamento da árvore após a criação dos nós de cadastro de Ativos.
-- [ ] Validar as três rotas de cadastro no portal publicado com a conta do usuário.
+- [x] Validar as três rotas de cadastro no portal publicado com a conta do usuário.
 
 - [x] Corrigir o clique dos nós Cadastros → Empilhadeiras, Equipamentos da indústria e Ferramentas de oficinas e indústria.
 - [x] Garantir que cada nó de cadastro resolva a rota correta e abra inicialmente na seção Cadastro.
-- [ ] Validar no portal publicado que os três itens executam ação ao serem selecionados.
+- [x] Validar no portal publicado que os três itens executam ação ao serem selecionados.
 
 - [x] Remover o nó e a rota duplicada de Usuários da árvore Cadastros, mantendo Administração como origem única.
 - [x] Corrigir o campo de perfil do cadastro administrativo para usar seleção controlada e validar chaves existentes.
@@ -323,7 +323,7 @@
 
 - [x] Configurar o link público somente leitura do OneDrive para o fluxo semiassistido após autorização expressa do usuário.
 - [x] Definir escopo inicial de leitura restrito às pastas de importação aprovadas.
-- [ ] Validar uma leitura real de arquivo do OneDrive sem armazenar credenciais no portal.
+- [x] Validar uma leitura real de arquivo do OneDrive sem armazenar credenciais no portal.
 
 - [x] Validar o link compartilhado do OneDrive pessoal e confirmar que a pasta pode ser lida sem login.
 - [x] Documentar que o escopo inicial é somente leitura, sem escrita, exclusão ou sincronização automática.
@@ -333,3 +333,12 @@
 - [ ] Mostrar arquivos encontrados com nome, formato, data e estado de validação antes da confirmação; depende de OAuth/Graph ou de um manifesto público mantido na pasta.
 - [x] Manter fallback de upload manual quando a listagem pública não estiver disponível.
 - [x] Restringir o fluxo a leitura e confirmação administrativa, sem escrita ou exclusão no OneDrive.
+
+- [x] Receber e analisar uma planilha real de evolução de custos de autopeças exportada do RM Bis.
+- [x] Receber e analisar uma planilha real de evolução de custos da indústria exportada do RM Bis.
+- [x] Implementar normalização de células mescladas, cabeçalhos e linhas de apresentação das planilhas RM Bis.
+- [x] Aplicar normalização equivalente a ARRUMAR/TRIM nos textos, preservando códigos, datas e valores.
+- [ ] Criar importadores separados de evolução de custos de autopeças e da indústria dentro de Importações.
+- [ ] Persistir versões históricas e registros de custos com prévia auditável antes da confirmação.
+- [ ] Criar visões de evolução de custos separadas para autopeças e indústria com filtros e indicadores adequados.
+- [ ] Validar os dois fluxos com os arquivos reais do usuário e publicar.
