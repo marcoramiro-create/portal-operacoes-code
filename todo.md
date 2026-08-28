@@ -320,3 +320,7 @@
 - [x] Testar o recolhimento automático do menu em desktop e mobile.
 - [ ] Definir a primeira integração de leitura do OneDrive com escopo controlado e credenciais apropriadas.
 - [ ] Documentar a pasta, formato e fluxo de atualização dos arquivos lidos do OneDrive.
+
+- [ ] Preparar o conector oficial Microsoft Graph/OneDrive após autorização expressa do usuário.
+- [ ] Definir escopo inicial de leitura restrito às pastas de importação aprovadas.
+- [ ] Validar uma leitura real de arquivo do OneDrive sem armazenar credenciais no portal.
