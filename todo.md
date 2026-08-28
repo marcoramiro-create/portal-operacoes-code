@@ -307,3 +307,7 @@
 - [x] Corrigir a publicação e as permissões para exibir Empilhadeiras, Equipamentos da indústria e Ferramentas dentro de Cadastros na conta operacional.
 - [x] Invalidar ou atualizar o carregamento da árvore após a criação dos nós de cadastro de Ativos.
 - [ ] Validar as três rotas de cadastro no portal publicado com a conta do usuário.
+
+- [x] Corrigir o clique dos nós Cadastros → Empilhadeiras, Equipamentos da indústria e Ferramentas de oficinas e indústria.
+- [x] Garantir que cada nó de cadastro resolva a rota correta e abra inicialmente na seção Cadastro.
+- [ ] Validar no portal publicado que os três itens executam ação ao serem selecionados.
