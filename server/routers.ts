@@ -11,6 +11,7 @@ import { inventoryOperationsRouter } from "./routers/inventoryOperations";
 import { inventoryToolsRouter } from "./routers/inventoryTools";
 import { assetMaintenanceRouter } from "./routers/assetMaintenance";
 import { costEvolutionRouter } from "./routers/costEvolution";
+import { epiRouter } from "./routers/epi";
 
 export const appRouter = router({
   system: systemRouter,
@@ -31,6 +32,7 @@ export const appRouter = router({
   inventoryTools: inventoryToolsRouter,
   assetMaintenance: assetMaintenanceRouter,
   costEvolution: costEvolutionRouter,
+  epi: epiRouter,
 });
 
 export type AppRouter = typeof appRouter;
