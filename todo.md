@@ -311,3 +311,7 @@
 - [x] Corrigir o clique dos nós Cadastros → Empilhadeiras, Equipamentos da indústria e Ferramentas de oficinas e indústria.
 - [x] Garantir que cada nó de cadastro resolva a rota correta e abra inicialmente na seção Cadastro.
 - [ ] Validar no portal publicado que os três itens executam ação ao serem selecionados.
+
+- [x] Remover o nó e a rota duplicada de Usuários da árvore Cadastros, mantendo Administração como origem única.
+- [x] Corrigir o campo de perfil do cadastro administrativo para usar seleção controlada e validar chaves existentes.
+- [x] Testar o fluxo administrativo de criação de usuário, perfil e permissões após a remoção da duplicidade.

@@ -67,7 +67,6 @@ function Router() {
     <Route path="/ativos/empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="ativos-empilhadeiras"><AssetManagement type="forklift" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/ativos/equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="ativos-equipamentos-industria"><AssetManagement type="industrial_equipment" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/ativos/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="ativos-ferramentas"><AssetManagement type="tool" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
-    <Route path="/cadastros/usuarios"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-usuarios"><RegistrationImport type="users" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
     <Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>
     <Route path="/cadastros/produtos"><WithLayout><RegistrationImport type="products" /></WithLayout></Route>

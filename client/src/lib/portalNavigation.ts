@@ -31,7 +31,6 @@ export const applicationPaths: Record<string, string> = {
   "cadastros-ativos-empilhadeiras": "/cadastros/empilhadeiras",
   "cadastros-ativos-equipamentos-industria": "/cadastros/equipamentos-industria",
   "cadastros-ativos-ferramentas": "/cadastros/ferramentas",
-  "cadastros-usuarios": "/cadastros/usuarios",
   funcionarios: "/cadastros/funcionarios",
   fornecedores: "/cadastros/fornecedores",
   produtos: "/cadastros/produtos",
