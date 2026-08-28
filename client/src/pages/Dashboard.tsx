@@ -43,7 +43,7 @@ export default function Dashboard() {
   const { data: evolution = [] } = trpc.analytics.evolution.useQuery(evolutionInput);
   const itemInput = useMemo(() => ({ page: itemsPage, branch: input.branch, curve: input.curve, productType: input.productType, mrp: input.mrp, family: input.family, subfamily: input.subfamily }), [itemsPage, input]);
   const { data: itemPage } = trpc.analytics.items.useQuery(itemInput, { enabled: hasImport });
-  const aiInput = useMemo(() => ({ branch: input.branch, curve: input.curve, productType: input.productType, mrp: input.mrp, family: input.family, subfamily: input.subfamily }), [input]);
+  const aiInput = useMemo(() => ({ page: itemsPage, branch: input.branch, curve: input.curve, productType: input.productType, mrp: input.mrp, family: input.family, subfamily: input.subfamily }), [itemsPage, input]);
   const aiRecommendations = trpc.analytics.aiRecommendations.useMutation();
   useEffect(() => { if (showAi && hasImport) aiRecommendations.mutate(aiInput); }, [showAi, hasImport, aiInput]);
   const evolutionChartData = evolution.map(point => ({ ...point, label: new Date(point.importedAt).toLocaleDateString("pt-BR"), turnoverLabel: formatNumber(point.turnover, 2) }));
