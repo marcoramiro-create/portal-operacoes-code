@@ -265,5 +265,5 @@
 - [x] Ampliar campos específicos de Empilhadeiras para horímetro, bateria/combustível, pneus, avarias, operador e inspeções persistidas.
 - [x] Criar editor de checklists configuráveis por tipo de empilhadeira.
 - [x] Criar cadastro flexível de técnicos, oficinas e prestadores com vínculo opcional às ordens.
-- [ ] Implementar anexos opcionais de ativos e ordens usando armazenamento externo.
+- [x] Implementar anexos opcionais de ativos e ordens usando armazenamento externo.
 - [ ] Criar importadores separados de Empilhadeiras, Equipamentos e Ferramentas dentro do galho Importações.
