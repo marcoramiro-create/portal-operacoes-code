@@ -267,3 +267,4 @@
 - [x] Criar cadastro flexível de técnicos, oficinas e prestadores com vínculo opcional às ordens.
 - [x] Implementar anexos opcionais de ativos e ordens usando armazenamento externo.
 - [x] Criar importadores separados de Empilhadeiras, Equipamentos e Ferramentas dentro do galho Importações.
+- [x] Adicionar testes unitários para prévia e validação dos importadores assistidos de Ativos.
