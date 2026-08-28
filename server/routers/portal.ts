@@ -22,6 +22,7 @@ import {
   updatePortalUser,
 } from "../supabasePortal";
 import { registrationOperations, resolvedRegistrationPermissionsForUser, updateRegistrationPermission } from "../registrationAccess";
+import { getOneDriveImportsLink, getOneDriveSourceStatus } from "../onedriveSharedLink";
 import { registrationTypes } from "../../shared/registrationLayouts";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) {
@@ -105,6 +106,10 @@ export const portalRouter = router({
   userNodePermissions: publicProcedure.input(z.object({ userId: z.string().uuid() })).query(async ({ ctx, input }) => {
     await administrator(ctx);
     return listUserNodePermissions(input.userId);
+  }),
+  oneDriveSource: publicProcedure.query(async ({ ctx }) => {
+    await administrator(ctx);
+    return { ...(await getOneDriveSourceStatus()), link: getOneDriveImportsLink() };
   }),
   updateUserNodePermission: publicProcedure.input(z.object({ userId: z.string().uuid(), nodeId: z.string().uuid(), permission: nodePermission, allowed: z.boolean() })).mutation(async ({ ctx, input }) => {
     const identity = await administrator(ctx);

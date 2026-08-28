@@ -327,9 +327,9 @@
 
 - [x] Validar o link compartilhado do OneDrive pessoal e confirmar que a pasta pode ser lida sem login.
 - [x] Documentar que o escopo inicial é somente leitura, sem escrita, exclusão ou sincronização automática.
-- [ ] Preparar o fluxo de atualização por arquivos disponíveis na pasta compartilhada.
+- [x] Preparar o fluxo de atualização por arquivos disponíveis na pasta compartilhada.
 
-- [ ] Implementar consulta administrativa da pasta pública 01_Importacoes_Originais.
-- [ ] Mostrar arquivos encontrados com nome, formato, data e estado de validação antes da confirmação.
-- [ ] Manter fallback de upload manual quando a listagem pública não estiver disponível.
-- [ ] Restringir o fluxo a leitura e confirmação administrativa, sem escrita ou exclusão no OneDrive.
+- [x] Implementar consulta administrativa da pasta pública 01_Importacoes_Originais.
+- [x] Mostrar arquivos encontrados com nome, formato, data e estado de validação antes da confirmação.
+- [x] Manter fallback de upload manual quando a listagem pública não estiver disponível.
+- [x] Restringir o fluxo a leitura e confirmação administrativa, sem escrita ou exclusão no OneDrive.
