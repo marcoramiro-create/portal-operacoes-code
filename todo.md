@@ -330,6 +330,6 @@
 - [x] Preparar o fluxo de atualização por arquivos disponíveis na pasta compartilhada.
 
 - [x] Implementar consulta administrativa da pasta pública 01_Importacoes_Originais.
-- [x] Mostrar arquivos encontrados com nome, formato, data e estado de validação antes da confirmação.
+- [ ] Mostrar arquivos encontrados com nome, formato, data e estado de validação antes da confirmação; depende de OAuth/Graph ou de um manifesto público mantido na pasta.
 - [x] Manter fallback de upload manual quando a listagem pública não estiver disponível.
 - [x] Restringir o fluxo a leitura e confirmação administrativa, sem escrita ou exclusão no OneDrive.
