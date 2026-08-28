@@ -10,7 +10,7 @@ try {
   for (const [nodeKey, label, sortOrder] of children) await client.query(`INSERT INTO public.application_nodes (node_key, label, parent_id, sort_order, active) VALUES ($1, $2, $3, $4, true) ON CONFLICT (node_key) DO UPDATE SET label = EXCLUDED.label, parent_id = EXCLUDED.parent_id, active = true`, [nodeKey, label, rootId, sortOrder]);
   const importRoot = await client.query(`SELECT id FROM public.application_nodes WHERE node_key = 'importacoes'`);
   if (importRoot.rows[0]) {
-    const importers = [['importacoes-ativos-empilhadeiras', 'Empilhadeiras', 70], ['importacoes-ativos-equipamentos-industria', 'Equipamentos da indústria', 80], ['importacoes-ativos-ferramentas', 'Ferramentas', 90]];
+    const importers = [['importacoes-ativos-empilhadeiras', 'Importar · Empilhadeiras', 70], ['importacoes-ativos-equipamentos-industria', 'Importar · Equipamentos da indústria', 80], ['importacoes-ativos-ferramentas', 'Importar · Ferramentas', 90]];
     for (const [nodeKey, label, sortOrder] of importers) await client.query(`INSERT INTO public.application_nodes (node_key, label, parent_id, sort_order, active) VALUES ($1, $2, $3, $4, true) ON CONFLICT (node_key) DO UPDATE SET label = EXCLUDED.label, parent_id = EXCLUDED.parent_id, active = true`, [nodeKey, label, importRoot.rows[0].id, sortOrder]);
   }
   const profiles = await client.query(`SELECT id, profile_key FROM public.access_profiles WHERE active = true AND profile_key IN ('admin', 'administrator', 'operations-admin')`);
