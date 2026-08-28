@@ -20,6 +20,7 @@ import { InventoryFulfillments, InventoryMovements, InventoryRequisitions, Inven
 import InventoryTools from "./pages/InventoryTools";
 import InventoryReturns from "./pages/InventoryReturns";
 import AssetManagement from "./pages/AssetManagement";
+import AssetImport from "./pages/AssetImport";
 import { Route, Switch } from "wouter";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
@@ -40,6 +41,9 @@ function Router() {
     <Route path="/importacoes/funcionarios"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-funcionarios" level="manage"><RegistrationImport type="employees" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/fornecedores"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-fornecedores" level="manage"><RegistrationImport type="suppliers" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/produtos"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-produtos" level="manage"><RegistrationImport type="products" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/ativos-empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-empilhadeiras" level="manage"><AssetImport type="forklift" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/ativos-equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-equipamentos-industria" level="manage"><AssetImport type="industrial_equipment" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/ativos-ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-ferramentas" level="manage"><AssetImport type="tool" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
