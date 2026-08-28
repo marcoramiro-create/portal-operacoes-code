@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { getPortalIdentity } from "../supabasePortal";
-import { approveMaintenance, assetSummary, createAsset, createMaintenance, createChecklistTemplate, listAssets, listChecklistTemplates, listMaintenance, updateMaintenanceStatus, type AssetType } from "../assetMaintenance";
+import { approveMaintenance, assetSummary, createAsset, createMaintenance, createChecklistTemplate, createServiceProvider, listAssets, listChecklistTemplates, listMaintenance, listServiceProviders, updateMaintenanceStatus, type AssetType } from "../assetMaintenance";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 const assetType = z.enum(["forklift", "industrial_equipment", "tool"]);
@@ -10,6 +10,8 @@ const assetInput = z.object({ type: assetType, code: z.string().trim().min(1).ma
 const maintenanceInput = z.object({ type: assetType, assetId: z.string().min(1), maintenanceType: z.enum(["preventive", "predictive", "corrective", "inspection", "calibration", "improvement"]), priority: z.enum(["low", "normal", "high", "urgent"]).optional(), description: z.string().trim().min(1).max(5000), scheduledAt: z.string().datetime().optional(), executorType: z.string().trim().max(40).optional(), executorName: z.string().trim().max(255).optional(), notes: z.string().trim().max(5000).optional() });
 
 export const assetMaintenanceRouter = router({
+  serviceProviders: publicProcedure.input(typeInput).query(async ({ ctx, input }) => listServiceProviders(input.type as AssetType, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
+  createServiceProvider: publicProcedure.input(z.object({ assetType, providerType: z.string().trim().min(1).max(40), name: z.string().trim().min(1).max(255), document: z.string().trim().max(40).optional(), contact: z.string().trim().max(255).optional() })).mutation(async ({ ctx, input }) => createServiceProvider(input, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
   checklistTemplates: publicProcedure.query(async ({ ctx }) => listChecklistTemplates(await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
   createChecklistTemplate: publicProcedure.input(z.object({ name: z.string().trim().min(1).max(255), items: z.array(z.string().trim().min(1).max(255)).min(1).max(50) })).mutation(async ({ ctx, input }) => createChecklistTemplate(input, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
   assets: publicProcedure.input(typeInput).query(async ({ ctx, input }) => listAssets(input.type as AssetType, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),

@@ -82,6 +82,24 @@ export async function updateMaintenanceStatus(id: string, status: "in_progress" 
   return { success: true };
 }
 
+export async function listServiceProviders(type: AssetType, identity: PortalIdentity) {
+  await permission(identity, type, "view");
+  const [result] = await getPool().query(`SELECT id, providerType, name, document, contact, active, createdAt FROM assetServiceProviders WHERE active = 1 ORDER BY name`);
+  return rows(result);
+}
+
+export async function createServiceProvider(input: { assetType: AssetType; providerType: string; name: string; document?: string; contact?: string }, identity: PortalIdentity) {
+  await permission(identity, input.assetType, "manage");
+  const id = randomUUID();
+  try {
+    await getPool().query(`INSERT INTO assetServiceProviders (id, providerType, name, document, contact, createdByUserId) VALUES (?, ?, ?, ?, ?, ?)`, [id, input.providerType.trim(), input.name.trim(), input.document?.trim() || null, input.contact?.trim() || null, identity.id]);
+    return { id };
+  } catch (error: any) {
+    if (error?.code === "ER_DUP_ENTRY") throw new TRPCError({ code: "CONFLICT", message: "Já existe um executor com este nome e tipo." });
+    throw error;
+  }
+}
+
 export async function listChecklistTemplates(identity: PortalIdentity) {
   await permission(identity, "forklift", "view");
   const [result] = await getPool().query(`SELECT id, name, items, active, createdAt, updatedAt FROM assetChecklistTemplates WHERE assetType = 'forklift' AND active = 1 ORDER BY name`);
