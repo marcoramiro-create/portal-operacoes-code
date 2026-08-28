@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildApplicationTree } from "./supabasePortal";
+import { buildApplicationTree, normalizeProfileKeys } from "./supabasePortal";
 
 describe("árvore de aplicações", () => {
   it("organiza aplicações e subaplicações a partir dos nós externos", () => {
@@ -13,5 +13,11 @@ describe("árvore de aplicações", () => {
       { id: "produtos", key: "produtos", label: "Produtos", children: [] },
       { id: "funcionarios", key: "funcionarios", label: "Funcionários", children: [] },
     ] }]);
+  });
+});
+
+describe("perfis de acesso", () => {
+  it("remove perfis repetidos e aplica a ordem funcional", () => {
+    expect(normalizeProfileKeys(["viewer", "operator", "viewer", "operations-admin", "development-admin"])).toEqual(["development-admin", "operations-admin", "operator", "viewer"]);
   });
 });

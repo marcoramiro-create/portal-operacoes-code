@@ -8,6 +8,9 @@ type RequestRow = { id: string; requested_email: string; status: "pending" | "ap
 type Permission = "view" | "manage" | "approve";
 type PermissionNodeRow = ApplicationNodeRow & { view: boolean; manage: boolean; approve: boolean };
 
+const profileOrder = ["development-admin", "operations-admin", "manager", "operator", "viewer"];
+export function normalizeProfileKeys(keys: string[]) { return Array.from(new Set(keys.filter(Boolean))).sort((a, b) => { const ai = profileOrder.indexOf(a); const bi = profileOrder.indexOf(b); return (ai < 0 ? profileOrder.length : ai) - (bi < 0 ? profileOrder.length : bi) || a.localeCompare(b); }); }
+
 export type ApplicationTreeNode = { id: string; key: string; label: string; children: ApplicationTreeNode[] };
 export type PortalIdentity = { id: string; email: string; displayName: string | null; isDevelopmentAdmin: boolean; profiles: string[] };
 
@@ -59,7 +62,7 @@ export async function getPortalIdentity(authorizationHeader?: string): Promise<P
   );
   const row = result.rows[0];
   if (!row) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não foi liberado para o portal." });
-  return { id: row.id, email: row.email, displayName: row.display_name, isDevelopmentAdmin: row.is_development_admin, profiles: row.profile_keys ?? [] };
+  return { id: row.id, email: row.email, displayName: row.display_name, isDevelopmentAdmin: row.is_development_admin, profiles: normalizeProfileKeys(row.profile_keys ?? []) };
 }
 
 export async function recordPortalAudit(actor: PortalIdentity, entityType: string, entityId: string, action: string, details: Record<string, unknown> = {}) {
@@ -123,7 +126,7 @@ export async function listApplicationTreeForUser(identity: PortalIdentity) {
 
 export async function listAccessProfiles() {
   const result = await getSupabasePool().query<ProfileRow>("select id, profile_key, name, description from public.access_profiles where active = true order by name");
-  return result.rows.map(row => ({ id: row.id, key: row.profile_key, name: row.name, description: row.description }));
+  return Array.from(new Map(result.rows.map(row => [row.profile_key, { id: row.id, key: row.profile_key, name: row.name, description: row.description }])).values()).sort((a, b) => { const ai = profileOrder.indexOf(a.key); const bi = profileOrder.indexOf(b.key); return (ai < 0 ? profileOrder.length : ai) - (bi < 0 ? profileOrder.length : bi) || a.name.localeCompare(b.name); });
 }
 
 async function listNodesWithPermissions(profileKey: string, userId?: string) {
@@ -183,7 +186,7 @@ export async function listPortalUsers() {
      group by u.id, auth.email_confirmed_at
      order by u.created_at asc`,
   );
-  return result.rows.map(row => ({ id: row.id, authUserId: row.auth_user_id, employeeId: row.employee_id, email: row.email, displayName: row.display_name, status: row.status, isDevelopmentAdmin: row.is_development_admin, canFulfillInventoryRequests: row.can_fulfill_inventory_requests, activation: row.email_confirmed_at ? "confirmed" : "pending", profiles: row.profile_keys ?? [] }));
+  return result.rows.map(row => ({ id: row.id, authUserId: row.auth_user_id, employeeId: row.employee_id, email: row.email, displayName: row.display_name, status: row.status, isDevelopmentAdmin: row.is_development_admin, canFulfillInventoryRequests: row.can_fulfill_inventory_requests, activation: row.email_confirmed_at ? "confirmed" : "pending", profiles: normalizeProfileKeys(row.profile_keys ?? []) }));
 }
 
 export async function listActiveEmployees() {
