@@ -268,3 +268,13 @@
 - [x] Implementar anexos opcionais de ativos e ordens usando armazenamento externo.
 - [x] Criar importadores separados de Empilhadeiras, Equipamentos e Ferramentas dentro do galho Importações.
 - [x] Adicionar testes unitários para prévia e validação dos importadores assistidos de Ativos.
+
+- [x] Auditar e consolidar perfis de acesso duplicados, preservando a aplicabilidade correta por módulo e operação.
+- [x] Remover os controles redundantes de importação das telas de cadastros e manter os importadores somente no galho Importações.
+- [x] Corrigir o acesso e a usabilidade das aplicações Empilhadeiras, Equipamentos da indústria e Ferramentas no portal publicado.
+- [ ] Validar a árvore de aplicações e as permissões após a consolidação dos perfis.
+
+- [x] Auditar e consolidar perfis de acesso duplicados, preservando a aplicabilidade correta por módulo e operação.
+- [x] Remover os controles redundantes de importação das telas de cadastros e manter os importadores somente no galho Importações.
+- [x] Corrigir o acesso e a usabilidade das aplicações Empilhadeiras, Equipamentos da indústria e Ferramentas no portal publicado.
+- [ ] Validar a árvore de aplicações e as permissões após a consolidação dos perfis.

@@ -58,8 +58,8 @@ export async function previewMata020Suppliers(content: string): Promise<ImportPr
   return { valid: true, sourceRows: parsed.sourceRows, acceptedRows: parsed.rows.length, skippedRows: parsed.skippedRows, issues: [], toCreate, toUpdate, unchanged, samples };
 }
 
-export async function previewAgra045Warehouses(content: string, identity?: PortalIdentity): Promise<ImportPreview & { companyCode?: string; branchCode?: string }> {
-  if (identity) await assertApplicationPermission(identity, "cadastros-armazens", "manage");
+export async function previewAgra045Warehouses(content: string, identity?: PortalIdentity, permissionNode = "cadastros-armazens"): Promise<ImportPreview & { companyCode?: string; branchCode?: string }> {
+  if (identity) await assertApplicationPermission(identity, permissionNode, "manage");
   const parsed = parseAgra045Xml(content);
   const source = parsed.rows[0];
   const issues = [...parsed.issues];
@@ -136,17 +136,17 @@ export async function commitMata020Suppliers(content: string, identity: PortalId
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
 }
 
-export async function commitSi3CostCenters(content: string, identity: PortalIdentity) {
+export async function commitSi3CostCenters(content: string, identity: PortalIdentity, permissionNode = "cadastros-centros-custo") {
   const preview = await previewSi3CostCenters(content);
   if (!preview.valid) throw new TRPCError({ code: "BAD_REQUEST", message: "A prévia da SI3 possui inconsistências. Revise antes de importar." });
   const parsed = parseSi3Csv(content);
   const filtered = filterSi3Rows(parsed.rows);
-  return importCatalogEntries({ entity: "costCenter", rows: filtered.eligibleRows.map(row => ({ codigo_filial: row.codigo_filial, codigo: row.codigo, nome: row.nome, ativo: row.ativo })) }, identity);
+  return importCatalogEntries({ entity: "costCenter", rows: filtered.eligibleRows.map(row => ({ codigo_filial: row.codigo_filial, codigo: row.codigo, nome: row.nome, ativo: row.ativo })), centralized: permissionNode === "importacoes-centros-custo" }, identity);
 }
 
-export async function commitAgra045Warehouses(content: string, identity: PortalIdentity) {
-  const preview = await previewAgra045Warehouses(content);
+export async function commitAgra045Warehouses(content: string, identity: PortalIdentity, permissionNode = "cadastros-armazens") {
+  const preview = await previewAgra045Warehouses(content, identity, permissionNode);
   if (!preview.valid) throw new TRPCError({ code: "BAD_REQUEST", message: "A prévia do AGRA045 possui inconsistências. Revise antes de importar." });
   const parsed = parseAgra045Xml(content);
-  return importCatalogEntries({ entity: "warehouse", rows: parsed.rows }, identity);
+  return importCatalogEntries({ entity: "warehouse", rows: parsed.rows, centralized: permissionNode === "importacoes-armazens" }, identity);
 }

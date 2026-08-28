@@ -6,6 +6,7 @@ export type CatalogImportEntity = CatalogEntity;
 export type CatalogImportRow = Record<string, string>;
 
 const nodeKeys: Record<CatalogImportEntity, string> = { productType: "cadastros-tipos-produto", orgUnit: "cadastros-unidades", costCenter: "cadastros-centros-custo", company: "cadastros-empresas", branch: "cadastros-filiais", warehouse: "cadastros-armazens", stockLocation: "cadastros-locais-estoque" };
+const importNodeKeys: Record<CatalogImportEntity, string> = { productType: "importacoes-tipos-produto", orgUnit: "importacoes-unidades", costCenter: "importacoes-centros-custo", company: "importacoes-empresas", branch: "importacoes-filiais", warehouse: "importacoes-armazens", stockLocation: "importacoes-locais-estoque" };
 
 export function getCatalogImportMaxRows(entity: CatalogImportEntity) {
   return entity === "costCenter" ? 10_000 : 500;
@@ -31,8 +32,8 @@ async function findId(client: { query: Function }, table: string, clauses: strin
   return result.rows[0].id as string;
 }
 
-export async function importCatalogEntries(input: { entity: CatalogImportEntity; rows: CatalogImportRow[] }, identity: PortalIdentity) {
-  await assertApplicationPermission(identity, nodeKeys[input.entity], "manage");
+export async function importCatalogEntries(input: { entity: CatalogImportEntity; rows: CatalogImportRow[]; centralized?: boolean }, identity: PortalIdentity) {
+  await assertApplicationPermission(identity, input.centralized ? importNodeKeys[input.entity] : nodeKeys[input.entity], "manage");
   const maxRows = getCatalogImportMaxRows(input.entity);
   if (!input.rows.length || input.rows.length > maxRows) throw new TRPCError({ code: "BAD_REQUEST", message: `Informe de 1 a ${maxRows.toLocaleString("pt-BR")} linhas para importar.` });
   const client = await getSupabasePool().connect();
