@@ -338,7 +338,7 @@
 - [x] Receber e analisar uma planilha real de evolução de custos da indústria exportada do RM Bis.
 - [x] Implementar normalização de células mescladas, cabeçalhos e linhas de apresentação das planilhas RM Bis.
 - [x] Aplicar normalização equivalente a ARRUMAR/TRIM nos textos, preservando códigos, datas e valores.
-- [ ] Criar importadores separados de evolução de custos de autopeças e da indústria dentro de Importações.
-- [ ] Persistir versões históricas e registros de custos com prévia auditável antes da confirmação.
-- [ ] Criar visões de evolução de custos separadas para autopeças e indústria com filtros e indicadores adequados.
+- [x] Criar importadores separados de evolução de custos de autopeças e da indústria dentro de Importações.
+- [x] Persistir versões históricas e registros de custos com prévia auditável antes da confirmação.
+- [x] Criar visões de evolução de custos separadas para autopeças e indústria com filtros e indicadores adequados.
 - [ ] Validar os dois fluxos com os arquivos reais do usuário e publicar.

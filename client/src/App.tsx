@@ -21,6 +21,7 @@ import InventoryTools from "./pages/InventoryTools";
 import InventoryReturns from "./pages/InventoryReturns";
 import AssetManagement from "./pages/AssetManagement";
 import AssetImport from "./pages/AssetImport";
+import { CostEvolutionDashboard, CostEvolutionImport } from "./pages/CostEvolution";
 import { Route, Switch } from "wouter";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
@@ -44,6 +45,8 @@ function Router() {
     <Route path="/importacoes/ativos-empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-empilhadeiras" level="manage"><AssetImport type="forklift" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/ativos-equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-equipamentos-industria" level="manage"><AssetImport type="industrial_equipment" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/ativos-ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-ferramentas" level="manage"><AssetImport type="tool" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/custos-autopecas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-autopecas" level="manage"><CostEvolutionImport segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/custos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-industria" level="manage"><CostEvolutionImport segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
@@ -67,6 +70,8 @@ function Router() {
     <Route path="/ativos/empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="ativos-empilhadeiras"><AssetManagement type="forklift" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/ativos/equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="ativos-equipamentos-industria"><AssetManagement type="industrial_equipment" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/ativos/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="ativos-ferramentas"><AssetManagement type="tool" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/custos/autopecas"><WithLayout><ApplicationRouteGuard nodeKey="custos-autopecas"><CostEvolutionDashboard segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/custos/industria"><WithLayout><ApplicationRouteGuard nodeKey="custos-industria"><CostEvolutionDashboard segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
     <Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>
     <Route path="/cadastros/produtos"><WithLayout><RegistrationImport type="products" /></WithLayout></Route>

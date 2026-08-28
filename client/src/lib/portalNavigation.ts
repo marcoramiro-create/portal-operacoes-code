@@ -17,6 +17,8 @@ export const applicationPaths: Record<string, string> = {
   "importacoes-ativos-empilhadeiras": "/importacoes/ativos-empilhadeiras",
   "importacoes-ativos-equipamentos-industria": "/importacoes/ativos-equipamentos-industria",
   "importacoes-ativos-ferramentas": "/importacoes/ativos-ferramentas",
+  "importacoes-custos-autopecas": "/importacoes/custos-autopecas",
+  "importacoes-custos-industria": "/importacoes/custos-industria",
   administracao: "/usuarios",
   "usuarios-solicitacoes": "/usuarios",
   "perfis-acesso": "/perfis-acesso",
@@ -45,4 +47,6 @@ export const applicationPaths: Record<string, string> = {
   "ativos-empilhadeiras": "/ativos/empilhadeiras",
   "ativos-equipamentos-industria": "/ativos/equipamentos-industria",
   "ativos-ferramentas": "/ativos/ferramentas",
+  "custos-autopecas": "/custos/autopecas",
+  "custos-industria": "/custos/industria",
 };

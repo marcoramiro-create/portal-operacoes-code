@@ -10,6 +10,7 @@ import { inventoryCatalogRouter } from "./routers/inventoryCatalog";
 import { inventoryOperationsRouter } from "./routers/inventoryOperations";
 import { inventoryToolsRouter } from "./routers/inventoryTools";
 import { assetMaintenanceRouter } from "./routers/assetMaintenance";
+import { costEvolutionRouter } from "./routers/costEvolution";
 
 export const appRouter = router({
   system: systemRouter,
@@ -29,6 +30,7 @@ export const appRouter = router({
   inventoryOperations: inventoryOperationsRouter,
   inventoryTools: inventoryToolsRouter,
   assetMaintenance: assetMaintenanceRouter,
+  costEvolution: costEvolutionRouter,
 });
 
 export type AppRouter = typeof appRouter;
