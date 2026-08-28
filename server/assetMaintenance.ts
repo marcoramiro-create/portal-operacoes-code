@@ -82,6 +82,25 @@ export async function updateMaintenanceStatus(id: string, status: "in_progress" 
   return { success: true };
 }
 
+export async function listChecklistTemplates(identity: PortalIdentity) {
+  await permission(identity, "forklift", "view");
+  const [result] = await getPool().query(`SELECT id, name, items, active, createdAt, updatedAt FROM assetChecklistTemplates WHERE assetType = 'forklift' AND active = 1 ORDER BY name`);
+  return rows(result);
+}
+
+export async function createChecklistTemplate(input: { name: string; items: string[] }, identity: PortalIdentity) {
+  await permission(identity, "forklift", "manage");
+  if (!input.items.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe ao menos um item no checklist." });
+  const id = randomUUID();
+  try {
+    await getPool().query(`INSERT INTO assetChecklistTemplates (id, assetType, name, items, createdByUserId) VALUES (?, 'forklift', ?, ?, ?)`, [id, input.name.trim(), JSON.stringify(input.items.map(item => item.trim()).filter(Boolean)), identity.id]);
+    return { id };
+  } catch (error: any) {
+    if (error?.code === "ER_DUP_ENTRY") throw new TRPCError({ code: "CONFLICT", message: "Já existe um checklist com este nome." });
+    throw error;
+  }
+}
+
 export async function assetSummary(type: AssetType, identity: PortalIdentity) {
   await permission(identity, type, "view");
   const [result] = await getPool().query(`SELECT status, COUNT(*) AS total FROM assetAssets WHERE assetType = ? AND active = 1 GROUP BY status ORDER BY status`, [type]);
