@@ -13,7 +13,6 @@ import PortalAccess from "./pages/PortalAccess";
 import RegistrationImport from "./pages/RegistrationImport";
 import UserManagement from "./pages/UserManagement";
 import AccessProfiles from "./pages/AccessProfiles";
-import EpiManagement from "./pages/EpiManagement";
 import { ApplicationRouteGuard } from "./components/ApplicationRouteGuard";
 import NfReceipts from "./pages/NfReceipts";
 import InventoryCatalog from "./pages/InventoryCatalog";
@@ -24,59 +23,68 @@ import AssetManagement from "./pages/AssetManagement";
 import AssetImport from "./pages/AssetImport";
 import { CostEvolutionDashboard, CostEvolutionImport } from "./pages/CostEvolution";
 import { Route, Switch } from "wouter";
+
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
+
 function Router() {
-return <Switch>
-<Route path={PORTAL_HOME_PATH}><WithLayout><Home /></WithLayout></Route>
-<Route path="/compras/protheus"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus"><Dashboard /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/compras-protheus"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/empresas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-empresas" level="manage"><InventoryCatalog initialTab="companies" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/filiais"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-filiais" level="manage"><InventoryCatalog initialTab="branches" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/armazens"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-armazens" level="manage"><InventoryCatalog initialTab="warehouses" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/locais-estoque"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-locais-estoque" level="manage"><InventoryCatalog initialTab="locations" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/unidades"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-unidades" level="manage"><InventoryCatalog initialTab="orgUnits" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/centros-custo"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-centros-custo" level="manage"><InventoryCatalog initialTab="costCenters" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/tipos-produto"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-tipos-produto" level="manage"><InventoryCatalog initialTab="types" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/usuarios"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-usuarios" level="manage"><RegistrationImport type="users" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/funcionarios"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-funcionarios" level="manage"><RegistrationImport type="employees" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/fornecedores"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-fornecedores" level="manage"><RegistrationImport type="suppliers" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/produtos"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-produtos" level="manage"><RegistrationImport type="products" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/ativos-empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-empilhadeiras" level="manage"><AssetImport type="forklift" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/ativos-equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-equipamentos-industria" level="manage"><AssetImport type="industrial_equipment" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/ativos-ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-ferramentas" level="manage"><AssetImport type="tool" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/custos-autopecas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-autopecas" level="manage"><CostEvolutionImport segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importacoes/custos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-industria" level="manage"><CostEvolutionImport segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
-<Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
-<Route path="/recebimentos/nf"><WithLayout><ApplicationRouteGuard nodeKey="chaves-nf"><NfReceipts /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/cadastros/empresas"><WithLayout><InventoryCatalog initialTab="companies" /></WithLayout></Route>
-<Route path="/cadastros/filiais"><WithLayout><InventoryCatalog initialTab="branches" /></WithLayout></Route>
-<Route path="/cadastros/armazens"><WithLayout><InventoryCatalog initialTab="warehouses" /></WithLayout></Route>
-<Route path="/cadastros/locais-estoque"><WithLayout><InventoryCatalog initialTab="locations" /></WithLayout></Route>
-<Route path="/cadastros/unidades"><WithLayout><InventoryCatalog initialTab="orgUnits" /></WithLayout></Route>
-<Route path="/cadastros/centros-custo"><WithLayout><InventoryCatalog initialTab="costCenters" /></WithLayout></Route>
-<Route path="/cadastros/tipos-produto"><WithLayout><InventoryCatalog initialTab="types" /></WithLayout></Route>
-<Route path="/cadastros/epis"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-epis"><EpiManagement initialTab="certificates" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/consumo/epis"><WithLayout><ApplicationRouteGuard nodeKey="entrega-epis"><EpiManagement initialTab="deliveries" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/almoxarifado/requisicoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-requisicoes"><InventoryRequisitions /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/almoxarifado/atendimentos"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-atendimentos"><InventoryFulfillments /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/almoxarifado/devolucoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-devolucoes"><InventoryReturns /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/almoxarifado/movimentacoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-movimentacoes"><InventoryMovements /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/almoxarifado/estoque"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-estoque"><InventoryStock /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/almoxarifado/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-ferramentas"><InventoryTools /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/cadastros/empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-ativos-empilhadeiras" level="manage"><AssetManagement type="forklift" initialSection="register" sections={["overview", "register", "settings"]} /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/cadastros/equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-ativos-equipamentos-industria" level="manage"><AssetManagement type="industrial_equipment" initialSection="register" sections={["overview", "register", "settings"]} /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/cadastros/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-ativos-ferramentas" level="manage"><AssetManagement type="tool" initialSection="register" sections={["overview", "register", "settings"]} /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/ativos/empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="ativos-empilhadeiras"><AssetManagement type="forklift" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/ativos/equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="ativos-equipamentos-industria"><AssetManagement type="industrial_equipment" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/ativos/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="ativos-ferramentas"><AssetManagement type="tool" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/custos/autopecas"><WithLayout><ApplicationRouteGuard nodeKey="custos-autopecas"><CostEvolutionDashboard segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/custos/industria"><WithLayout><ApplicationRouteGuard nodeKey="custos-industria"><CostEvolutionDashboard segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
-<Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
-<Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>
-<Route path="/cadastros/produtos"><WithLayout><RegistrationImport type="products" /></WithLayout></Route>
-<Route path="/404" component={NotFound} />
-<Route component={NotFound} />
-</Switch>;
+  return <Switch>
+    <Route path={PORTAL_HOME_PATH}><WithLayout><Home /></WithLayout></Route>
+    <Route path="/compras/protheus"><WithLayout><ApplicationRouteGuard nodeKey="compras-protheus"><Dashboard /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/compras-protheus"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/empresas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-empresas" level="manage"><InventoryCatalog initialTab="companies" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/filiais"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-filiais" level="manage"><InventoryCatalog initialTab="branches" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/armazens"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-armazens" level="manage"><InventoryCatalog initialTab="warehouses" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/locais-estoque"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-locais-estoque" level="manage"><InventoryCatalog initialTab="locations" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/unidades"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-unidades" level="manage"><InventoryCatalog initialTab="orgUnits" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/centros-custo"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-centros-custo" level="manage"><InventoryCatalog initialTab="costCenters" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/tipos-produto"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-tipos-produto" level="manage"><InventoryCatalog initialTab="types" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/usuarios"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-usuarios" level="manage"><RegistrationImport type="users" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/funcionarios"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-funcionarios" level="manage"><RegistrationImport type="employees" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/fornecedores"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-fornecedores" level="manage"><RegistrationImport type="suppliers" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/produtos"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-produtos" level="manage"><RegistrationImport type="products" mode="import" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/ativos-empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-empilhadeiras" level="manage"><AssetImport type="forklift" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/ativos-equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-equipamentos-industria" level="manage"><AssetImport type="industrial_equipment" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/ativos-ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-ferramentas" level="manage"><AssetImport type="tool" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/custos-autopecas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-autopecas" level="manage"><CostEvolutionImport segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/custos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-industria" level="manage"><CostEvolutionImport segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
+    <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
+    <Route path="/recebimentos/nf"><WithLayout><ApplicationRouteGuard nodeKey="chaves-nf"><NfReceipts /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/cadastros/empresas"><WithLayout><InventoryCatalog initialTab="companies" /></WithLayout></Route>
+    <Route path="/cadastros/filiais"><WithLayout><InventoryCatalog initialTab="branches" /></WithLayout></Route>
+    <Route path="/cadastros/armazens"><WithLayout><InventoryCatalog initialTab="warehouses" /></WithLayout></Route>
+    <Route path="/cadastros/locais-estoque"><WithLayout><InventoryCatalog initialTab="locations" /></WithLayout></Route>
+    <Route path="/cadastros/unidades"><WithLayout><InventoryCatalog initialTab="orgUnits" /></WithLayout></Route>
+    <Route path="/cadastros/centros-custo"><WithLayout><InventoryCatalog initialTab="costCenters" /></WithLayout></Route>
+    <Route path="/cadastros/tipos-produto"><WithLayout><InventoryCatalog initialTab="types" /></WithLayout></Route>
+    <Route path="/almoxarifado/requisicoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-requisicoes"><InventoryRequisitions /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/atendimentos"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-atendimentos"><InventoryFulfillments /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/devolucoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-devolucoes"><InventoryReturns /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/movimentacoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-movimentacoes"><InventoryMovements /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/estoque"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-estoque"><InventoryStock /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/almoxarifado/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-ferramentas"><InventoryTools /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/cadastros/empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-ativos-empilhadeiras" level="manage"><AssetManagement type="forklift" initialSection="register" sections={["overview", "register", "settings"]} /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/cadastros/equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-ativos-equipamentos-industria" level="manage"><AssetManagement type="industrial_equipment" initialSection="register" sections={["overview", "register", "settings"]} /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/cadastros/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-ativos-ferramentas" level="manage"><AssetManagement type="tool" initialSection="register" sections={["overview", "register", "settings"]} /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/ativos/empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="ativos-empilhadeiras"><AssetManagement type="forklift" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/ativos/equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="ativos-equipamentos-industria"><AssetManagement type="industrial_equipment" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/ativos/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="ativos-ferramentas"><AssetManagement type="tool" initialSection="maintenance" sections={["overview", "maintenance"]} /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/custos/autopecas"><WithLayout><ApplicationRouteGuard nodeKey="custos-autopecas"><CostEvolutionDashboard segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/custos/industria"><WithLayout><ApplicationRouteGuard nodeKey="custos-industria"><CostEvolutionDashboard segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
+    <Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>
+    <Route path="/cadastros/produtos"><WithLayout><RegistrationImport type="products" /></WithLayout></Route>
+    <Route path="/404" component={NotFound} />
+    <Route component={NotFound} />
+  </Switch>;
 }
+
+function AuthGate() {
+  const { session, loading, passwordSetupRequired } = useSupabaseAuth();
+  if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#f2f4f5]"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-950" /></div>;
+  if (!session || passwordSetupRequired) return <PortalAccess />;
+  return <Router />;
+}
+
+export default function App() { return <ErrorBoundary><ThemeProvider defaultTheme="light"><TooltipProvider><SupabaseAuthProvider><Toaster /><AuthGate /></SupabaseAuthProvider></TooltipProvider></ThemeProvider></ErrorBoundary>; }
