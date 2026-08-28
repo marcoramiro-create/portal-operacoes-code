@@ -315,3 +315,8 @@
 - [x] Remover o nó e a rota duplicada de Usuários da árvore Cadastros, mantendo Administração como origem única.
 - [x] Corrigir o campo de perfil do cadastro administrativo para usar seleção controlada e validar chaves existentes.
 - [x] Testar o fluxo administrativo de criação de usuário, perfil e permissões após a remoção da duplicidade.
+
+- [x] Fazer o menu lateral recolher automaticamente após qualquer seleção de aplicação ou ação.
+- [x] Testar o recolhimento automático do menu em desktop e mobile.
+- [ ] Definir a primeira integração de leitura do OneDrive com escopo controlado e credenciais apropriadas.
+- [ ] Documentar a pasta, formato e fluxo de atualização dos arquivos lidos do OneDrive.
