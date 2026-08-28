@@ -91,6 +91,7 @@ type Curve = "A" | "B" | "C" | "D" | "E";
 type ProductType = "ME" | "PE";
 const ANALYSIS_BRANCHES = ["0101", "0102", "0301", "0303"] as const;
 export type AnalyticsFilter = { importId?: number; branch?: string; curve?: Curve; productType?: ProductType; mrp?: "Sim" | "Não"; family?: string; subfamily?: string };
+export type AnalyticsItem = { id: number; code: string; description: string; branch: string; productType: ProductType; mrp: "Sim" | "Não"; family: string; subfamily: string; curve: Curve; sales13M: number; salesValue13M: number; stock: number; stockValue: number; coverageDays: number; excessValue: number; turnover: number };
 type AnalyticsGroup = { label: string; salesValue13M: number; stockValue: number; turnover: number; coverageDays: number; excessValue: number };
 type StockQuality = { stockWithoutSalesValue: number; lowCoverageStockValue: number; excessStockValue: number };
 
@@ -167,6 +168,25 @@ export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "impo
   if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
   const rows = await db.select({ importId: protheusImports.id, fileName: protheusImports.fileName, importedAt: protheusImports.importedAt, salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`, stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)` }).from(inventoryAnalytics).innerJoin(protheusImports, eq(inventoryAnalytics.importId, protheusImports.id)).where(and(...conditions)).groupBy(protheusImports.id, protheusImports.fileName, protheusImports.importedAt).orderBy(asc(protheusImports.importedAt));
   return rows.map(row => { const salesValue13M = asNumber(row.salesValue13M); const stockValue = asNumber(row.stockValue); return { importId: row.importId, fileName: row.fileName, importedAt: row.importedAt, salesValue13M, stockValue, turnover: calculateTurnover(salesValue13M, stockValue) }; });
+}
+
+export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, pageSize = 50) {
+  const db = await getDb();
+  const importId = await getLatestImportId(filters.importId);
+  if (!db || !importId) return { items: [] as AnalyticsItem[], total: 0, page, pageSize, importId: null };
+  const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
+  if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
+  if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
+  if (filters.productType) conditions.push(eq(inventoryAnalytics.productType, filters.productType));
+  if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
+  if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
+  if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
+  const whereClause = and(...conditions);
+  const [countRow, rows] = await Promise.all([
+    db.select({ total: sql<number>`count(*)` }).from(inventoryAnalytics).where(whereClause),
+    db.select({ id: inventoryAnalytics.id, code: inventoryAnalytics.code, description: inventoryAnalytics.description, branch: inventoryAnalytics.branch, productType: inventoryAnalytics.productType, mrp: inventoryAnalytics.mrp, family: inventoryAnalytics.family, subfamily: inventoryAnalytics.subfamily, curve: inventoryAnalytics.curve, sales13M: inventoryAnalytics.sales13M, salesValue13M: inventoryAnalytics.salesValue13M, stock: inventoryAnalytics.stock, stockValue: inventoryAnalytics.stockValue, coverageDays: inventoryAnalytics.coverageDays, excessValue: inventoryAnalytics.excessValue }).from(inventoryAnalytics).where(whereClause).orderBy(asc(inventoryAnalytics.code), asc(inventoryAnalytics.branch)).limit(pageSize).offset((page - 1) * pageSize),
+  ]);
+  return { importId, page, pageSize, total: Number(countRow[0]?.total ?? 0), items: rows.map(row => ({ ...row, sales13M: asNumber(row.sales13M), salesValue13M: asNumber(row.salesValue13M), stock: asNumber(row.stock), stockValue: asNumber(row.stockValue), coverageDays: asNumber(row.coverageDays), excessValue: asNumber(row.excessValue), turnover: calculateTurnover(asNumber(row.salesValue13M), asNumber(row.stockValue)) })) };
 }
 
 export async function getAnalyticsFilterOptions(importId?: number) {

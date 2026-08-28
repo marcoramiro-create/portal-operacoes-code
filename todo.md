@@ -244,3 +244,8 @@
 - [x] Substituir os checkboxes de família e subfamília por controles de seleção mais claros e persistentes.
 - [x] Memorizar por usuário as opções selecionadas de família e subfamília.
 - [x] Exibir a data real de atualização extraída do nome da carga em vez de “Versão analisada”.
+- [x] Aplicar os três destaques aprovados para a tela principal e retirar os elementos de versão/atualização definidos pelo usuário.
+- [x] Criar análise opcional por item para recomendar comprar, pausar/reduzir compras ou acompanhar, usando dados reais da seleção.
+- [x] Exibir a análise de itens em páginas de 50 registros.
+- [x] Criar botão persistente para o usuário habilitar ou ocultar a análise de IA, iniciando desmarcado no primeiro acesso.
+- [x] Testar a análise estruturada, paginação, persistência e responsividade do dashboard.
