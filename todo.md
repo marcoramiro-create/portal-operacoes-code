@@ -318,9 +318,18 @@
 
 - [x] Fazer o menu lateral recolher automaticamente após qualquer seleção de aplicação ou ação.
 - [x] Testar o recolhimento automático do menu em desktop e mobile.
-- [ ] Definir a primeira integração de leitura do OneDrive com escopo controlado e credenciais apropriadas.
-- [ ] Documentar a pasta, formato e fluxo de atualização dos arquivos lidos do OneDrive.
+- [x] Definir a primeira integração de leitura do OneDrive com escopo controlado e credenciais apropriadas.
+- [x] Documentar a pasta, formato e fluxo de atualização dos arquivos lidos do OneDrive.
 
-- [ ] Preparar o conector oficial Microsoft Graph/OneDrive após autorização expressa do usuário.
-- [ ] Definir escopo inicial de leitura restrito às pastas de importação aprovadas.
+- [x] Configurar o link público somente leitura do OneDrive para o fluxo semiassistido após autorização expressa do usuário.
+- [x] Definir escopo inicial de leitura restrito às pastas de importação aprovadas.
 - [ ] Validar uma leitura real de arquivo do OneDrive sem armazenar credenciais no portal.
+
+- [x] Validar o link compartilhado do OneDrive pessoal e confirmar que a pasta pode ser lida sem login.
+- [x] Documentar que o escopo inicial é somente leitura, sem escrita, exclusão ou sincronização automática.
+- [ ] Preparar o fluxo de atualização por arquivos disponíveis na pasta compartilhada.
+
+- [ ] Implementar consulta administrativa da pasta pública 01_Importacoes_Originais.
+- [ ] Mostrar arquivos encontrados com nome, formato, data e estado de validação antes da confirmação.
+- [ ] Manter fallback de upload manual quando a listagem pública não estiver disponível.
+- [ ] Restringir o fluxo a leitura e confirmação administrativa, sem escrita ou exclusão no OneDrive.
