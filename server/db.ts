@@ -117,12 +117,18 @@ export function parsePurchaseHistoryDate(fileName: string) {
   return date;
 }
 
+function historicalImportDate(fileName: string, versionName: string, importedAt: Date) {
+  try { return parsePurchaseHistoryDate(fileName); } catch { /* tenta o nome canônico armazenado */ }
+  try { return parsePurchaseHistoryDate(`${versionName}.xlsx`); } catch { return importedAt; }
+}
+
 export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
   const empty = { currentImport: null, summary: { salesValue13M: 0, stockValue: 0, turnover: 0, coverageDays: 0, excessValue: 0 }, quality: { stockWithoutSalesValue: 0, lowCoverageStockValue: 0, excessStockValue: 0 } as StockQuality, byBranch: [] as AnalyticsGroup[], byCurve: [] as AnalyticsGroup[], byFamily: [] as AnalyticsGroup[], bySubfamily: [] as AnalyticsGroup[] };
   if (!db || !importId) return empty;
   const [currentImport] = await db.select().from(protheusImports).where(eq(protheusImports.id, importId)).limit(1);
+  const currentImportWithHistory = currentImport ? { ...currentImport, importedAt: historicalImportDate(currentImport.fileName, currentImport.versionName, currentImport.importedAt) } : null;
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
   if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
@@ -153,7 +159,7 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   ]);
   const salesValue13M = asNumber(summary?.salesValue13M);
   const stockValue = asNumber(summary?.stockValue);
-  return { currentImport: currentImport ?? null, summary: { salesValue13M, stockValue, turnover: calculateTurnover(salesValue13M, stockValue), coverageDays: asNumber(summary?.coverageDays), excessValue: asNumber(summary?.excessValue) }, quality: { stockWithoutSalesValue: asNumber(summary?.stockWithoutSalesValue), lowCoverageStockValue: asNumber(summary?.lowCoverageStockValue), excessStockValue: asNumber(summary?.excessValue) }, byBranch: toGroups(branchRows), byCurve: toGroups(curveRows), byFamily: toGroups(familyRows), bySubfamily: toGroups(subfamilyRows) };
+  return { currentImport: currentImportWithHistory, summary: { salesValue13M, stockValue, turnover: calculateTurnover(salesValue13M, stockValue), coverageDays: asNumber(summary?.coverageDays), excessValue: asNumber(summary?.excessValue) }, quality: { stockWithoutSalesValue: asNumber(summary?.stockWithoutSalesValue), lowCoverageStockValue: asNumber(summary?.lowCoverageStockValue), excessStockValue: asNumber(summary?.excessValue) }, byBranch: toGroups(branchRows), byCurve: toGroups(curveRows), byFamily: toGroups(familyRows), bySubfamily: toGroups(subfamilyRows) };
 }
 
 export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "importId">) {
@@ -166,8 +172,8 @@ export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "impo
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
   if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
   if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
-  const rows = await db.select({ importId: protheusImports.id, fileName: protheusImports.fileName, importedAt: protheusImports.importedAt, salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`, stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)` }).from(inventoryAnalytics).innerJoin(protheusImports, eq(inventoryAnalytics.importId, protheusImports.id)).where(and(...conditions)).groupBy(protheusImports.id, protheusImports.fileName, protheusImports.importedAt).orderBy(asc(protheusImports.importedAt));
-  return rows.map(row => { const salesValue13M = asNumber(row.salesValue13M); const stockValue = asNumber(row.stockValue); return { importId: row.importId, fileName: row.fileName, importedAt: row.importedAt, salesValue13M, stockValue, turnover: calculateTurnover(salesValue13M, stockValue) }; });
+  const rows = await db.select({ importId: protheusImports.id, fileName: protheusImports.fileName, versionName: protheusImports.versionName, importedAt: protheusImports.importedAt, salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`, stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)` }).from(inventoryAnalytics).innerJoin(protheusImports, eq(inventoryAnalytics.importId, protheusImports.id)).where(and(...conditions)).groupBy(protheusImports.id, protheusImports.fileName, protheusImports.versionName, protheusImports.importedAt).orderBy(asc(protheusImports.importedAt));
+  return rows.map(row => { const salesValue13M = asNumber(row.salesValue13M); const stockValue = asNumber(row.stockValue); return { importId: row.importId, fileName: row.fileName, importedAt: historicalImportDate(row.fileName, row.versionName, row.importedAt), salesValue13M, stockValue, turnover: calculateTurnover(salesValue13M, stockValue) }; }).sort((left, right) => left.importedAt.getTime() - right.importedAt.getTime());
 }
 
 export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, pageSize = 50) {

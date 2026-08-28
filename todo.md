@@ -249,3 +249,5 @@
 - [x] Exibir a análise de itens em páginas de 50 registros.
 - [x] Criar botão persistente para o usuário habilitar ou ocultar a análise de IA, iniciando desmarcado no primeiro acesso.
 - [x] Testar a análise estruturada, paginação, persistência e responsividade do dashboard.
+- [x] Corrigir gráfico, tabela e indicador para usar a data histórica do nome da carga, sem usar importedAt como substituto quando houver data válida.
+- [x] Ocultar da tabela de análise IA os itens que não receberem recomendação válida.
