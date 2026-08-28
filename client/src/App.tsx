@@ -19,6 +19,7 @@ import InventoryCatalog from "./pages/InventoryCatalog";
 import { InventoryFulfillments, InventoryMovements, InventoryRequisitions, InventoryStock } from "./pages/InventoryOperations";
 import InventoryTools from "./pages/InventoryTools";
 import InventoryReturns from "./pages/InventoryReturns";
+import AssetManagement from "./pages/AssetManagement";
 import { Route, Switch } from "wouter";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
@@ -56,6 +57,9 @@ function Router() {
     <Route path="/almoxarifado/movimentacoes"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-movimentacoes"><InventoryMovements /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/almoxarifado/estoque"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-estoque"><InventoryStock /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/almoxarifado/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="almoxarifado-ferramentas"><InventoryTools /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/ativos/empilhadeiras"><WithLayout><ApplicationRouteGuard nodeKey="ativos-empilhadeiras"><AssetManagement type="forklift" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/ativos/equipamentos-industria"><WithLayout><ApplicationRouteGuard nodeKey="ativos-equipamentos-industria"><AssetManagement type="industrial_equipment" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/ativos/ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="ativos-ferramentas"><AssetManagement type="tool" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/cadastros/usuarios"><WithLayout><ApplicationRouteGuard nodeKey="cadastros-usuarios"><RegistrationImport type="users" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/cadastros/funcionarios"><WithLayout><RegistrationImport type="employees" /></WithLayout></Route>
     <Route path="/cadastros/fornecedores"><WithLayout><RegistrationImport type="suppliers" /></WithLayout></Route>

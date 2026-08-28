@@ -251,3 +251,19 @@
 - [x] Testar a análise estruturada, paginação, persistência e responsividade do dashboard.
 - [x] Corrigir gráfico, tabela e indicador para usar a data histórica do nome da carga, sem usar importedAt como substituto quando houver data válida.
 - [x] Ocultar da tabela de análise IA os itens que não receberem recomendação válida.
+- [x] Definir, para aprovação, o desenho das aplicações Empilhadeiras, Equipamentos da indústria e Ferramentas de oficinas/indústria.
+- [x] Levantar perguntas e decisões pendentes sobre cadastro, manutenção preventiva/corretiva, custos, responsáveis, documentos e permissões dos ativos.
+- [x] Implementar o núcleo comum de ativos, ordens de serviço, manutenção preventiva/preditiva, custos e histórico auditável.
+- [x] Implementar a aplicação de Empilhadeiras com horímetro, checklist configurável, bateria/combustível, pneus, avarias e operador autorizado.
+- [x] Implementar a aplicação de Equipamentos da indústria com famílias extensíveis, criticidade e referências opcionais de setor, linha e posição.
+- [x] Implementar a aplicação de Ferramentas com controle individual ou por saldo, posse, manutenção e calibração opcional por tipo.
+- [x] Implementar o núcleo comum de ativos, ordens de serviço, manutenção preventiva/preditiva, custos e histórico auditável.
+- [x] Implementar a aplicação de Empilhadeiras com horímetro, checklist configurável, bateria/combustível, pneus, avarias e operador autorizado.
+- [x] Implementar a aplicação de Equipamentos da indústria com famílias extensíveis, criticidade e referências opcionais de setor, linha e posição.
+- [x] Implementar a aplicação de Ferramentas com controle individual ou por saldo, posse, manutenção e calibração opcional por tipo.
+- [x] Integrar as três aplicações à árvore Ativos e manutenção, com permissões consultar, administrar e aprovar.
+- [ ] Ampliar campos específicos de Empilhadeiras para horímetro, bateria/combustível, pneus, avarias, operador e inspeções persistidas.
+- [ ] Criar editor de checklists configuráveis por tipo de empilhadeira.
+- [ ] Criar cadastro flexível de técnicos, oficinas e prestadores com vínculo opcional às ordens.
+- [ ] Implementar anexos opcionais de ativos e ordens usando armazenamento externo.
+- [ ] Criar importadores separados de Empilhadeiras, Equipamentos e Ferramentas dentro do galho Importações.

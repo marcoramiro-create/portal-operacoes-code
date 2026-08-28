@@ -37,4 +37,7 @@ export const applicationPaths: Record<string, string> = {
   "almoxarifado-movimentacoes": "/almoxarifado/movimentacoes",
   "almoxarifado-estoque": "/almoxarifado/estoque",
   "almoxarifado-ferramentas": "/almoxarifado/ferramentas",
+  "ativos-empilhadeiras": "/ativos/empilhadeiras",
+  "ativos-equipamentos-industria": "/ativos/equipamentos-industria",
+  "ativos-ferramentas": "/ativos/ferramentas",
 };
