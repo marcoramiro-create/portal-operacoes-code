@@ -1,6 +1,6 @@
-import { TRPCError } from "@trpc/server";
+﻿import { TRPCError } from "@trpc/server";
 import { RegistrationType, registrationTypes } from "../shared/registrationLayouts";
-import { getSupabasePool, PortalIdentity } from "./supabasePortal";
+import { getSupabasePool, type PortalIdentity } from "./supabasePortal";
 
 export const registrationOperations = ["view", "create", "import", "manage"] as const;
 export type RegistrationOperation = typeof registrationOperations[number];

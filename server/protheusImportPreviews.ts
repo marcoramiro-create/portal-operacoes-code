@@ -1,6 +1,6 @@
-import { validateRegistrationRows } from "./registrationImports";
+﻿import { validateRegistrationRows } from "./registrationImports";
 import { IGNORED_SI3_BRANCH_CODES, parseAgra045Xml, parseMata020, parseSi3Csv, SourceIssue } from "./protheusRegistrationParsers";
-import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
+import { assertApplicationPermission, getSupabasePool, type PortalIdentity } from "./supabasePortal";
 import { importCatalogEntries } from "./inventoryCatalogImports";
 import { TRPCError } from "@trpc/server";
 

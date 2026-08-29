@@ -1,5 +1,5 @@
-import { TRPCError } from "@trpc/server";
-import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
+﻿import { TRPCError } from "@trpc/server";
+import { assertApplicationPermission, getSupabasePool, type PortalIdentity } from "./supabasePortal";
 
 export type CaptureMethod = "manual" | "camera" | "barcode_reader";
 
