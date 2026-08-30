@@ -20,7 +20,13 @@ export function getSupabasePool() {
   if (!pool) {
     const connectionString = process.env.SUPABASE_DATABASE_URL;
     if (!connectionString) throw new Error("A conexão externa com o Supabase não está configurada.");
-    pool = new Pool({ connectionString, ssl: { rejectUnauthorized: false }, max: 4 });
+    pool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      max: 1,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 10000,
+    });
   }
   return pool;
 }
