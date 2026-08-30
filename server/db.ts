@@ -9,31 +9,11 @@ import { storagePut } from "./storage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-export async function getDb() {
-  if (!_db && process.env.SUPABASE_DATABASE_URL) {
-    try {
-      const pool = new Pool({
-        connectionString: process.env.SUPABASE_DATABASE_URL,
-        max: 3,
-        idleTimeoutMillis: 20000,
-        connectionTimeoutMillis: 10000,
-      });
-      _db = drizzle(pool);
-    } catch (error) {
-      console.warn("[Database] Failed to connect:", error);
-      _db = null;
-    }
-  }
-  return _db;
-}
-
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
   if (!db) return;
-
   const existing = await db.select().from(users).where(eq(users.openId, user.openId)).limit(1);
-
   if (existing.length > 0) {
     const updateSet: Record<string, unknown> = {};
     if (user.name !== undefined) updateSet.name = user.name ?? null;
@@ -42,18 +22,16 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     updateSet.lastSignedIn = new Date();
     await db.update(users).set(updateSet).where(eq(users.openId, user.openId));
   } else {
-    const values: InsertUser = {
+    await db.insert(users).values({
       openId: user.openId,
       name: user.name ?? null,
       email: user.email ?? null,
       loginMethod: user.loginMethod ?? null,
       role: user.openId === ENV.ownerOpenId ? "admin" : "user",
       lastSignedIn: new Date(),
-    };
-    await db.insert(users).values(values);
+    });
   }
 }
-
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
