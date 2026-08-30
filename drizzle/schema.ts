@@ -1,19 +1,40 @@
-import { date, decimal, integer, pgEnum, pgTable, serial, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { date, decimal, integer, pgEnum, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
+// ─── Usuários ───
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: varchar("name", { length: 320 }),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: pgEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: pgEnum("user_role", ["user", "admin"]).default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+// ─── Tabelas legadas (primeiro fluxo operacional) ───
+export const suppliers = pgTable("suppliers", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: varchar("name", { length: 200 }).notNull(),
+  contact: varchar("contact", { length: 200 }).notNull(),
+  category: varchar("category", { length: 120 }).notNull(),
+  deliveryLeadTime: integer("deliveryLeadTime").notNull(),
+  evaluation: decimal("evaluation", { precision: 4, scale: 1 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+export const purchaseOrders = pgTable("purchaseOrders", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  supplierId: integer("supplierId").notNull().references(() => suppliers.id),
+  status: pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]).default("rascunho").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
 export const inventoryItems = pgTable("inventoryItems", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   item: varchar("item", { length: 200 }).notNull(),
   quantityAvailable: integer("quantityAvailable").notNull(),
   reorderPoint: integer("reorderPoint").notNull(),
@@ -22,36 +43,54 @@ export const inventoryItems = pgTable("inventoryItems", {
 });
 
 export const stockMovements = pgTable("stockMovements", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   inventoryItemId: integer("inventoryItemId").notNull().references(() => inventoryItems.id),
-  type: varchar("type", { length: 10 }).notNull(),
+  type: pgEnum("stock_movement_type", ["entrada", "saida"]).notNull(),
   quantity: integer("quantity").notNull(),
   occurredAt: timestamp("occurredAt").defaultNow().notNull(),
 });
 
+export const deliveries = pgTable("deliveries", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  purchaseOrderId: integer("purchaseOrderId").notNull().references(() => purchaseOrders.id),
+  expectedAt: timestamp("expectedAt").notNull(),
+  actualAt: timestamp("actualAt"),
+  status: pgEnum("delivery_status", ["pendente", "recebido"]).default("pendente").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+
+// ─── Importações do Protheus ───
+export const protheusImportStatusEnum = pgEnum("protheus_import_status", ["pending", "approved", "archived"]);
+
 export const protheusImports = pgTable("protheusImports", {
-  id: serial("id").primaryKey(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   versionName: varchar("versionName", { length: 32 }).notNull().default("Compras - legado"),
-  status: pgEnum("protheus_status", ["pending", "approved", "archived"]).notNull().default("pending"),
+  status: protheusImportStatusEnum.default("pending").notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
   rowCount: integer("rowCount").notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
 });
 
+// ─── Análise de Inventário ───
+export const productTypeEnum = pgEnum("product_type", ["ME", "PE"]);
+export const mrpEnum = pgEnum("mrp_status", ["Sim", "Não"]);
+export const curveEnum = pgEnum("curve_class", ["A", "B", "C", "D", "E"]);
+
 export const inventoryAnalytics = pgTable(
   "inventoryAnalytics",
   {
-    id: serial("id").primaryKey(),
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
     importId: integer("importId").notNull().references(() => protheusImports.id),
     code: varchar("code", { length: 120 }).notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
     branch: varchar("branch", { length: 24 }).notNull(),
-    productType: pgEnum("product_type", ["ME", "PE"]).notNull().default("ME"),
-    mrp: pgEnum("mrp", ["Sim", "Não"]).notNull().default("Não"),
+    productType: productTypeEnum.default("ME").notNull(),
+    mrp: mrpEnum.default("Não").notNull(),
     family: varchar("family", { length: 255 }).notNull().default(""),
     subfamily: varchar("subfamily", { length: 255 }).notNull().default(""),
-    curve: pgEnum("curve", ["A", "B", "C", "D", "E"]).notNull(),
+    curve: curveEnum.notNull(),
     sales13M: decimal("sales13M", { precision: 20, scale: 3 }).notNull(),
     salesValue13M: decimal("salesValue13M", { precision: 20, scale: 2 }).notNull().default("0"),
     stock: decimal("stock", { precision: 20, scale: 3 }).notNull(),
@@ -60,17 +99,19 @@ export const inventoryAnalytics = pgTable(
     excessValue: decimal("excessValue", { precision: 20, scale: 2 }).notNull(),
     capitalTurnover: decimal("capitalTurnover", { precision: 20, scale: 3 }).notNull().default("0"),
   },
-  table => [
-    uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch),
-  ],
+  (table) => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
 );
 
+// ─── Evolução de Custos ───
+export const costEvolutionSegmentEnum = pgEnum("cost_evolution_segment", ["auto_parts", "industry"]);
+export const costEvolutionStatusEnum = pgEnum("cost_evolution_status", ["pending", "approved", "archived"]);
+
 export const costEvolutionImports = pgTable("costEvolutionImports", {
-  id: serial("id").primaryKey(),
-  segment: pgEnum("segment", ["auto_parts", "industry"]).notNull(),
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  segment: costEvolutionSegmentEnum.notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
-  status: pgEnum("cost_evolution_status", ["pending", "approved", "archived"]).notNull().default("pending"),
+  status: costEvolutionStatusEnum.default("pending").notNull(),
   itemCount: integer("itemCount").notNull(),
   observationCount: integer("observationCount").notNull(),
   periodStart: date("periodStart").notNull(),
@@ -82,35 +123,32 @@ export const costEvolutionImports = pgTable("costEvolutionImports", {
 export const costEvolutionItems = pgTable(
   "costEvolutionItems",
   {
-    id: serial("id").primaryKey(),
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
     importId: integer("importId").notNull().references(() => costEvolutionImports.id),
     branch: varchar("branch", { length: 24 }).notNull(),
     aggregateCode: varchar("aggregateCode", { length: 120 }).notNull(),
     code: varchar("code", { length: 120 }).notNull(),
-    mrp: pgEnum("cost_evolution_mrp", ["Sim", "Não"]).notNull().default("Não"),
+    mrp: mrpEnum.default("Não").notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
     buyer: varchar("buyer", { length: 320 }).notNull().default(""),
     lastPurchaseDate: date("lastPurchaseDate"),
     lastPurchasePrice: decimal("lastPurchasePrice", { precision: 20, scale: 6 }),
   },
-  table => [
-    uniqueIndex("costEvolutionItems_import_business_key_unique").on(table.importId, table.branch, table.aggregateCode, table.code),
-  ],
+  (table) => [uniqueIndex("costEvolutionItems_import_business_key_unique").on(table.importId, table.branch, table.aggregateCode, table.code)],
 );
 
 export const costEvolutionObservations = pgTable(
   "costEvolutionObservations",
   {
-    id: serial("id").primaryKey(),
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
     itemId: integer("itemId").notNull().references(() => costEvolutionItems.id),
     balanceDate: date("balanceDate").notNull(),
     cost: decimal("cost", { precision: 20, scale: 6 }).notNull(),
   },
-  table => [
-    uniqueIndex("costEvolutionObservations_item_date_unique").on(table.itemId, table.balanceDate),
-  ],
+  (table) => [uniqueIndex("costEvolutionObservations_item_date_unique").on(table.itemId, table.balanceDate)],
 );
 
+// ─── Types ───
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type AnalyticsImport = typeof protheusImports.$inferSelect;
