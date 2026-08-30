@@ -46,14 +46,6 @@ export async function createMaintenance(input: MaintenanceInput, type: AssetType
   return { id };
 }
 
-export async function approveMaintenance(id: string, identity: PortalIdentity) {
-  const result = await getPool().query(`SELECT o.id, a.assetType FROM assetMaintenanceOrders o JOIN assetAssets a ON a.id = o.assetId WHERE o.id = $1`, [id]);
-  const current = rows(result)[0];
-  if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Ordem de manutenção não encontrada." });
-  await permission(identity, current.assetType as AssetType, "approve");
-  await getPool().query(`UPDATE assetMaintenanceOrders SET status = 'approved', approvedByUserId = $1, approvedAt = CURRENT_TIMESTAMP WHERE id = $2`, [identity.id, id]);
-  return { id };
-}
 
 export async function updateMaintenanceStatus(id: string, status: "in_progress" | "waiting_parts" | "completed" | "cancelled", identity: PortalIdentity) {
   const result = await getPool().query<any>(`SELECT o.id, a.assetType, o.assetId FROM assetMaintenanceOrders o JOIN assetAssets a ON a.id = o.assetId WHERE o.id = $1`, [id]);
@@ -78,15 +70,6 @@ const result = await getPool().query(`SELECT o.id, o.assetId, o.maintenanceType,
 return rows(result);
 }
 
-export async function approveMaintenance(id: string, identity: PortalIdentity) {
-const result = await getPool().query<any>(`SELECT o.id, a.assetType, o.assetId FROM assetMaintenanceOrders o JOIN assetAssets a ON a.id = o.assetId WHERE o.id = $1`, [id]);
-const current = rows<any>(result)[0];
-if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Ordem de manutenção não encontrada." });
-await permission(identity, current.assetType as AssetType, "approve");
-await getPool().query(`UPDATE assetMaintenanceOrders SET status = 'approved', approvedAt = NOW() WHERE id = $1`, [id]);
-await getPool().query(`INSERT INTO assetEvents (id, assetId, eventType, details, actorUserId) VALUES ($1, $2, 'maintenance_approved', $3, $4)`, [randomUUID(), current.assetId, JSON.stringify({ maintenanceId: id }), identity.id]);
-return { ok: true };
-}
 
 export async function listServiceProviders(type: AssetType, identity: PortalIdentity) {
 await permission(identity, type, "view");
