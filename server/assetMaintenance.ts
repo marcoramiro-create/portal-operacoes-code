@@ -71,3 +71,46 @@ export async function listMaintenanceDashboard(type: AssetType, identity: Portal
   const orders = await getPool().query(`SELECT o.status, COUNT(*) AS total FROM assetMaintenanceOrders o JOIN assetAssets a ON a.id = o.assetId WHERE a.assetType = $1 GROUP BY o.status ORDER BY o.status`, [type]);
   return { assets: rows(result), maintenance: rows(orders) };
 }
+
+export async function listMaintenance(type: AssetType, identity: PortalIdentity) {
+await permission(identity, type, "view");
+const result = await getPool().query(`SELECT o.id, o.assetId, o.maintenanceType, o.status, o.priority, o.scheduledAt, o.description, o.createdAt, a.code AS assetCode, a.name AS assetName FROM assetMaintenanceOrders o JOIN assetAssets a ON a.id = o.assetId WHERE a.assetType = $1 ORDER BY o.createdAt DESC`, [type]);
+return rows(result);
+}
+
+export async function approveMaintenance(id: string, identity: PortalIdentity) {
+const result = await getPool().query<any>(`SELECT o.id, a.assetType, o.assetId FROM assetMaintenanceOrders o JOIN assetAssets a ON a.id = o.assetId WHERE o.id = $1`, [id]);
+const current = rows<any>(result)[0];
+if (!current) throw new TRPCError({ code: "NOT_FOUND", message: "Ordem de manutenção não encontrada." });
+await permission(identity, current.assetType as AssetType, "approve");
+await getPool().query(`UPDATE assetMaintenanceOrders SET status = 'approved', approvedAt = NOW() WHERE id = $1`, [id]);
+await getPool().query(`INSERT INTO assetEvents (id, assetId, eventType, details, actorUserId) VALUES ($1, $2, 'maintenance_approved', $3, $4)`, [randomUUID(), current.assetId, JSON.stringify({ maintenanceId: id }), identity.id]);
+return { ok: true };
+}
+
+export async function listServiceProviders(type: AssetType, identity: PortalIdentity) {
+await permission(identity, type, "view");
+const result = await getPool().query(`SELECT id, providerType, name, document, contact, active, createdAt FROM assetServiceProviders WHERE active = 1 ORDER BY name`);
+return rows(result);
+}
+
+export async function createServiceProvider(input: { assetType: AssetType; providerType: string; name: string; document?: string; contact?: string }, identity: PortalIdentity) {
+await permission(identity, input.assetType, "manage");
+const id = randomUUID();
+await getPool().query(`INSERT INTO assetServiceProviders (id, providerType, name, document, contact, createdByUserId) VALUES ($1, $2, $3, $4, $5, $6)`, [id, input.providerType.trim(), input.name.trim(), input.document?.trim() || null, input.contact?.trim() || null, identity.id]);
+return { id };
+}
+
+export async function listChecklistTemplates(identity: PortalIdentity) {
+await permission(identity, "forklift", "view");
+const result = await getPool().query(`SELECT id, name, items, active, createdAt, updatedAt FROM assetChecklistTemplates WHERE assetType = 'forklift' AND active = 1 ORDER BY name`);
+return rows(result);
+}
+
+export async function createChecklistTemplate(input: { name: string; items: string[] }, identity: PortalIdentity) {
+await permission(identity, "forklift", "manage");
+if (!input.items.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe ao menos um item no checklist." });
+const id = randomUUID();
+await getPool().query(`INSERT INTO assetChecklistTemplates (id, assetType, name, items, createdByUserId) VALUES ($1, 'forklift', $2, $3, $4)`, [id, input.name.trim(), JSON.stringify(input.items.map(item => item.trim()).filter(Boolean)), identity.id]);
+return { id };
+}
