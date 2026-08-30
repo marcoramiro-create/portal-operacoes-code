@@ -436,3 +436,13 @@ export async function getAnalyticsFilterOptions(importId?: number) {
     subfamilies: subfamilies.map((row) => row.value),
   };
 }
+export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
+  const db = await getDb();
+  if (!db) return null;
+  const [summary, breakdown] = await Promise.all([
+    getAnalyticsSummary(filters),
+    getAnalyticsBreakdown(filters),
+  ]);
+  if (!summary || !breakdown) return null;
+  return { summary, breakdown };
+}
