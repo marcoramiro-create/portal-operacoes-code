@@ -49,9 +49,9 @@ export async function listProtheusImports() {
 export async function updateProtheusImportStatus(id: number, status: ProtheusImportStatus) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-  const result = await db.update(protheusImports).set({ status }).where(eq(protheusImports.id, id));
-  if (!result[0]?.affectedRows) throw new Error("Versão de carga não encontrada.");
-  return (await db.select().from(protheusImports).where(eq(protheusImports.id, id)).limit(1))[0];
+const result = await db.update(protheusImports).set({ status }).where(eq(protheusImports.id, id)).returning();
+if (!result.length) throw new Error("Versão de carga não encontrada.");
+return result[0];
 }
 
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
