@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import { inventoryAnalytics, protheusImports, type InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { calculateTurnover } from "./analyticsRules";
@@ -7,12 +8,14 @@ import { parseProtheusWorkbook } from "./protheusImport";
 import { storagePut } from "./storage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
-
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    try { _db = drizzle(process.env.DATABASE_URL); } catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; }
-  }
-  return _db;
+if (!_db && process.env.SUPABASE_DATABASE_URL) {
+try {
+const pool = new Pool({ connectionString: process.env.SUPABASE_DATABASE_URL });
+_db = drizzle(pool);
+} catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; }
+}
+return _db;
 }
 
 export async function upsertUser(user: InsertUser): Promise<void> {
