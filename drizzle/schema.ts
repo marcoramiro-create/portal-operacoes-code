@@ -1,19 +1,28 @@
 import { date, decimal, integer, pgEnum, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
-// ─── Usuários ───
+export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]);
+export const stockMovementTypeEnum = pgEnum("stock_movement_type", ["entrada", "saida"]);
+export const deliveryStatusEnum = pgEnum("delivery_status", ["pendente", "recebido"]);
+export const protheusImportStatusEnum = pgEnum("protheus_import_status", ["pending", "approved", "archived"]);
+export const productTypeEnum = pgEnum("product_type", ["ME", "PE"]);
+export const mrpEnum = pgEnum("mrp_status", ["Sim", "Não"]);
+export const curveEnum = pgEnum("curve_class", ["A", "B", "C", "D", "E"]);
+export const costEvolutionSegmentEnum = pgEnum("cost_evolution_segment", ["auto_parts", "industry"]);
+export const costEvolutionStatusEnum = pgEnum("cost_evolution_status", ["pending", "approved", "archived"]);
+
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: varchar("name", { length: 320 }),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: pgEnum("user_role", ["user", "admin"]).default("user").notNull(),
+  role: userRoleEnum.default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
-// ─── Tabelas legadas (primeiro fluxo operacional) ───
 export const suppliers = pgTable("suppliers", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: varchar("name", { length: 200 }).notNull(),
@@ -28,7 +37,7 @@ export const suppliers = pgTable("suppliers", {
 export const purchaseOrders = pgTable("purchaseOrders", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   supplierId: integer("supplierId").notNull().references(() => suppliers.id),
-  status: pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]).default("rascunho").notNull(),
+  status: purchaseOrderStatusEnum.default("rascunho").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -45,7 +54,7 @@ export const inventoryItems = pgTable("inventoryItems", {
 export const stockMovements = pgTable("stockMovements", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   inventoryItemId: integer("inventoryItemId").notNull().references(() => inventoryItems.id),
-  type: pgEnum("stock_movement_type", ["entrada", "saida"]).notNull(),
+  type: stockMovementTypeEnum.notNull(),
   quantity: integer("quantity").notNull(),
   occurredAt: timestamp("occurredAt").defaultNow().notNull(),
 });
@@ -55,13 +64,10 @@ export const deliveries = pgTable("deliveries", {
   purchaseOrderId: integer("purchaseOrderId").notNull().references(() => purchaseOrders.id),
   expectedAt: timestamp("expectedAt").notNull(),
   actualAt: timestamp("actualAt"),
-  status: pgEnum("delivery_status", ["pendente", "recebido"]).default("pendente").notNull(),
+  status: deliveryStatusEnum.default("pendente").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
-// ─── Importações do Protheus ───
-export const protheusImportStatusEnum = pgEnum("protheus_import_status", ["pending", "approved", "archived"]);
 
 export const protheusImports = pgTable("protheusImports", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -72,11 +78,6 @@ export const protheusImports = pgTable("protheusImports", {
   rowCount: integer("rowCount").notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
 });
-
-// ─── Análise de Inventário ───
-export const productTypeEnum = pgEnum("product_type", ["ME", "PE"]);
-export const mrpEnum = pgEnum("mrp_status", ["Sim", "Não"]);
-export const curveEnum = pgEnum("curve_class", ["A", "B", "C", "D", "E"]);
 
 export const inventoryAnalytics = pgTable(
   "inventoryAnalytics",
@@ -101,10 +102,6 @@ export const inventoryAnalytics = pgTable(
   },
   (table) => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
 );
-
-// ─── Evolução de Custos ───
-export const costEvolutionSegmentEnum = pgEnum("cost_evolution_segment", ["auto_parts", "industry"]);
-export const costEvolutionStatusEnum = pgEnum("cost_evolution_status", ["pending", "approved", "archived"]);
 
 export const costEvolutionImports = pgTable("costEvolutionImports", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -148,7 +145,6 @@ export const costEvolutionObservations = pgTable(
   (table) => [uniqueIndex("costEvolutionObservations_item_date_unique").on(table.itemId, table.balanceDate)],
 );
 
-// ─── Types ───
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 export type AnalyticsImport = typeof protheusImports.$inferSelect;
