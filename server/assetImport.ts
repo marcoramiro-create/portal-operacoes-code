@@ -1,15 +1,9 @@
 import * as XLSX from "xlsx";
 import { randomUUID } from "node:crypto";
-import { Pool } from "pg";
 import { TRPCError } from "@trpc/server";
-import { assertApplicationPermission, type PortalIdentity } from "./supabasePortal";
+import { assertApplicationPermission, getSupabasePool, type PortalIdentity } from "./supabasePortal";
 import type { AssetType } from "./assetMaintenance";
 
-let pool: Pool | undefined;
-function getPool() {
-  if (!pool) pool = new Pool({ connectionString: process.env.SUPABASE_DATABASE_URL || process.env.DATABASE_URL || "" });
-  return pool;
-}
 const nodeForType = (type: AssetType) => type === "forklift" ? "ativos-empilhadeiras" : type === "industrial_equipment" ? "ativos-equipamentos-industria" : "ativos-ferramentas";
 const text = (value: unknown) => String(value ?? "").trim();
 
@@ -35,7 +29,7 @@ export function parseAssetWorkbook(contentBase64: string, type: AssetType): { ro
 export async function commitAssetImport(type: AssetType, rows: AssetImportRow[], identity: PortalIdentity) {
   await assertApplicationPermission(identity, nodeForType(type), "manage");
   if (!rows.length || rows.length > 10000) throw new TRPCError({ code: "BAD_REQUEST", message: "A prévia deve conter entre 1 e 10.000 linhas válidas." });
-  const client = await getPool().connect();
+  const client = await getSupabasePool().connect();
   try {
     await client.query("BEGIN");
     let inserted = 0;
