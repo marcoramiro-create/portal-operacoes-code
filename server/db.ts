@@ -18,6 +18,9 @@ export async function getDb() {
         idleTimeoutMillis: 20000,
         connectionTimeoutMillis: 10000,
       });
+      pool.on('error', (err) => {
+        console.error('[Database] Unexpected error on idle client:', err);
+      });
       _db = drizzle(pool);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
@@ -85,7 +88,6 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     fileBuffer,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
-
   return db.transaction(async (tx) => {
     const [createdImport] = await tx
       .insert(protheusImports)
@@ -97,10 +99,8 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
         importedAt,
       })
       .returning({ id: protheusImports.id });
-
     const importId = createdImport?.id;
     if (!importId) throw new Error("Não foi possível registrar a importação.");
-
     for (let start = 0; start < records.length; start += 500) {
       await tx.insert(inventoryAnalytics).values(
         records.slice(start, start + 500).map((record) => ({
@@ -122,16 +122,13 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
         }))
       );
     }
-
     return { id: importId, rowCount: records.length };
   });
 }
 
 const ANALYSIS_BRANCHES = ["0101", "0102", "0301", "0303"];
-
 type Curve = "A" | "B" | "C" | "D" | "E";
 type ProductType = "ME" | "PE";
-
 export type AnalyticsFilter = {
   importId?: number;
   branch?: string;
@@ -141,7 +138,6 @@ export type AnalyticsFilter = {
   family?: string;
   subfamily?: string;
 };
-
 export type AnalyticsItem = {
   id: number;
   code: string;
@@ -160,13 +156,11 @@ export type AnalyticsItem = {
   excessValue: number;
   turnover: number;
 };
-
 export type StockQuality = {
   stockWithoutSalesValue: number;
   lowCoverageStockValue: number;
   excessStockValue: number;
 };
-
 export type AnalyticsGroup = {
   label: string;
   salesValue13M: number;
@@ -175,7 +169,6 @@ export type AnalyticsGroup = {
   coverageDays: number;
   excessValue: number;
 };
-
 export type AnalyticsSummary = {
   salesValue13M: number;
   stockValue: number;
@@ -238,7 +231,6 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
   if (!db || !importId) return null;
-
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
   if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
@@ -246,9 +238,7 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
   if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
   if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
-
   const whereClause = and(...conditions);
-
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
@@ -258,9 +248,7 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
     lowCoverageItems: sql<number>`count(case when ${inventoryAnalytics.coverageDays} < 30 and ${inventoryAnalytics.stockValue} > 0 then 1 end)`,
     lowCoverageStockValue: sql<string>`coalesce(sum(case when ${inventoryAnalytics.coverageDays} < 30 and ${inventoryAnalytics.stockValue} > 0 then ${inventoryAnalytics.stockValue} else 0 end), 0)`,
   };
-
   const [summary] = await db.select(measures).from(inventoryAnalytics).where(whereClause);
-
   return {
     salesValue13M: asNumber(summary.salesValue13M),
     stockValue: asNumber(summary.stockValue),
@@ -276,7 +264,6 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
   if (!db || !importId) return null;
-
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
   if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
@@ -284,16 +271,13 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
   if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
   if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
-
   const whereClause = and(...conditions);
-
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
     coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
   };
-
   const [byBranch, byCurve, byProductType, byMrp, byFamily] = await Promise.all([
     db.select({ label: inventoryAnalytics.branch, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.branch).orderBy(asc(inventoryAnalytics.branch)),
     db.select({ label: inventoryAnalytics.curve, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.curve).orderBy(asc(inventoryAnalytics.curve)),
@@ -301,7 +285,6 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
     db.select({ label: inventoryAnalytics.mrp, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.mrp).orderBy(asc(inventoryAnalytics.mrp)),
     db.select({ label: inventoryAnalytics.family, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.family).orderBy(asc(inventoryAnalytics.family)),
   ]);
-
   const mapGroup = (r: typeof byBranch[number]) => ({
     ...r,
     label: normalizeLabel(r.label),
@@ -311,7 +294,6 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
     coverageDays: asNumber(r.coverageDays),
     excessValue: asNumber(r.excessValue),
   });
-
   return {
     byBranch: byBranch.map(mapGroup),
     byCurve: byCurve.map(mapGroup),
@@ -342,7 +324,6 @@ export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "impo
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
   if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
   if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
-
   const rows = await db
     .select({
       importId: protheusImports.id,
@@ -357,7 +338,6 @@ export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "impo
     .where(and(...conditions))
     .groupBy(protheusImports.id, protheusImports.fileName, protheusImports.versionName, protheusImports.importedAt)
     .orderBy(asc(protheusImports.importedAt));
-
   return rows.map((row) => {
     const salesValue13M = asNumber(row.salesValue13M);
     const stockValue = asNumber(row.stockValue);
@@ -376,7 +356,6 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
   if (!db || !importId) return { items: [] as AnalyticsItem[], total: 0, page, pageSize, importId: null };
-
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
   if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
@@ -384,9 +363,7 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
   if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
   if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
-
   const whereClause = and(...conditions);
-
   const [countRow, rows] = await Promise.all([
     db.select({ total: sql<number>`count(*)` }).from(inventoryAnalytics).where(whereClause),
     db
@@ -413,7 +390,6 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
       .limit(pageSize)
       .offset((page - 1) * pageSize),
   ]);
-
   return {
     importId,
     page,
@@ -444,9 +420,7 @@ export async function getAnalyticsFilterOptions(importId?: number) {
       families: [] as string[],
       subfamilies: [] as string[],
     };
-
   const availableRecords = and(eq(inventoryAnalytics.importId, selectedImportId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES));
-
   const [branches, curves, productTypes, mrps, families, subfamilies] = await Promise.all([
     db.selectDistinct({ value: inventoryAnalytics.branch }).from(inventoryAnalytics).where(availableRecords).orderBy(asc(inventoryAnalytics.branch)),
     db.selectDistinct({ value: inventoryAnalytics.curve }).from(inventoryAnalytics).where(availableRecords).orderBy(asc(inventoryAnalytics.curve)),
@@ -455,7 +429,6 @@ export async function getAnalyticsFilterOptions(importId?: number) {
     db.selectDistinct({ value: inventoryAnalytics.family }).from(inventoryAnalytics).where(availableRecords).orderBy(asc(inventoryAnalytics.family)),
     db.selectDistinct({ value: inventoryAnalytics.subfamily }).from(inventoryAnalytics).where(availableRecords).orderBy(asc(inventoryAnalytics.subfamily)),
   ]);
-
   return {
     branches: branches.map((row) => row.value),
     curves: curves.map((row) => row.value as Curve),

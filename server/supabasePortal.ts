@@ -9,7 +9,14 @@ type Permission = "view" | "manage" | "approve";
 type PermissionNodeRow = ApplicationNodeRow & { view: boolean; manage: boolean; approve: boolean };
 
 const profileOrder = ["development-admin", "operations-admin", "manager", "operator", "viewer"];
-export function normalizeProfileKeys(keys: string[]) { return Array.from(new Set(keys.filter(Boolean))).sort((a, b) => { const ai = profileOrder.indexOf(a); const bi = profileOrder.indexOf(b); return (ai < 0 ? profileOrder.length : ai) - (bi < 0 ? profileOrder.length : bi) || a.localeCompare(b); }); }
+
+export function normalizeProfileKeys(keys: string[]) {
+  return Array.from(new Set(keys.filter(Boolean))).sort((a, b) => {
+    const ai = profileOrder.indexOf(a);
+    const bi = profileOrder.indexOf(b);
+    return (ai < 0 ? profileOrder.length : ai) - (bi < 0 ? profileOrder.length : bi) || a.localeCompare(b);
+  });
+}
 
 export type ApplicationTreeNode = { id: string; key: string; label: string; children: ApplicationTreeNode[] };
 export type PortalIdentity = { id: string; email: string; displayName: string | null; isDevelopmentAdmin: boolean; profiles: string[] };
@@ -26,6 +33,9 @@ export function getSupabasePool() {
       max: 1,
       idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 10000,
+    });
+    pool.on('error', (err) => {
+      console.error('[SupabasePool] Unexpected error on idle client:', err);
     });
   }
   return pool;
@@ -253,10 +263,11 @@ export async function updatePortalUser(userId: string, input: { status: "active"
 
 export async function resendInvite(email: string) {
   const { projectUrl, serviceRoleKey } = serviceConfig();
+  const portalUrl = process.env.VITE_SUPABASE_URL?.replace(".supabase.co", "") || "https://portal-operacoes-code-marco-ramiro.vercel.app";
   const response = await fetch(`${projectUrl}/auth/v1/recover`, {
     method: "POST",
     headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, redirect_to: "https://gestaolog-ehcfqbaf.manus.space" }),
+    body: JSON.stringify({ email, redirect_to: "https://portal-operacoes-code-marco-ramiro.vercel.app" }),
   });
   if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível enviar a redefinição de senha." });
   return { success: true } as const;
@@ -278,7 +289,7 @@ export async function resendActivationInvite(userId: string) {
   const response = await fetch(`${projectUrl}/auth/v1/invite`, {
     method: "POST",
     headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email: user.email, data: { display_name: user.display_name, portal_environment: "homologacao" }, redirect_to: "https://gestaolog-ehcfqbaf.manus.space" }),
+    body: JSON.stringify({ email: user.email, data: { display_name: user.display_name, portal_environment: "homologacao" }, redirect_to: "https://portal-operacoes-code-marco-ramiro.vercel.app" }),
   });
   const body = await response.json();
   if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: body.msg ?? body.message ?? "Não foi possível reenviar o convite de ativação." });

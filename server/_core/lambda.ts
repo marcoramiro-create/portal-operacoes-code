@@ -7,18 +7,34 @@ import { registerOAuthRoutes } from "./oauth";
 
 const app = express();
 
-app.use(express.json({ limit: "75mb" }));
-app.use(express.urlencoded({ limit: "75mb", extended: true }));
+let initError: string | null = null;
 
-registerStorageProxy(app);
-registerOAuthRoutes(app);
+try {
+  app.use(express.json({ limit: "75mb" }));
+  app.use(express.urlencoded({ limit: "75mb", extended: true }));
+  registerStorageProxy(app);
+  registerOAuthRoutes(app);
+  app.use(
+    "/api/trpc",
+    createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    })
+  );
+} catch (error: any) {
+  initError = error?.stack || error?.message || String(error);
+  console.error("[Lambda] Init failed:", initError);
+  app.use("/api/trpc", (req, res) => {
+    res.status(500).json({ error: { json: { message: `Server init failed: ${initError}`, code: -32600 } } });
+  });
+}
 
-app.use(
-  "/api/trpc",
-  createExpressMiddleware({
-    router: appRouter,
-    createContext,
-  })
-);
+app.use((req, res) => {
+  if (initError) {
+    res.status(500).json({ error: { json: { message: `Server init failed: ${initError}`, code: -32600 } } });
+  } else {
+    res.status(404).send("Not found");
+  }
+});
 
 export default app;
