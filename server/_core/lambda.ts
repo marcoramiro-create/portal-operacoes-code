@@ -1,46 +1,40 @@
 import express from "express";
+import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { appRouter } from "../routers";
+import { createContext } from "./context";
+import { registerStorageProxy } from "./storageProxy";
+import { registerOAuthRoutes } from "./oauth";
 
 const app = express();
-app.use(express.json({ limit: "75mb" }));
 
-const results: Record<string, string> = {};
+let initError: string | null = null;
 
-async function testImport(name: string, importer: () => Promise<unknown>) {
-  try {
-    await importer();
-    results[name] = "OK";
-  } catch (error: any) {
-    results[name] = `FAIL: ${error?.message || String(error)}`;
-  }
+try {
+  app.use(express.json({ limit: "75mb" }));
+  app.use(express.urlencoded({ limit: "75mb", extended: true }));
+  registerStorageProxy(app);
+  registerOAuthRoutes(app);
+  app.use(
+    "/api/trpc",
+    createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    })
+  );
+} catch (error: any) {
+  initError = error?.stack || error?.message || String(error);
+  console.error("[Lambda] Init failed:", initError);
+  app.use("/api/trpc", (req, res) => {
+    res.status(500).json({ error: { json: { message: `Server init failed: ${initError}`, code: -32600 } } });
+  });
 }
 
-await testImport("./env", () => import("./env"));
-await testImport("./context", () => import("./context"));
-await testImport("./trpc", () => import("./trpc"));
-await testImport("./sdk", () => import("./sdk"));
-await testImport("./cookies", () => import("./cookies"));
-await testImport("./oauth", () => import("./oauth"));
-await testImport("./storageProxy", () => import("./storageProxy"));
-await testImport("../routers", () => import("../routers"));
-await testImport("../db", () => import("../db"));
-await testImport("../supabasePortal", () => import("../supabasePortal"));
-await testImport("../storage", () => import("../storage"));
-await testImport("../assetMaintenance", () => import("../assetMaintenance"));
-await testImport("../assetAttachments", () => import("../assetAttachments"));
-await testImport("../assetImport", () => import("../assetImport"));
-await testImport("../inventoryCatalog", () => import("../inventoryCatalog"));
-await testImport("../inventoryOperations", () => import("../inventoryOperations"));
-await testImport("../costEvolutionService", () => import("../costEvolutionService"));
-await testImport("../registrationAccess", () => import("../registrationAccess"));
-await testImport("../protheusImportPreviews", () => import("../protheusImportPreviews"));
-await testImport("../protheusRegistrationParsers", () => import("../protheusRegistrationParsers"));
-await testImport("../registrationImports", () => import("../registrationImports"));
-await testImport("../nfReceipts", () => import("../nfReceipts"));
-await testImport("../onedriveSharedLink", () => import("../onedriveSharedLink"));
-await testImport("../mata020Xml", () => import("../mata020Xml"));
-
 app.use((req, res) => {
-  res.status(200).json({ results });
+  if (initError) {
+    res.status(500).json({ error: { json: { message: `Server init failed: ${initError}`, code: -32600 } } });
+  } else {
+    res.status(404).send("Not found");
+  }
 });
 
 export default app;

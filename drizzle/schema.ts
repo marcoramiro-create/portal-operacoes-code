@@ -17,7 +17,7 @@ export const users = pgTable("users", {
   name: varchar("name", { length: 320 }),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: userRoleEnum.default("user").notNull(),
+  role: userRoleEnum("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -37,7 +37,7 @@ export const suppliers = pgTable("suppliers", {
 export const purchaseOrders = pgTable("purchaseOrders", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   supplierId: integer("supplierId").notNull().references(() => suppliers.id),
-  status: purchaseOrderStatusEnum.default("rascunho").notNull(),
+  status: purchaseOrderStatusEnum("status").default("rascunho").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -54,7 +54,7 @@ export const inventoryItems = pgTable("inventoryItems", {
 export const stockMovements = pgTable("stockMovements", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   inventoryItemId: integer("inventoryItemId").notNull().references(() => inventoryItems.id),
-  type: stockMovementTypeEnum.notNull(),
+  type: stockMovementTypeEnum("type").notNull(),
   quantity: integer("quantity").notNull(),
   occurredAt: timestamp("occurredAt").defaultNow().notNull(),
 });
@@ -64,7 +64,7 @@ export const deliveries = pgTable("deliveries", {
   purchaseOrderId: integer("purchaseOrderId").notNull().references(() => purchaseOrders.id),
   expectedAt: timestamp("expectedAt").notNull(),
   actualAt: timestamp("actualAt"),
-  status: deliveryStatusEnum.default("pendente").notNull(),
+  status: deliveryStatusEnum("status").default("pendente").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
@@ -73,7 +73,7 @@ export const protheusImports = pgTable("protheusImports", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   versionName: varchar("versionName", { length: 32 }).notNull().default("Compras - legado"),
-  status: protheusImportStatusEnum.default("pending").notNull(),
+  status: protheusImportStatusEnum("status").default("pending").notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
   rowCount: integer("rowCount").notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
@@ -87,11 +87,11 @@ export const inventoryAnalytics = pgTable(
     code: varchar("code", { length: 120 }).notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
     branch: varchar("branch", { length: 24 }).notNull(),
-    productType: productTypeEnum.default("ME").notNull(),
-    mrp: mrpEnum.default("Não").notNull(),
+    productType: productTypeEnum("productType").default("ME").notNull(),
+    mrp: mrpEnum("mrp").default("Não").notNull(),
     family: varchar("family", { length: 255 }).notNull().default(""),
     subfamily: varchar("subfamily", { length: 255 }).notNull().default(""),
-    curve: curveEnum.notNull(),
+    curve: curveEnum("curve").notNull(),
     sales13M: decimal("sales13M", { precision: 20, scale: 3 }).notNull(),
     salesValue13M: decimal("salesValue13M", { precision: 20, scale: 2 }).notNull().default("0"),
     stock: decimal("stock", { precision: 20, scale: 3 }).notNull(),
@@ -105,10 +105,10 @@ export const inventoryAnalytics = pgTable(
 
 export const costEvolutionImports = pgTable("costEvolutionImports", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  segment: costEvolutionSegmentEnum.notNull(),
+  segment: costEvolutionSegmentEnum("segment").notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
-  status: costEvolutionStatusEnum.default("pending").notNull(),
+  status: costEvolutionStatusEnum("status").default("pending").notNull(),
   itemCount: integer("itemCount").notNull(),
   observationCount: integer("observationCount").notNull(),
   periodStart: date("periodStart").notNull(),
@@ -125,30 +125,10 @@ export const costEvolutionItems = pgTable(
     branch: varchar("branch", { length: 24 }).notNull(),
     aggregateCode: varchar("aggregateCode", { length: 120 }).notNull(),
     code: varchar("code", { length: 120 }).notNull(),
-    mrp: mrpEnum.default("Não").notNull(),
+    mrp: mrpEnum("mrp").default("Não").notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
     buyer: varchar("buyer", { length: 320 }).notNull().default(""),
     lastPurchaseDate: date("lastPurchaseDate"),
     lastPurchasePrice: decimal("lastPurchasePrice", { precision: 20, scale: 6 }),
   },
-  (table) => [uniqueIndex("costEvolutionItems_import_business_key_unique").on(table.importId, table.branch, table.aggregateCode, table.code)],
 );
-
-export const costEvolutionObservations = pgTable(
-  "costEvolutionObservations",
-  {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    itemId: integer("itemId").notNull().references(() => costEvolutionItems.id),
-    balanceDate: date("balanceDate").notNull(),
-    cost: decimal("cost", { precision: 20, scale: 6 }).notNull(),
-  },
-  (table) => [uniqueIndex("costEvolutionObservations_item_date_unique").on(table.itemId, table.balanceDate)],
-);
-
-export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
-export type AnalyticsImport = typeof protheusImports.$inferSelect;
-export type InventoryAnalytics = typeof inventoryAnalytics.$inferSelect;
-export type CostEvolutionImport = typeof costEvolutionImports.$inferSelect;
-export type CostEvolutionItem = typeof costEvolutionItems.$inferSelect;
-export type CostEvolutionObservation = typeof costEvolutionObservations.$inferSelect;
