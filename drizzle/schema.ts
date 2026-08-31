@@ -23,6 +23,9 @@ export const users = pgTable("users", {
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export type InsertUser = typeof users.$inferInsert;
+export type User = typeof users.$inferSelect;
+
 export const suppliers = pgTable("suppliers", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: varchar("name", { length: 200 }).notNull(),
@@ -130,5 +133,16 @@ export const costEvolutionItems = pgTable(
     buyer: varchar("buyer", { length: 320 }).notNull().default(""),
     lastPurchaseDate: date("lastPurchaseDate"),
     lastPurchasePrice: decimal("lastPurchasePrice", { precision: 20, scale: 6 }),
+  },
+);
+
+export const costEvolutionObservations = pgTable(
+  "costEvolutionObservations",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    importId: integer("importId").notNull().references(() => costEvolutionImports.id),
+    itemId: integer("itemId").references(() => costEvolutionItems.id),
+    balanceDate: date("balanceDate").notNull(),
+    cost: decimal("cost", { precision: 20, scale: 6 }).notNull(),
   },
 );
