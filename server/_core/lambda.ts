@@ -14,21 +14,30 @@ async function testImport(name: string, importer: () => Promise<unknown>) {
   }
 }
 
-await testImport("pg", () => import("pg"));
-await testImport("drizzle-orm", () => import("drizzle-orm"));
-await testImport("drizzle-orm/node-postgres", () => import("drizzle-orm/node-postgres"));
-await testImport("@trpc/server", () => import("@trpc/server"));
-await testImport("@trpc/server/adapters/express", () => import("@trpc/server/adapters/express"));
-await testImport("superjson", () => import("superjson"));
-await testImport("zod", () => import("zod"));
-await testImport("axios", () => import("axios"));
-await testImport("jose", () => import("jose"));
-await testImport("cookie", () => import("cookie"));
-await testImport("xlsx", () => import("xlsx"));
-await testImport("nanoid", () => import("nanoid"));
-await testImport("@aws-sdk/client-s3", () => import("@aws-sdk/client-s3"));
-await testImport("@aws-sdk/s3-request-presigner", () => import("@aws-sdk/s3-request-presigner"));
-await testImport("@supabase/supabase-js", () => import("@supabase/supabase-js"));
+await testImport("./env", () => import("./env"));
+await testImport("./context", () => import("./context"));
+await testImport("./trpc", () => import("./trpc"));
+await testImport("./sdk", () => import("./sdk"));
+await testImport("./cookies", () => import("./cookies"));
+await testImport("./oauth", () => import("./oauth"));
+await testImport("./storageProxy", () => import("./storageProxy"));
+await testImport("../routers", () => import("../routers"));
+await testImport("../db", () => import("../db"));
+await testImport("../supabasePortal", () => import("../supabasePortal"));
+await testImport("../storage", () => import("../storage"));
+await testImport("../assetMaintenance", () => import("../assetMaintenance"));
+await testImport("../assetAttachments", () => import("../assetAttachments"));
+await testImport("../assetImport", () => import("../assetImport"));
+await testImport("../inventoryCatalog", () => import("../inventoryCatalog"));
+await testImport("../inventoryOperations", () => import("../inventoryOperations"));
+await testImport("../costEvolutionService", () => import("../costEvolutionService"));
+await testImport("../registrationAccess", () => import("../registrationAccess"));
+await testImport("../protheusImportPreviews", () => import("../protheusImportPreviews"));
+await testImport("../protheusRegistrationParsers", () => import("../protheusRegistrationParsers"));
+await testImport("../registrationImports", () => import("../registrationImports"));
+await testImport("../nfReceipts", () => import("../nfReceipts"));
+await testImport("../onedriveSharedLink", () => import("../onedriveSharedLink"));
+await testImport("../mata020Xml", () => import("../mata020Xml"));
 
 app.use((req, res) => {
   res.status(200).json({ results });
