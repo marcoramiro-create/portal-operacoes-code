@@ -1,5 +1,4 @@
 import { date, decimal, integer, pgEnum, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
-
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]);
 export const stockMovementTypeEnum = pgEnum("stock_movement_type", ["entrada", "saida"]);
@@ -10,7 +9,6 @@ export const mrpEnum = pgEnum("mrp_status", ["Sim", "Não"]);
 export const curveEnum = pgEnum("curve_class", ["A", "B", "C", "D", "E"]);
 export const costEvolutionSegmentEnum = pgEnum("cost_evolution_segment", ["auto_parts", "industry"]);
 export const costEvolutionStatusEnum = pgEnum("cost_evolution_status", ["pending", "approved", "archived"]);
-
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
@@ -22,10 +20,8 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
-
 export type InsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
-
 export const suppliers = pgTable("suppliers", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: varchar("name", { length: 200 }).notNull(),
@@ -36,7 +32,6 @@ export const suppliers = pgTable("suppliers", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
 export const purchaseOrders = pgTable("purchaseOrders", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   supplierId: integer("supplierId").notNull().references(() => suppliers.id),
@@ -44,7 +39,6 @@ export const purchaseOrders = pgTable("purchaseOrders", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
 export const inventoryItems = pgTable("inventoryItems", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   item: varchar("item", { length: 200 }).notNull(),
@@ -53,7 +47,6 @@ export const inventoryItems = pgTable("inventoryItems", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
 export const stockMovements = pgTable("stockMovements", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   inventoryItemId: integer("inventoryItemId").notNull().references(() => inventoryItems.id),
@@ -61,7 +54,6 @@ export const stockMovements = pgTable("stockMovements", {
   quantity: integer("quantity").notNull(),
   occurredAt: timestamp("occurredAt").defaultNow().notNull(),
 });
-
 export const deliveries = pgTable("deliveries", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   purchaseOrderId: integer("purchaseOrderId").notNull().references(() => purchaseOrders.id),
@@ -71,7 +63,6 @@ export const deliveries = pgTable("deliveries", {
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
 export const protheusImports = pgTable("protheusImports", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
@@ -81,7 +72,6 @@ export const protheusImports = pgTable("protheusImports", {
   rowCount: integer("rowCount").notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
 });
-
 export const inventoryAnalytics = pgTable(
   "inventoryAnalytics",
   {
@@ -105,7 +95,6 @@ export const inventoryAnalytics = pgTable(
   },
   (table) => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
 );
-
 export const costEvolutionImports = pgTable("costEvolutionImports", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   segment: costEvolutionSegmentEnum("segment").notNull(),
@@ -119,7 +108,6 @@ export const costEvolutionImports = pgTable("costEvolutionImports", {
   importedBy: varchar("importedBy", { length: 320 }).notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
 });
-
 export const costEvolutionItems = pgTable(
   "costEvolutionItems",
   {
@@ -135,7 +123,6 @@ export const costEvolutionItems = pgTable(
     lastPurchasePrice: decimal("lastPurchasePrice", { precision: 20, scale: 6 }),
   },
 );
-
 export const costEvolutionObservations = pgTable(
   "costEvolutionObservations",
   {
@@ -146,3 +133,4 @@ export const costEvolutionObservations = pgTable(
     cost: decimal("cost", { precision: 20, scale: 6 }).notNull(),
   },
 );
+export * from './schema-costs';

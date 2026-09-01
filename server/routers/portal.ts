@@ -20,6 +20,8 @@ import {
   updateProfileNodePermission,
   updateUserNodePermission,
   updatePortalUser,
+  upsertObservacao,
+  listObservacoes,
 } from "../supabasePortal";
 import { registrationOperations, resolvedRegistrationPermissionsForUser, updateRegistrationPermission } from "../registrationAccess";
 import { getOneDriveImportsLink, getOneDriveSourceStatus } from "../onedriveSharedLink";
@@ -115,4 +117,21 @@ export const portalRouter = router({
     const identity = await administrator(ctx);
     return updateUserNodePermission(input, identity);
   }),
+  salvarObservacao: publicProcedure
+    .input(z.object({
+      codigo: z.string().trim().min(1).max(80),
+      filial: z.string().trim().min(1).max(20),
+      period: z.string().trim().min(6).max(6),
+      observacao: z.string().max(2000).nullable(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+      return upsertObservacao(input, identity);
+    }),
+  listarObservacoes: publicProcedure
+    .input(z.object({ period: z.string().trim().min(6).max(6) }))
+    .query(async ({ ctx, input }) => {
+      const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+      return listObservacoes(input.period, identity);
+    }),
 });

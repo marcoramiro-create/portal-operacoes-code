@@ -341,3 +341,27 @@ export async function reviewAccessRequest(input: { requestId: string; decision: 
   await database.query("update public.user_access_requests set status = $2, reviewed_by_user_id = $3, reviewed_at = now(), updated_at = now() where id = $1", [input.requestId, input.decision, actor.id]);
   return { success: true } as const;
 }
+export async function upsertObservacao(input: { codigo: string; filial: string; period: string; observacao: string | null }, actor: PortalIdentity) {
+  const database = getSupabasePool();
+  await database.query(
+    `insert into public.observacoes (codigo, filial, period, observacao, updated_at)
+     values ($1, $2, $3, $4, now())
+     on conflict (codigo, filial, period)
+     do update set observacao = excluded.observacao, updated_at = now()`,
+    [input.codigo, input.filial, input.period, input.observacao],
+  );
+  await database.query(
+    `insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details)
+     values ($1, 'observacao', $2, 'upserted', jsonb_build_object('codigo', $3::text, 'filial', $4::text, 'period', $5::text))`,
+    [actor.id, `${input.codigo}-${input.filial}-${input.period}`, input.codigo, input.filial, input.period],
+  );
+  return { success: true as const };
+}
+
+export async function listObservacoes(period: string, actor: PortalIdentity) {
+  const result = await getSupabasePool().query<{ codigo: string; filial: string; period: string; observacao: string | null }>(
+    `select codigo, filial, period, observacao from public.observacoes where period = $1`,
+    [period],
+  );
+  return result.rows;
+}
