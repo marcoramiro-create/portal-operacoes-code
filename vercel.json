@@ -1,12 +1,4 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "api/[[...path]].ts", "use": "@vercel/node" },
-    { "src": "dist/public/**", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/[[...path]].js" },
-    { "src": "/assets/(.*)", "dest": "/dist/public/assets/$1" },
-    { "src": "/(.*)", "dest": "/dist/public/index.html" }
-  ]
+  "installCommand": "npm install",
+  "buildCommand": "npm run build"
 }
