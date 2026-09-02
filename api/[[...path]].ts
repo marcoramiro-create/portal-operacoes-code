@@ -1,3 +1,2 @@
-import app from "../dist/lambda.js";
-
+import app from "../dist/index.js";
 export default app;
