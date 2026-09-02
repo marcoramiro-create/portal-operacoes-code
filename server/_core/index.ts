@@ -1,11 +1,11 @@
 import "dotenv/config";
 import express from "express";
+import path from "path";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
-import { serveStatic } from "./vite";
 
 const app = express();
 
@@ -26,8 +26,17 @@ app.use(
 );
 
 // Produção: serve os arquivos estáticos do portal
+// (sem importar vite/rollup — evita o crash no Vercel)
 if (process.env.NODE_ENV !== "development") {
-  serveStatic(app);
+  const distPublic = path.join(process.cwd(), "dist", "public");
+  app.use(express.static(distPublic));
+  // Fallback SPA: qualquer rota que não seja /api vai para o index.html
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api/")) {
+      return next();
+    }
+    res.sendFile(path.join(distPublic, "index.html"));
+  });
 }
 
 // Exporta o app para o handler api/[[...path]].ts (Vercel)
