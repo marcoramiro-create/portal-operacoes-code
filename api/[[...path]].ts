@@ -1,2 +1,2 @@
-import app from "../dist/index.js";
-export default app;
+//import app from "../dist/index.js";
+//export default app;
