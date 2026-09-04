@@ -71,11 +71,10 @@ export const costEvolutionRouter = router({
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCostEvolutionItems(input);
   }),
-  analise: publicProcedure.input(analiseFilters).query(async ({ ctx, input }) => {
+    analise: publicProcedure.input(analiseFilters).query(async ({ ctx, input }) => {
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCostEvolutionAnalise({
-      segment: input.segment,
       periodoInicio: input.periodoInicio,
       periodoFim: input.periodoFim,
       filial: input.filial,
