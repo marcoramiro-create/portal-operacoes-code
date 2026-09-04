@@ -71,13 +71,15 @@ export const costEvolutionRouter = router({
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCostEvolutionItems(input);
   }),
-    analise: publicProcedure.input(analiseFilters).query(async ({ ctx, input }) => {
+  analise: publicProcedure.input(analiseFilters).query(async ({ ctx, input }) => {
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCostEvolutionAnalise({
       periodoInicio: input.periodoInicio,
       periodoFim: input.periodoFim,
-      filial: input.filial,
+      // MUDANÇA: a Indústria usa SEMPRE a filial 0105 — forçado aqui no servidor
+      // para a análise nunca misturar unidades de autopeças (0301, 0303 etc.).
+      filial: input.segment === "industry" ? "0105" : (input.filial ?? undefined),
       codAgregado: input.codAgregado,
       descricao: input.descricao,
     });
