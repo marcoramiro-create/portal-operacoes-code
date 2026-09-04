@@ -7,21 +7,26 @@ import { BarChart3, CheckCircle2, Download, Filter, LoaderCircle, Search, Upload
 import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
+
 type Segment = "auto_parts" | "industry";
+
 const config = {
   auto_parts: { label: "Autopeças", importNode: "importacoes-custos-autopecas", description: "Peças das unidades de autopeças" },
   industry: { label: "Indústria", importNode: "importacoes-custos-industria", description: "Materiais e peças da indústria" },
 } as const;
+
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 4 });
 const dateOnly = (value: Date | string | null | undefined) => value ? new Date(value).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "—";
 const dateTime = (value: Date | string | null | undefined) => value ? new Date(value).toLocaleString("pt-BR") : "—";
 const monthLabel = (period: string) => period ? `${period.slice(4, 6)}/${period.slice(0, 4)}` : "—";
 const LINE_COLORS = ["#0f172a", "#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d", "#4f46e5", "#ea580c", "#0d9488"];
+
 function variationPct(current: number | null | undefined, previous: number | null | undefined) {
   if (current == null || previous == null || previous === 0) return null;
   return ((current - previous) * 100) / previous;
 }
+
 async function fileAsBase64(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
@@ -29,9 +34,11 @@ async function fileAsBase64(file: File) {
   for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...Array.from(bytes.subarray(index, index + chunk)));
   return btoa(binary);
 }
+
 function PageHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return <header className="mb-7"><p className="eyebrow">{eyebrow}</p><h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">{title}</h1><p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">{description}</p></header>;
 }
+
 export function CostEvolutionImport({ segment }: { segment: Segment }) {
   const details = config[segment];
   const [file, setFile] = useState<File | null>(null);
@@ -79,8 +86,10 @@ export function CostEvolutionImport({ segment }: { segment: Segment }) {
     </section>
   </div>;
 }
+
 type ItemRow = { codigo: string; descricao: string; filial: string; cod_agregado: string | null; meses: { period: string; custo_medio: number | null }[] };
 type SearchType = "contem" | "inicia" | "termina";
+
 // Mês sem preço (null OU 0) usa o valor do mês anterior (LOCF).
 // Antes do primeiro preço válido, fica null (gráfico mostra zerado).
 function buildSeries(item: ItemRow, periods: string[]) {
@@ -94,6 +103,7 @@ function buildSeries(item: ItemRow, periods: string[]) {
   }
   return series;
 }
+
 // Sugestão automática de ação (resposta padrão; evolui depois para IA real)
 function suggestAction(item: ItemRow, periods: string[]) {
   const values = buildSeries(item, periods).filter((v): v is number => v != null);
@@ -105,6 +115,7 @@ function suggestAction(item: ItemRow, periods: string[]) {
   if (v < -10) return `Redução de ${number.format(Math.abs(v))}% no período. Sugestão: manter fornecedor atual.`;
   return `Variação de ${number.format(v)}% no período. Sem ação imediata.`;
 }
+
 export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const details = config[segment];
   const [filial, setFilial] = useState("");
@@ -115,6 +126,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const [periodoFim, setPeriodoFim] = useState("");
   const [exporting, setExporting] = useState(false);
   const [applied, setApplied] = useState({ filial: "", codAgregado: "", descricao: "", searchType: "contem" as SearchType, periodoInicio: "", periodoFim: "" });
+  const [runAnalysis, setRunAnalysis] = useState(false);
   const periodos = trpc.costEvolution.periodos.useQuery({ segment }, { retry: false });
   const filiais = trpc.costEvolution.filiais.useQuery({ segment }, { retry: false });
   const agregados = trpc.costEvolution.codAgregados.useQuery({ segment }, { retry: false });
@@ -125,9 +137,10 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     filial: applied.filial || undefined,
     codAgregado: applied.codAgregado || undefined,
   }), [segment, applied]);
-  const analise = trpc.costEvolution.analise.useQuery(input, { retry: false });
+  const analise = trpc.costEvolution.analise.useQuery(input, { retry: false, enabled: runAnalysis });
   const applyFilters = () => {
     setApplied({ filial, codAgregado, descricao, searchType, periodoInicio, periodoFim });
+    setRunAnalysis(true);
     toast.success("Filtros aplicados.");
   };
   const items: ItemRow[] = useMemo(() => (analise.data?.items ?? []) as ItemRow[], [analise.data?.items]);
@@ -222,8 +235,9 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     a.click();
     URL.revokeObjectURL(url);
   };
-  const loading = periodos.isLoading || filiais.isLoading || agregados.isLoading || analise.isLoading;
+  const loading = periodos.isLoading || filiais.isLoading || agregados.isLoading;
   if (loading) return <div className="page-wrap"><div className="sc-surface flex items-center gap-3 p-6 text-sm font-semibold text-slate-600"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando evolução de custos…</div></div>;
+  const analyzing = runAnalysis && (analise.isLoading || analise.isFetching) && !analise.data;
   return <div className="page-wrap">
     <PageHeader eyebrow={`Suprimentos e estoques · ${details.label}`} title={`Evolução de custos de ${details.label.toLowerCase()}`} description={`Acompanhe a evolução mês a mês do custo médio de cada item. Exporte para Excel e veja sugestões de ação.`} />
     <section className="sc-surface p-5 sm:p-7">
@@ -235,16 +249,17 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
         <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Descrição<Input value={descricao} onChange={event => { setDescricao(event.target.value); }} onKeyDown={event => { if (event.key === "Enter") applyFilters(); }} placeholder="Buscar por descrição" /></label>
         <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Tipo de busca<select className="control" value={searchType} onChange={event => { setSearchType(event.target.value as SearchType); }}><option value="contem">Contém</option><option value="inicia">Inicia com</option><option value="termina">Termina com</option></select></label>
       </div>
-      <div className="mt-4 flex flex-wrap justify-end gap-2"><Button onClick={applyFilters} className="bg-slate-950 hover:bg-slate-800"><Filter className="mr-2 h-4 w-4" />Filtrar</Button><Button variant="outline" disabled={exporting} onClick={() => { setExporting(true); exportXlsx().finally(() => setExporting(false)); }}>{exporting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Exportar para Excel</Button></div>
+      <div className="mt-4 flex flex-wrap justify-end gap-2"><Button onClick={applyFilters} disabled={analise.isLoading} className="bg-slate-950 hover:bg-slate-800">{analise.isLoading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Filter className="mr-2 h-4 w-4" />}Filtrar</Button><Button variant="outline" disabled={exporting} onClick={() => { setExporting(true); exportXlsx().finally(() => setExporting(false)); }}>{exporting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Exportar para Excel</Button></div>
     </section>
     <section className="sticky top-0 z-10 mt-5 grid gap-4 bg-[#f2f4f5] py-3 md:grid-cols-3 xl:grid-cols-6">
-      {[["Custo total", money.format(0)], ["Variação vs mês anterior", cardData.varMedia == null ? "—" : `${cardData.varMedia > 0 ? "+" : ""}${number.format(cardData.varMedia)}%`], ["Itens com custo", cardData.comCusto.toLocaleString("pt-BR")], ["Itens com alta", cardData.alta.toLocaleString("pt-BR")], ["Itens com redução", cardData.reducao.toLocaleString("pt-BR")], ["Base de comparação", periods.length ? `${monthLabel(periods[0])} a ${monthLabel(periods[periods.length - 1])}` : "—"]].map(([label, value]) => <div key={label} className="sc-surface p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-500">{label}</p><p className="mt-2 text-lg font-extrabold tracking-tight text-slate-950">{value}</p></div>)}
+      {analyzing ? <div className="sc-surface col-span-full flex items-center gap-3 p-4 text-sm font-semibold text-slate-600"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando análise…</div> : [["Custo total", money.format(0)], ["Variação vs mês anterior", cardData.varMedia == null ? "—" : `${cardData.varMedia > 0 ? "+" : ""}${number.format(cardData.varMedia)}%`], ["Itens com custo", cardData.comCusto.toLocaleString("pt-BR")], ["Itens com alta", cardData.alta.toLocaleString("pt-BR")], ["Itens com redução", cardData.reducao.toLocaleString("pt-BR")], ["Base de comparação", periods.length ? `${monthLabel(periods[0])} a ${monthLabel(periods[periods.length - 1])}` : "—"]].map(([label, value]) => <div key={label} className="sc-surface p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-500">{label}</p><p className="mt-2 text-lg font-extrabold tracking-tight text-slate-950">{value}</p></div>)}
     </section>
-    {chartData.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">{applied.codAgregado ? `Evolução do agregado ${applied.codAgregado}` : "Evolução de custos por item"}</h2><p className="mt-1 text-xs font-semibold text-slate-500">Uma linha por item. Meses sem preço usam o valor do mês anterior.</p></div></div><div className="mt-6 h-80"><ResponsiveContainer width="100%" height="100%"><LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="period" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={value => number.format(Number(value))} /><Tooltip formatter={value => money.format(Number(value))} />{filteredItems.map((item, idx) => <Line key={item.codigo} type="monotone" dataKey={item.codigo} name={`${item.codigo} · ${item.descricao}`} stroke={LINE_COLORS[idx % LINE_COLORS.length]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />)}</LineChart></ResponsiveContainer></div></section>}
+    {runAnalysis && !analise.isLoading && !applied.codAgregado && filteredItems.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">Gráfico de evolução</h2><p className="mt-1 text-xs font-semibold text-slate-500">Selecione um <strong>Item agregado</strong> e clique em <strong>Filtrar</strong> para exibir o gráfico de evolução de custos. Sem filtro de agregado, o gráfico fica oculto para manter a página rápida — os dados completos estão na tabela abaixo.</p></div></div></section>}
+    {applied.codAgregado && chartData.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">Evolução do agregado {applied.codAgregado}</h2><p className="mt-1 text-xs font-semibold text-slate-500">Uma linha por item. Meses sem preço usam o valor do mês anterior.</p></div></div><div className="mt-6 h-80"><ResponsiveContainer width="100%" height="100%"><LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="period" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={value => number.format(Number(value))} /><Tooltip formatter={value => money.format(Number(value))} />{filteredItems.map((item, idx) => <Line key={item.codigo} type="monotone" dataKey={item.codigo} name={`${item.codigo} · ${item.descricao}`} stroke={LINE_COLORS[idx % LINE_COLORS.length]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />)}</LineChart></ResponsiveContainer></div></section>}
     <section className="sc-surface mt-5 overflow-hidden">
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 sm:px-7"><div><h2 className="text-lg font-extrabold text-slate-950">Evolução mês a mês por item</h2><p className="mt-1 text-sm font-medium text-slate-500">{filteredItems.length.toLocaleString("pt-BR")} itens · meses sem preço usam o valor do mês anterior</p></div></div>
+      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 sm:px-7"><div><h2 className="text-lg font-extrabold text-slate-950">Evolução mês a mês por item</h2><p className="mt-1 text-sm font-medium text-slate-500">{runAnalysis ? `${filteredItems.length.toLocaleString("pt-BR")} itens · meses sem preço usam o valor do mês anterior` : "Defina os filtros acima e clique em Filtrar para carregar a análise."}</p></div></div>
       <div className="overflow-x-auto">
-        <Table><TableHeader><TableRow><TableHead>Filial</TableHead><TableHead>Código</TableHead><TableHead>Descrição</TableHead>{periods.map((p, i) => <TableHead key={p}>{monthLabel(p)}{i < periods.length - 1 && <span className="block text-[10px] font-semibold text-slate-400">var → {monthLabel(periods[i + 1])}</span>}</TableHead>)}<TableHead>Sugestão de ação</TableHead></TableRow></TableHeader><TableBody>{filteredItems.length ? filteredItems.map(item => { const series = buildSeries(item, periods); return <TableRow key={`${item.codigo}-${item.filial}`}><TableCell>{item.filial}</TableCell><TableCell className="font-bold text-slate-950">{item.codigo}</TableCell><TableCell className="max-w-xs">{item.descricao}</TableCell>{periods.map((p, i) => { const val = series[i]; const v = variationPct(series[i + 1], series[i]); return <TableCell key={p}><p className="whitespace-nowrap">{val == null ? "—" : money.format(val)}</p>{i < periods.length - 1 && <p className={`whitespace-nowrap text-xs font-semibold ${v == null ? "text-slate-400" : v > 0 ? "text-rose-700" : v < 0 ? "text-emerald-700" : "text-slate-600"}`}>{v == null ? "—" : `${v > 0 ? "+" : ""}${number.format(v)}%`}</p>}</TableCell>; })}<TableCell className="max-w-xs text-xs font-medium text-slate-600">{suggestAction(item, periods)}</TableCell></TableRow>; }) : <TableRow><TableCell colSpan={4 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500">Nenhum item encontrado para os filtros.</TableCell></TableRow>}</TableBody></Table>
+        <Table><TableHeader><TableRow><TableHead>Filial</TableHead><TableHead>Código</TableHead><TableHead>Descrição</TableHead>{periods.map((p, i) => <TableHead key={p}>{monthLabel(p)}{i < periods.length - 1 && <span className="block text-[10px] font-semibold text-slate-400">var → {monthLabel(periods[i + 1])}</span>}</TableHead>)}<TableHead>Sugestão de ação</TableHead></TableRow></TableHeader><TableBody>{!runAnalysis ? <TableRow><TableCell colSpan={4 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500">Defina os filtros acima e clique em <strong>Filtrar</strong> para carregar a análise de custos.</TableCell></TableRow> : analise.isLoading && !filteredItems.length ? <TableRow><TableCell colSpan={4 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500"><LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />Carregando análise…</TableCell></TableRow> : filteredItems.length ? filteredItems.map(item => { const series = buildSeries(item, periods); return <TableRow key={`${item.codigo}-${item.filial}`}><TableCell>{item.filial}</TableCell><TableCell className="font-bold text-slate-950">{item.codigo}</TableCell><TableCell className="max-w-xs">{item.descricao}</TableCell>{periods.map((p, i) => { const val = series[i]; const v = variationPct(series[i + 1], series[i]); return <TableCell key={p}><p className="whitespace-nowrap">{val == null ? "—" : money.format(val)}</p>{i < periods.length - 1 && <p className={`whitespace-nowrap text-xs font-semibold ${v == null ? "text-slate-400" : v > 0 ? "text-rose-700" : v < 0 ? "text-emerald-700" : "text-slate-600"}`}>{v == null ? "—" : `${v > 0 ? "+" : ""}${number.format(v)}%`}</p>}</TableCell>; })}<TableCell className="max-w-xs text-xs font-medium text-slate-600">{suggestAction(item, periods)}</TableCell></TableRow>; }) : <TableRow><TableCell colSpan={4 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500">Nenhum item encontrado para os filtros.</TableCell></TableRow>}</TableBody></Table>
       </div>
     </section>
   </div>;
