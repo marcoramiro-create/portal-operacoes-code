@@ -1,4 +1,4 @@
-import { LogOut, PackageCheck, PanelLeft, Home, ShoppingCart, FileText, TrendingUp, Boxes, Wrench, Users, ShieldCheck, Building2, MapPin, Package, Truck, ClipboardList, Warehouse, Settings } from "lucide-react";
+import { LogOut, PackageCheck, PanelLeft, Home, ShoppingCart, FileText, TrendingUp, Boxes, Wrench, Users, ShieldCheck, Building2, MapPin, Package, Truck, ClipboardList, Warehouse, Settings, UploadCloud } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -39,6 +39,28 @@ const MENU: MenuSection[] = [
     items: [
       { label: "Custos Auto Peças", path: "/custos/autopecas", icon: TrendingUp },
       { label: "Custos Indústria", path: "/custos/industria", icon: TrendingUp },
+    ],
+  },
+  {
+    title: "Importações",
+    items: [
+      { label: "Custos Auto Peças", path: "/importacoes/custos-autopecas", icon: UploadCloud },
+      { label: "Custos Indústria", path: "/importacoes/custos-industria", icon: UploadCloud },
+      { label: "Compras (Protheus)", path: "/importacoes/compras-protheus", icon: UploadCloud },
+      { label: "Funcionários", path: "/importacoes/funcionarios", icon: UploadCloud },
+      { label: "Fornecedores", path: "/importacoes/fornecedores", icon: UploadCloud },
+      { label: "Produtos", path: "/importacoes/produtos", icon: UploadCloud },
+      { label: "Empresas", path: "/importacoes/empresas", icon: UploadCloud },
+      { label: "Filiais", path: "/importacoes/filiais", icon: UploadCloud },
+      { label: "Armazéns", path: "/importacoes/armazens", icon: UploadCloud },
+      { label: "Locais de Estoque", path: "/importacoes/locais-estoque", icon: UploadCloud },
+      { label: "Unidades", path: "/importacoes/unidades", icon: UploadCloud },
+      { label: "Centros de Custo", path: "/importacoes/centros-custo", icon: UploadCloud },
+      { label: "Tipos de Produto", path: "/importacoes/tipos-produto", icon: UploadCloud },
+      { label: "Usuários", path: "/importacoes/usuarios", icon: UploadCloud },
+      { label: "Empilhadeiras", path: "/importacoes/ativos-empilhadeiras", icon: UploadCloud },
+      { label: "Equipamentos Indústria", path: "/importacoes/ativos-equipamentos-industria", icon: UploadCloud },
+      { label: "Ferramentas", path: "/importacoes/ativos-ferramentas", icon: UploadCloud },
     ],
   },
   {
