@@ -90,6 +90,11 @@ export function CostEvolutionImport({ segment }: { segment: Segment }) {
 type ItemRow = { codigo: string; descricao: string; filial: string; cod_agregado: string | null; meses: { period: string; custo_medio: number | null }[] };
 type SearchType = "contem" | "inicia" | "termina";
 
+const FILIAL_UNICA_INDUSTRY = "0105";
+
+// Identidade única de cada linha do gráfico: filial + código (mesmo item em filiais diferentes vira linhas separadas)
+const itemChartKey = (item: ItemRow) => `${item.filial ?? ""}|${item.codigo}`;
+
 // Mês sem preço (null OU 0) usa o valor do mês anterior (LOCF).
 // Antes do primeiro preço válido, fica null (gráfico mostra zerado).
 function buildSeries(item: ItemRow, periods: string[]) {
@@ -118,6 +123,7 @@ function suggestAction(item: ItemRow, periods: string[]) {
 
 export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const details = config[segment];
+  const isIndustry = segment === "industry";
   const [filial, setFilial] = useState("");
   const [codAgregado, setCodAgregado] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -128,18 +134,18 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const [applied, setApplied] = useState({ filial: "", codAgregado: "", descricao: "", searchType: "contem" as SearchType, periodoInicio: "", periodoFim: "" });
   const [runAnalysis, setRunAnalysis] = useState(false);
   const periodos = trpc.costEvolution.periodos.useQuery({ segment }, { retry: false });
-  const filiais = trpc.costEvolution.filiais.useQuery({ segment }, { retry: false });
+  const filiais = trpc.costEvolution.filiais.useQuery({ segment }, { retry: false, enabled: !isIndustry });
   const agregados = trpc.costEvolution.codAgregados.useQuery({ segment }, { retry: false });
   const input = useMemo(() => ({
     segment,
     periodoInicio: applied.periodoInicio || undefined,
     periodoFim: applied.periodoFim || undefined,
-    filial: applied.filial || undefined,
+    filial: (isIndustry ? FILIAL_UNICA_INDUSTRY : applied.filial) || undefined,
     codAgregado: applied.codAgregado || undefined,
-  }), [segment, applied]);
+  }), [segment, isIndustry, applied]);
   const analise = trpc.costEvolution.analise.useQuery(input, { retry: false, enabled: runAnalysis });
   const applyFilters = () => {
-    setApplied({ filial, codAgregado, descricao, searchType, periodoInicio, periodoFim });
+    setApplied({ filial: isIndustry ? FILIAL_UNICA_INDUSTRY : filial, codAgregado, descricao, searchType, periodoInicio, periodoFim });
     setRunAnalysis(true);
     toast.success("Filtros aplicados.");
   };
@@ -176,7 +182,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
       filteredItems.forEach(item => {
         const series = buildSeries(item, periods);
         const idx = periods.indexOf(p);
-        point[item.codigo] = series[idx] ?? 0;
+        point[itemChartKey(item)] = series[idx] ?? 0;
       });
       return point;
     });
@@ -235,16 +241,17 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     a.click();
     URL.revokeObjectURL(url);
   };
-  const loading = periodos.isLoading || filiais.isLoading || agregados.isLoading;
+  const loading = periodos.isLoading || agregados.isLoading || (!isIndustry && filiais.isLoading);
   if (loading) return <div className="page-wrap"><div className="sc-surface flex items-center gap-3 p-6 text-sm font-semibold text-slate-600"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando evolução de custos…</div></div>;
   const analyzing = runAnalysis && (analise.isLoading || analise.isFetching) && !analise.data;
   return <div className="page-wrap">
     <PageHeader eyebrow={`Suprimentos e estoques · ${details.label}`} title={`Evolução de custos de ${details.label.toLowerCase()}`} description={`Acompanhe a evolução mês a mês do custo médio de cada item. Exporte para Excel e veja sugestões de ação.`} />
     <section className="sc-surface p-5 sm:p-7">
+      {isIndustry && <div className="mb-4 rounded-xl bg-sky-50 px-4 py-3 text-xs font-semibold text-sky-800">Segmento <strong>Indústria</strong>: a análise usa sempre a filial única <strong>0105</strong> — o filtro de filial não se aplica e já fica definido automaticamente.</div>}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Período inicial<select className="control" value={periodoInicio} onChange={event => { setPeriodoInicio(event.target.value); }}><option value="">Mais recente</option>{(periodos.data ?? []).map((p: { period: string }) => <option key={p.period} value={p.period}>{monthLabel(p.period)}</option>)}</select></label>
         <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Período final<select className="control" value={periodoFim} onChange={event => { setPeriodoFim(event.target.value); }}><option value="">Mais recente</option>{(periodos.data ?? []).map((p: { period: string }) => <option key={p.period} value={p.period}>{monthLabel(p.period)}</option>)}</select></label>
-        <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Filial<select className="control" value={filial} onChange={event => { setFilial(event.target.value); }}><option value="">Todas</option>{(filiais.data ?? []).map((f: { filial: string }) => <option key={f.filial} value={f.filial}>{f.filial}</option>)}</select></label>
+        {isIndustry ? <div className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Filial<div className="control flex items-center justify-between"><span className="font-extrabold text-slate-950">{FILIAL_UNICA_INDUSTRY}</span><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-emerald-700">única</span></div></div> : <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Filial<select className="control" value={filial} onChange={event => { setFilial(event.target.value); }}><option value="">Todas</option>{(filiais.data ?? []).map((f: { filial: string }) => <option key={f.filial} value={f.filial}>{f.filial}</option>)}</select></label>}
         <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Item agregado<select className="control" value={codAgregado} onChange={event => { setCodAgregado(event.target.value); }}><option value="">Todos</option>{(agregados.data ?? []).map((a: { cod_agregado: string }) => <option key={a.cod_agregado} value={a.cod_agregado}>{a.cod_agregado}</option>)}</select></label>
         <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Descrição<Input value={descricao} onChange={event => { setDescricao(event.target.value); }} onKeyDown={event => { if (event.key === "Enter") applyFilters(); }} placeholder="Buscar por descrição" /></label>
         <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Tipo de busca<select className="control" value={searchType} onChange={event => { setSearchType(event.target.value as SearchType); }}><option value="contem">Contém</option><option value="inicia">Inicia com</option><option value="termina">Termina com</option></select></label>
@@ -255,7 +262,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
       {analyzing ? <div className="sc-surface col-span-full flex items-center gap-3 p-4 text-sm font-semibold text-slate-600"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando análise…</div> : [["Custo total", money.format(0)], ["Variação vs mês anterior", cardData.varMedia == null ? "—" : `${cardData.varMedia > 0 ? "+" : ""}${number.format(cardData.varMedia)}%`], ["Itens com custo", cardData.comCusto.toLocaleString("pt-BR")], ["Itens com alta", cardData.alta.toLocaleString("pt-BR")], ["Itens com redução", cardData.reducao.toLocaleString("pt-BR")], ["Base de comparação", periods.length ? `${monthLabel(periods[0])} a ${monthLabel(periods[periods.length - 1])}` : "—"]].map(([label, value]) => <div key={label} className="sc-surface p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-500">{label}</p><p className="mt-2 text-lg font-extrabold tracking-tight text-slate-950">{value}</p></div>)}
     </section>
     {runAnalysis && !analise.isLoading && !applied.codAgregado && filteredItems.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">Gráfico de evolução</h2><p className="mt-1 text-xs font-semibold text-slate-500">Selecione um <strong>Item agregado</strong> e clique em <strong>Filtrar</strong> para exibir o gráfico de evolução de custos. Sem filtro de agregado, o gráfico fica oculto para manter a página rápida — os dados completos estão na tabela abaixo.</p></div></div></section>}
-    {applied.codAgregado && chartData.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">Evolução do agregado {applied.codAgregado}</h2><p className="mt-1 text-xs font-semibold text-slate-500">Uma linha por item. Meses sem preço usam o valor do mês anterior.</p></div></div><div className="mt-6 h-80"><ResponsiveContainer width="100%" height="100%"><LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="period" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={value => number.format(Number(value))} /><Tooltip formatter={value => money.format(Number(value))} />{filteredItems.map((item, idx) => <Line key={item.codigo} type="monotone" dataKey={item.codigo} name={`${item.codigo} · ${item.descricao}`} stroke={LINE_COLORS[idx % LINE_COLORS.length]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />)}</LineChart></ResponsiveContainer></div></section>}
+    {applied.codAgregado && chartData.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">Evolução do agregado {applied.codAgregado}</h2><p className="mt-1 text-xs font-semibold text-slate-500">Uma linha por item{isIndustry ? "" : " e por filial"}. Meses sem preço usam o valor do mês anterior.</p></div></div><div className="mt-6 h-80"><ResponsiveContainer width="100%" height="100%"><LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="period" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={value => number.format(Number(value))} /><Tooltip formatter={value => money.format(Number(value))} />{filteredItems.map((item, idx) => <Line key={itemChartKey(item)} type="monotone" dataKey={itemChartKey(item)} name={`${item.codigo} · ${item.descricao}${item.filial && !isIndustry ? ` · Filial ${item.filial}` : ""}`} stroke={LINE_COLORS[idx % LINE_COLORS.length]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />)}</LineChart></ResponsiveContainer></div></section>}
     <section className="sc-surface mt-5 overflow-hidden">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 sm:px-7"><div><h2 className="text-lg font-extrabold text-slate-950">Evolução mês a mês por item</h2><p className="mt-1 text-sm font-medium text-slate-500">{runAnalysis ? `${filteredItems.length.toLocaleString("pt-BR")} itens · meses sem preço usam o valor do mês anterior` : "Defina os filtros acima e clique em Filtrar para carregar a análise."}</p></div></div>
       <div className="overflow-x-auto">
