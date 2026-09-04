@@ -6,8 +6,13 @@
 // ============================================================
 import { getSupabasePool } from "./supabasePortal";
 
-// Retorna a evolução mês a mês de cada item (matriz item x mês)
+// A função SQL get_cost_evolution não recebe o segmento e pode devolver
+// itens de autopeças e indústria juntos. A indústria tem filial única 0105:
+// quando o segmento for "industry", filtramos os itens por essa filial.
+const INDUSTRY_BRANCH = "0105";
+
 export async function getCostEvolutionAnalise(params: {
+  segment?: "auto_parts" | "industry";
   periodoInicio?: string;
   periodoFim?: string;
   filial?: string;
@@ -25,7 +30,13 @@ export async function getCostEvolutionAnalise(params: {
       params.descricao ?? null,
     ],
   );
-  return rows[0]?.result ?? { periodos: [], items: [] };
+  const result = rows[0]?.result ?? { periodos: [], items: [] };
+  if (params.segment === "industry" && Array.isArray(result.items)) {
+    result.items = result.items.filter(
+      (item: { filial?: string | null }) => String(item?.filial ?? "").trim() === INDUSTRY_BRANCH,
+    );
+  }
+  return result;
 }
 
 // Retorna a lista de filiais (para o dropdown)
