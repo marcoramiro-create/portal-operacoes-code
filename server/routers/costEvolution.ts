@@ -75,6 +75,7 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCostEvolutionAnalise({
+      segment: input.segment,
       periodoInicio: input.periodoInicio,
       periodoFim: input.periodoFim,
       filial: input.filial,
