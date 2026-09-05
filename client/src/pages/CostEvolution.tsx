@@ -183,7 +183,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
       return point;
     });
   }, [periods, filteredItems]);
-  const exportXlsx = async () => {
+    const exportXlsx = async () => {
     if (!filteredItems.length) { toast.error("Não há itens para exportar."); return; }
     const mod = await import("exceljs") as any;
     const ExcelJS = mod.default ?? mod;
@@ -204,6 +204,8 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
         row.push(val == null ? "" : Number(val.toFixed(4)));
         if (i < periods.length - 1) {
           const v = variationPct(series[i + 1], series[i]);
+          // Percentual com 4 casas: divide por 100 porque a coluna usa formato de %,
+          // e o Excel multiplica o número por 100 ao exibir com esse formato.
           row.push(v == null ? "" : Number((v / 100).toFixed(4)));
         }
       });
@@ -224,7 +226,8 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     const lastMonthCol = firstMonthCol + periods.length * 2 - 2;
     for (let c = firstMonthCol; c <= lastMonthCol; c++) {
       const isValue = (c - firstMonthCol) % 2 === 0;
-      sheet.getColumn(c).numFmt = isValue ? "#,##0.0000" : "+0.00%;-0.00%;0.00%";
+      // MUDANÇA: percentual exibido com 4 casas decimais.
+      sheet.getColumn(c).numFmt = isValue ? "#,##0.0000" : "+0.0000%;-0.0000%;0.0000%";
     }
     const lastColLetter = sheet.getColumn(header.length).letter;
     sheet.autoFilter = `A1:${lastColLetter}1`;
@@ -233,7 +236,12 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `evolucao-custos-${applied.periodoInicio || "inicio"}-${applied.periodoFim || "fim"}.xlsx`;
+    // MUDANÇA: nome do arquivo com segmento + data invertida (ano até minuto).
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}`;
+    const seg = segment === "industry" ? "industria" : "autopecas";
+    a.download = `evolucao-custos-${seg}-${applied.periodoInicio || "inicio"}-${applied.periodoFim || "fim"}-${stamp}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   };
