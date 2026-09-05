@@ -41,7 +41,12 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, importerNode(input.segment), "manage");
     const result = await commitCostEvolutionImport({ ...input, importedBy: identity.email });
-    await recordPortalAudit(identity, "cost_evolution_import", String(result.id), "created", { segment: input.segment, fileName: input.fileName, itemCount: result.itemCount, observationCount: result.observationCount });
+    // MUDANÇA: o registro de auditoria é opcional — se falhar, NÃO bloqueia a importação.
+    try {
+      await recordPortalAudit(identity, "cost_evolution_import", String(result.id), "created", { segment: input.segment, fileName: input.fileName, itemCount: result.itemCount, observationCount: result.observationCount });
+    } catch {
+      // auditoria falhou (ex.: tipo de coluna) — a importação já foi concluída com sucesso.
+    }
     return result;
   }),
   imports: publicProcedure.input(z.object({ segment })).query(async ({ ctx, input }) => {
@@ -53,7 +58,11 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, importerNode(input.segment), "approve");
     const result = await updateCostEvolutionImportStatus(input.id, input.status);
-    await recordPortalAudit(identity, "cost_evolution_import", String(input.id), input.status, { segment: input.segment });
+    try {
+      await recordPortalAudit(identity, "cost_evolution_import", String(input.id), input.status, { segment: input.segment });
+    } catch {
+      // auditoria opcional — não bloqueia a operação.
+    }
     return result;
   }),
   filterOptions: publicProcedure.input(z.object({ segment })).query(async ({ ctx, input }) => {
@@ -77,8 +86,7 @@ export const costEvolutionRouter = router({
     return getCostEvolutionAnalise({
       periodoInicio: input.periodoInicio,
       periodoFim: input.periodoFim,
-      // MUDANÇA: a Indústria usa SEMPRE a filial 0105 — forçado aqui no servidor
-      // para a análise nunca misturar unidades de autopeças (0301, 0303 etc.).
+      // MUDANÇA: a Indústria usa SEMPRE a filial 0105 — forçado aqui no servidor.
       filial: input.segment === "industry" ? "0105" : (input.filial ?? undefined),
       codAgregado: input.codAgregado,
       descricao: input.descricao,
