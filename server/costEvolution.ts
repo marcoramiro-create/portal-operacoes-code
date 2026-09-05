@@ -1,186 +1,379 @@
-import * as XLSX from "xlsx";
+import { and, asc, desc, eq, like, or, sql } from "drizzle-orm";
+import { costEvolutionImports, costEvolutionItems, costEvolutionObservations } from "../drizzle/schema";
+import { getDb } from "./db";
+import { parseCostEvolutionWorkbook, type CostEvolutionSegment } from "./costEvolution";
+import { storagePut } from "./storage";
 
-export type CostEvolutionSegment = "auto_parts" | "industry";
-
-export type CostEvolutionObservation = {
-  balanceDate: string;
-  cost: number;
-};
-
-export type CostEvolutionRow = {
-  sourceRow: number;
-  branch: string;
-  aggregateCode: string;
-  code: string;
-  mrp: "Sim" | "Não";
-  description: string;
-  buyer: string;
-  lastPurchaseDate: string | null;
-  lastPurchasePrice: number | null;
-  observations: CostEvolutionObservation[];
-};
-
-export type CostEvolutionIssue = {
-  row: number;
-  field: string;
-  message: string;
-};
-
-export type CostEvolutionPreview = {
-  fileName: string;
+export type CostEvolutionFilters = {
   segment: CostEvolutionSegment;
-  periodStart: string;
-  periodEnd: string;
-  dateColumns: string[];
-  itemCount: number;
-  observationCount: number;
-  ignoredRowCount: number;
-  normalizedTextCellCount: number;
-  issues: CostEvolutionIssue[];
-  sample: CostEvolutionRow[];
+  branch?: string;
+  mrp?: "Sim" | "Não";
+  buyer?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
 };
 
-type ParsedWorkbook = CostEvolutionPreview & { rows: CostEvolutionRow[] };
+type CostRecordRow = {
+  sheetType: "pecas" | "industria";
+  filial: string;
+  codAgregado: string;
+  codigo: string;
+  entraMrp: boolean;
+  descricao: string;
+  compradorCodigo: string | null;
+  compradorNome: string | null;
+  ultimaCompra: string | null;
+  ultimoPreco: number | null;
+  period: string;
+  custoMedio: number;
+  sourceFile: string;
+  importedAt: Date;
+};
 
-const REQUIRED_HEADERS = ["FILIAL", "COD AGREGADO", "CODIGO", "ENTRA MRP", "DESCRIÇÃO", "COMPRADOR", "ULT.COMPRA", "ULT.PRECO"] as const;
+const asNumber = (value: unknown) => (value === null || value === undefined ? null : Number(value));
 
-export function normalizeRmBisText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  return String(value).replace(/\s+/g, " ").trim();
+const asBusinessDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
+
+function splitBuyerCodeName(buyer: string): { code: string | null; name: string | null } {
+  const normalized = (buyer || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return { code: null, name: null };
+  const match = /^(\d+)\s*[-–—]?\s*(.*)$/.exec(normalized);
+  if (match) return { code: match[1], name: (match[2] || "").trim() || null };
+  return { code: null, name: normalized };
 }
 
-function normalizeHeader(value: unknown) {
-  return normalizeRmBisText(value).toUpperCase();
+function toCostRecordPeriod(balanceDate: string): string {
+  return balanceDate.slice(0, 7).replace("-", "");
 }
 
-function parseDateHeader(value: unknown): string | null {
-  const normalized = normalizeRmBisText(value).replace(/\D/g, "");
-  if (!/^\d{8}$/.test(normalized)) return null;
-  const year = Number(normalized.slice(0, 4));
-  const month = Number(normalized.slice(4, 6));
-  const day = Number(normalized.slice(6, 8));
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
-  return `${normalized.slice(0, 4)}-${normalized.slice(4, 6)}-${normalized.slice(6, 8)}`;
+function toCostRecordPurchaseDate(isoDate: string): string {
+  return isoDate.slice(0, 10).replace(/-/g, "");
 }
 
-function parseLastPurchaseDate(value: unknown): string | null {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
-  return parseDateHeader(value);
+async function latestApprovedImport(segment: CostEvolutionSegment) {
+  const db = await getDb();
+  if (!db) return undefined;
+  return (
+    await db
+      .select()
+      .from(costEvolutionImports)
+      .where(and(eq(costEvolutionImports.segment, segment), eq(costEvolutionImports.status, "approved")))
+      .orderBy(desc(costEvolutionImports.importedAt), desc(costEvolutionImports.id))
+      .limit(1)
+  )[0];
 }
 
-function parseNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === "") return null;
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const normalized = normalizeRmBisText(value);
-  if (!normalized) return null;
-  const candidate = normalized.includes(",") && !normalized.includes(".") ? normalized.replace(",", ".") : normalized;
-  const number = Number(candidate);
-  return Number.isFinite(number) ? number : null;
-}
+export async function commitCostEvolutionImport(input: {
+  fileName: string;
+  contentBase64: string;
+  segment: CostEvolutionSegment;
+  importedBy: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
 
-function normalizeMrp(value: unknown): "Sim" | "Não" | null {
-  const normalized = normalizeHeader(value);
-  if (["S", "SIM", "YES", "Y"].includes(normalized)) return "Sim";
-  if (["N", "NÃO", "NAO", "NO"].includes(normalized)) return "Não";
-  return null;
-}
+  const buffer = Buffer.from(input.contentBase64, "base64");
+  const parsed = parseCostEvolutionWorkbook(input.fileName, buffer, input.segment);
+  if (parsed.issues.length) throw new Error(`A planilha contém ${parsed.issues.length} erro(s) de validação. Revise a prévia antes de confirmar.`);
+  if (!parsed.rows.length) throw new Error("A planilha não contém itens válidos para importação.");
 
-function countChangedText(values: unknown[]) {
-  return values.reduce<number>((count, value) => {
-    if (typeof value !== "string") return count;
-    return count + (normalizeRmBisText(value) === value ? 0 : 1);
-  }, 0);
-}
+  const safeFileName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const stored = await storagePut(
+    `cost-evolution/${input.segment}/${Date.now()}-${safeFileName}`,
+    buffer,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
 
-export function parseCostEvolutionWorkbook(fileName: string, buffer: Buffer, segment: CostEvolutionSegment): ParsedWorkbook {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true, dense: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) throw new Error("A planilha não contém nenhuma aba.");
-  const worksheet = workbook.Sheets[sheetName];
-  const matrix = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, raw: true, defval: null, blankrows: false });
-  const headerIndex = matrix.findIndex(row => normalizeHeader(row[0]) === "FILIAL");
-  if (headerIndex < 0) throw new Error("Não foi encontrada a linha de cabeçalho iniciada por FILIAL.");
+  return db.transaction(async (tx) => {
+    await tx.insert(costEvolutionImports).values({
+      segment: input.segment,
+      fileName: input.fileName,
+      fileKey: stored.key,
+      status: "pending",
+      itemCount: parsed.itemCount,
+      observationCount: parsed.observationCount,
+      periodStart: asBusinessDate(parsed.periodStart),
+      periodEnd: asBusinessDate(parsed.periodEnd),
+      importedBy: input.importedBy,
+    });
 
-  const headerRow = matrix[headerIndex] ?? [];
-  const headers = headerRow.map(normalizeHeader);
-  const headerIndexes = new Map<string, number>();
-  headers.forEach((header, index) => { if (header && !headerIndexes.has(header)) headerIndexes.set(header, index); });
-  const missing = REQUIRED_HEADERS.filter(header => !headerIndexes.has(header));
-  if (missing.length) throw new Error(`Cabeçalhos obrigatórios ausentes: ${missing.join(", ")}.`);
+    const created = (
+      await tx.select().from(costEvolutionImports).where(eq(costEvolutionImports.fileKey, stored.key)).limit(1)
+    )[0];
+    if (!created) throw new Error("Não foi possível registrar a versão de custos.");
 
-  const dateColumns = headerRow
-    .map((value, index) => ({ index, date: parseDateHeader(value) }))
-    .filter((item): item is { index: number; date: string } => Boolean(item.date));
-  const uniqueDateColumns = dateColumns.filter((item, index, all) => all.findIndex(candidate => candidate.date === item.date) === index);
-  if (!uniqueDateColumns.length) throw new Error("Nenhuma coluna mensal no formato aaaaMMdd foi encontrada.");
-
-  const issues: CostEvolutionIssue[] = [];
-  const rows: CostEvolutionRow[] = [];
-  let ignoredRowCount = 0;
-  let normalizedTextCellCount = 0;
-  const businessKeys = new Set<string>();
-
-  for (let index = headerIndex + 1; index < matrix.length; index += 1) {
-    const source = matrix[index] ?? [];
-    const sourceRow = index + 1;
-    normalizedTextCellCount += countChangedText(source);
-    const branch = normalizeRmBisText(source[headerIndexes.get("FILIAL")!]);
-    if (!branch || normalizeHeader(branch) === "TOTAL GERAL") {
-      ignoredRowCount += 1;
-      continue;
+    for (let start = 0; start < parsed.rows.length; start += 500) {
+      await tx.insert(costEvolutionItems).values(
+        parsed.rows.slice(start, start + 500).map((row) => ({
+          importId: created.id,
+          branch: row.branch,
+          aggregateCode: row.aggregateCode,
+          code: row.code,
+          mrp: row.mrp,
+          description: row.description,
+          buyer: row.buyer,
+          lastPurchaseDate: row.lastPurchaseDate ? asBusinessDate(row.lastPurchaseDate) : null,
+          lastPurchasePrice: row.lastPurchasePrice === null ? null : row.lastPurchasePrice.toFixed(6),
+        })),
+      );
     }
-    const aggregateCode = normalizeRmBisText(source[headerIndexes.get("COD AGREGADO")!]);
-    const code = normalizeRmBisText(source[headerIndexes.get("CODIGO")!]);
-    const description = normalizeRmBisText(source[headerIndexes.get("DESCRIÇÃO")!]);
-    const buyer = normalizeRmBisText(source[headerIndexes.get("COMPRADOR")!]);
-    const mrp = normalizeMrp(source[headerIndexes.get("ENTRA MRP")!]);
-    let valid = true;
-    if (!aggregateCode) { issues.push({ row: sourceRow, field: "COD AGREGADO", message: "Código agregado obrigatório." }); valid = false; }
-    if (!code) { issues.push({ row: sourceRow, field: "CODIGO", message: "Código obrigatório." }); valid = false; }
-    if (!description) { issues.push({ row: sourceRow, field: "DESCRIÇÃO", message: "Descrição obrigatória." }); valid = false; }
-    if (!mrp) { issues.push({ row: sourceRow, field: "ENTRA MRP", message: "Use S/Sim ou N/Não." }); valid = false; }
-    const key = `${branch}\u0000${aggregateCode}\u0000${code}`;
-    if (businessKeys.has(key)) { issues.push({ row: sourceRow, field: "CODIGO", message: "Chave FILIAL + COD AGREGADO + CODIGO duplicada." }); valid = false; }
-    if (!valid || !mrp) continue;
-    businessKeys.add(key);
-    const observations = uniqueDateColumns.flatMap(column => {
-      const cost = parseNumber(source[column.index]);
-      return cost === null ? [] : [{ balanceDate: column.date, cost }];
-    });
-    rows.push({
-      sourceRow,
-      branch,
-      aggregateCode,
-      code,
-      mrp,
-      description,
-      buyer,
-      lastPurchaseDate: parseLastPurchaseDate(source[headerIndexes.get("ULT.COMPRA")!]),
-      lastPurchasePrice: parseNumber(source[headerIndexes.get("ULT.PRECO")!]),
-      observations,
-    });
-  }
 
-  const dates = uniqueDateColumns.map(item => item.date).sort();
-  const observationCount = rows.reduce((sum, row) => sum + row.observations.length, 0);
+    const savedItems = await tx
+      .select({
+        id: costEvolutionItems.id,
+        branch: costEvolutionItems.branch,
+        aggregateCode: costEvolutionItems.aggregateCode,
+        code: costEvolutionItems.code,
+      })
+      .from(costEvolutionItems)
+      .where(eq(costEvolutionItems.importId, created.id));
+
+    const itemIds = new Map(savedItems.map((row) => [`${row.branch}\u0000${row.aggregateCode}\u0000${row.code}`, row.id]));
+
+    const observations = parsed.rows.flatMap((row) => {
+      const itemId = itemIds.get(`${row.branch}\u0000${row.aggregateCode}\u0000${row.code}`);
+      if (!itemId) throw new Error(`Item não persistido: ${row.branch}/${row.code}.`);
+      return row.observations.map((observation) => ({
+        itemId,
+        balanceDate: asBusinessDate(observation.balanceDate),
+        cost: observation.cost.toFixed(6),
+      }));
+    });
+
+    for (let start = 0; start < observations.length; start += 1000) {
+      await tx.insert(costEvolutionObservations).values(observations.slice(start, start + 1000));
+    }
+
+    // NOVO: grava também em cost_records — a tabela que a análise (painel) realmente lê.
+    // Sem isso, a importação "funcionava" mas o painel da Indústria continuava vazio.
+    const sheetType: "pecas" | "industria" = input.segment === "industry" ? "industria" : "pecas";
+    const filiais = Array.from(new Set(parsed.rows.map((row) => row.branch))).filter(Boolean);
+    const periods = Array.from(
+      new Set(parsed.rows.flatMap((row) => row.observations.map((obs) => toCostRecordPeriod(obs.balanceDate)))),
+    ).filter(Boolean);
+
+    if (filiais.length && periods.length) {
+      // Evita duplicar ao reimportar o mesmo arquivo: apaga antes o que já existe
+      // para as mesmas filiais, meses e tipo de carga.
+      await tx.execute(sql`delete from cost_records
+        where sheet_type = ${sheetType}::sheet_type
+          and filial in (${sql.join(filiais.map((filial) => sql`${filial}`), sql`, `)})
+          and period in (${sql.join(periods.map((period) => sql`${period}`), sql`, `)})`);
+
+      const importedAt = new Date();
+      const records: CostRecordRow[] = [];
+
+      for (const row of parsed.rows) {
+        const buyer = splitBuyerCodeName(row.buyer);
+        for (const observation of row.observations) {
+          records.push({
+            sheetType,
+            filial: row.branch,
+            codAgregado: row.aggregateCode,
+            codigo: row.code,
+            entraMrp: row.mrp === "Sim",
+            descricao: row.description,
+            compradorCodigo: buyer.code,
+            compradorNome: buyer.name,
+            ultimaCompra: row.lastPurchaseDate ? toCostRecordPurchaseDate(row.lastPurchaseDate) : null,
+            ultimoPreco: row.lastPurchasePrice,
+            period: toCostRecordPeriod(observation.balanceDate),
+            custoMedio: observation.cost,
+            sourceFile: input.fileName,
+            importedAt,
+          });
+        }
+      }
+
+      for (let start = 0; start < records.length; start += 1000) {
+        const chunk = records.slice(start, start + 1000);
+        const values = chunk.map(
+          (record) => sql`(${record.sheetType}::sheet_type, ${record.filial}, ${record.codAgregado}, ${record.codigo}, ${record.entraMrp}, ${record.descricao}, ${record.compradorCodigo}, ${record.compradorNome}, ${record.ultimaCompra}, ${record.ultimoPreco}, ${record.period}, ${record.custoMedio}, ${record.sourceFile}, ${record.importedAt})`,
+        );
+        await tx.execute(sql`insert into cost_records
+          (sheet_type, filial, cod_agregado, codigo, entra_mrp, descricao, comprador_codigo, comprador_nome, ultima_compra, ultimo_preco, period, custo_medio, source_file, imported_at)
+          values ${sql.join(values, sql`, `)}`);
+      }
+    }
+
+    return {
+      id: created.id,
+      status: created.status,
+      fileName: created.fileName,
+      itemCount: parsed.itemCount,
+      observationCount: parsed.observationCount,
+      periodStart: parsed.periodStart,
+      periodEnd: parsed.periodEnd,
+    };
+  });
+}
+
+export async function listCostEvolutionImports(segment: CostEvolutionSegment) {
+  const db = await getDb();
+  if (!db) return [];
+  return db
+    .select()
+    .from(costEvolutionImports)
+    .where(eq(costEvolutionImports.segment, segment))
+    .orderBy(desc(costEvolutionImports.importedAt), desc(costEvolutionImports.id));
+}
+
+export async function updateCostEvolutionImportStatus(id: number, status: "approved" | "archived") {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+
+  const current = (await db.select().from(costEvolutionImports).where(eq(costEvolutionImports.id, id)).limit(1))[0];
+  if (!current) throw new Error("Versão de custos não encontrada.");
+
+  await db.transaction(async (tx) => {
+    if (status === "approved") {
+      await tx
+        .update(costEvolutionImports)
+        .set({ status: "archived" })
+        .where(and(eq(costEvolutionImports.segment, current.segment), eq(costEvolutionImports.status, "approved")));
+    }
+    await tx.update(costEvolutionImports).set({ status }).where(eq(costEvolutionImports.id, id));
+  });
+
+  return { success: true as const };
+}
+
+function itemConditions(importId: number, filters: CostEvolutionFilters) {
+  const conditions = [eq(costEvolutionItems.importId, importId)];
+  if (filters.branch) conditions.push(eq(costEvolutionItems.branch, filters.branch));
+  if (filters.mrp) conditions.push(eq(costEvolutionItems.mrp, filters.mrp));
+  if (filters.buyer) conditions.push(eq(costEvolutionItems.buyer, filters.buyer));
+  if (filters.search?.trim()) {
+    const term = `%${filters.search.trim()}%`;
+    const search = or(
+      like(costEvolutionItems.code, term),
+      like(costEvolutionItems.aggregateCode, term),
+      like(costEvolutionItems.description, term),
+    );
+    if (search) conditions.push(search);
+  }
+  return conditions;
+}
+
+export async function getCostEvolutionFilterOptions(segment: CostEvolutionSegment) {
+  const db = await getDb();
+  const current = await latestApprovedImport(segment);
+  if (!db || !current) return { currentImport: null, branches: [] as string[], buyers: [] as string[], mrps: [] as ("Sim" | "Não")[] };
+
+  const [branches, buyers, mrps] = await Promise.all([
+    db
+      .selectDistinct({ value: costEvolutionItems.branch })
+      .from(costEvolutionItems)
+      .where(eq(costEvolutionItems.importId, current.id))
+      .orderBy(asc(costEvolutionItems.branch)),
+    db
+      .selectDistinct({ value: costEvolutionItems.buyer })
+      .from(costEvolutionItems)
+      .where(eq(costEvolutionItems.importId, current.id))
+      .orderBy(asc(costEvolutionItems.buyer)),
+    db
+      .selectDistinct({ value: costEvolutionItems.mrp })
+      .from(costEvolutionItems)
+      .where(eq(costEvolutionItems.importId, current.id))
+      .orderBy(asc(costEvolutionItems.mrp)),
+  ]);
+
   return {
-    fileName,
-    segment,
-    periodStart: dates[0],
-    periodEnd: dates.at(-1)!,
-    dateColumns: dates,
-    itemCount: rows.length,
-    observationCount,
-    ignoredRowCount,
-    normalizedTextCellCount,
-    issues,
-    sample: rows.slice(0, 20),
-    rows,
+    currentImport: current,
+    branches: branches.map((row) => row.value),
+    buyers: buyers.map((row) => row.value).filter(Boolean),
+    mrps: mrps.map((row) => row.value),
   };
 }
 
-export function previewCostEvolutionWorkbook(fileName: string, buffer: Buffer, segment: CostEvolutionSegment): CostEvolutionPreview {
-  const { rows: _rows, ...preview } = parseCostEvolutionWorkbook(fileName, buffer, segment);
-  return preview;
+export async function getCostEvolutionItems(filters: CostEvolutionFilters) {
+  const db = await getDb();
+  const current = await latestApprovedImport(filters.segment);
+  const page = Math.max(1, filters.page ?? 1);
+  const pageSize = Math.min(100, Math.max(10, filters.pageSize ?? 50));
+  if (!db || !current) return { currentImport: null, page, pageSize, total: 0, items: [] };
+
+  const where = and(...itemConditions(current.id, filters));
+
+  const [countResult, items] = await Promise.all([
+    db.select({ total: sql`count(*)` }).from(costEvolutionItems).where(where),
+    db
+      .select()
+      .from(costEvolutionItems)
+      .where(where)
+      .orderBy(asc(costEvolutionItems.code), asc(costEvolutionItems.branch))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize),
+  ]);
+
+  const ids = items.map((item) => item.id);
+  const observations = ids.length
+    ? await db
+        .select()
+        .from(costEvolutionObservations)
+        .where(sql`${costEvolutionObservations.itemId} in (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})`)
+        .orderBy(asc(costEvolutionObservations.balanceDate))
+    : [];
+
+  const byItem = new Map();
+  observations.forEach((observation) => {
+    byItem.set(observation.itemId, [...(byItem.get(observation.itemId) ?? []), observation]);
+  });
+
+  return {
+    currentImport: current,
+    page,
+    pageSize,
+    total: Number(countResult[0]?.total ?? 0),
+    items: items.map((item) => {
+      const series = byItem.get(item.id) ?? [];
+      const first = asNumber(series[0]?.cost);
+      const last = asNumber(series.at(-1)?.cost);
+      const variation = first && last !== null ? ((last - first) / first) * 100 : null;
+      return {
+        ...item,
+        lastPurchasePrice: asNumber(item.lastPurchasePrice),
+        firstCost: first,
+        lastCost: last,
+        variation,
+        observations: series.map((observation) => ({
+          balanceDate: observation.balanceDate,
+          cost: Number(observation.cost),
+        })),
+      };
+    }),
+  };
+}
+
+export async function getCostEvolutionSummary(filters: CostEvolutionFilters) {
+  const db = await getDb();
+  const current = await latestApprovedImport(filters.segment);
+  if (!db || !current) return { currentImport: null, itemCount: 0, observationCount: 0, latestAverageCost: 0 };
+
+  const whereItems = and(...itemConditions(current.id, filters));
+  const filteredIds = db.select({ id: costEvolutionItems.id }).from(costEvolutionItems).where(whereItems);
+
+  const [items, latest] = await Promise.all([
+    db.select({ total: sql`count(*)` }).from(costEvolutionItems).where(whereItems),
+    db
+      .select({
+        count: sql`count(*)`,
+        average: sql`coalesce(avg(${costEvolutionObservations.cost}), 0)`,
+      })
+      .from(costEvolutionObservations)
+      .where(
+        and(
+          eq(costEvolutionObservations.balanceDate, current.periodEnd),
+          sql`${costEvolutionObservations.itemId} in (${filteredIds})`,
+        ),
+      ),
+  ]);
+
+  return {
+    currentImport: current,
+    itemCount: Number(items[0]?.total ?? 0),
+    observationCount: Number(latest[0]?.count ?? 0),
+    latestAverageCost: Number(latest[0]?.average ?? 0),
+  };
 }
