@@ -206,7 +206,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
           const v = variationPct(series[i + 1], series[i]);
           // Percentual com 4 casas: divide por 100 porque a coluna usa formato de %,
           // e o Excel multiplica o número por 100 ao exibir com esse formato.
-          row.push(v == null ? "" : Number((v / 100).toFixed(4)));
+          row.push(v == null ? "" : Number((v / 100).toFixed(6)));
         }
       });
       row.push(suggestAction(item, periods));
