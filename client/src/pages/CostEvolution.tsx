@@ -7,21 +7,26 @@ import { BarChart3, CheckCircle2, Download, Filter, LoaderCircle, Search, Upload
 import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
+
 type Segment = "auto_parts" | "industry";
+
 const config = {
   auto_parts: { label: "Autopeças", importNode: "importacoes-custos-autopecas", description: "Peças das unidades de autopeças" },
   industry: { label: "Indústria", importNode: "importacoes-custos-industria", description: "Materiais e peças da indústria" },
 } as const;
+
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 4 });
 const dateOnly = (value: Date | string | null | undefined) => value ? new Date(value).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "—";
 const dateTime = (value: Date | string | null | undefined) => value ? new Date(value).toLocaleString("pt-BR") : "—";
 const monthLabel = (period: string) => period ? `${period.slice(4, 6)}/${period.slice(0, 4)}` : "—";
 const LINE_COLORS = ["#0f172a", "#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d", "#4f46e5", "#ea580c", "#0d9488"];
+
 function variationPct(current: number | null | undefined, previous: number | null | undefined) {
   if (current == null || previous == null || previous === 0) return null;
   return ((current - previous) * 100) / previous;
 }
+
 async function fileAsBase64(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
@@ -29,9 +34,11 @@ async function fileAsBase64(file: File) {
   for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...Array.from(bytes.subarray(index, index + chunk)));
   return btoa(binary);
 }
+
 function PageHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return <header className="mb-7"><p className="eyebrow">{eyebrow}</p><h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">{title}</h1><p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">{description}</p></header>;
 }
+
 export function CostEvolutionImport({ segment }: { segment: Segment }) {
   const details = config[segment];
   const [file, setFile] = useState<File | null>(null);
@@ -79,10 +86,14 @@ export function CostEvolutionImport({ segment }: { segment: Segment }) {
     </section>
   </div>;
 }
+
 type ItemRow = { codigo: string; descricao: string; filial: string; cod_agregado: string | null; meses: { period: string; custo_medio: number | null }[] };
 type SearchType = "contem" | "inicia" | "termina";
+
 const FILIAL_UNICA_INDUSTRY = "0105";
+
 const itemChartKey = (item: ItemRow) => `${item.filial ?? ""}|${item.codigo}`;
+
 function buildSeries(item: ItemRow, periods: string[]) {
   const byPeriod = new Map(item.meses.map(m => [m.period, m.custo_medio]));
   const series: (number | null)[] = [];
@@ -94,6 +105,7 @@ function buildSeries(item: ItemRow, periods: string[]) {
   }
   return series;
 }
+
 function suggestAction(item: ItemRow, periods: string[]) {
   const values = buildSeries(item, periods).filter((v): v is number => v != null);
   if (!values.length) return "Sem histórico de custo no período.";
@@ -104,6 +116,7 @@ function suggestAction(item: ItemRow, periods: string[]) {
   if (v < -10) return `Redução de ${number.format(Math.abs(v))}% no período. Sugestão: manter fornecedor atual.`;
   return `Variação de ${number.format(v)}% no período. Sem ação imediata.`;
 }
+
 export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const details = config[segment];
   const isIndustry = segment === "industry";
@@ -191,8 +204,6 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
         row.push(val == null ? "" : Number(val.toFixed(4)));
         if (i < periods.length - 1) {
           const v = variationPct(series[i + 1], series[i]);
-          // MUDANÇA: divide por 100 porque a coluna usa formato de porcentagem (%),
-          // e o Excel multiplica o número por 100 ao exibir com esse formato.
           row.push(v == null ? "" : Number((v / 100).toFixed(4)));
         }
       });
