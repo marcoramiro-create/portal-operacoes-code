@@ -8,10 +8,10 @@ function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
   const forgeKey = ENV.forgeApiKey;
 
+  // MUDANÇA: não lança erro quando o Forge não está configurado.
+  // Retorna null para o chamador decidir como proceder (ex.: pular o upload).
   if (!forgeUrl || !forgeKey) {
-    throw new Error(
-      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY",
-    );
+    return null;
   }
 
   return { forgeUrl: forgeUrl.replace(/\/+$/, ""), forgeKey };
@@ -33,8 +33,16 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
+  const config = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
+
+  // MUDANÇA: se o Forge não estiver configurado, não tenta subir o arquivo.
+  // Devolve uma chave sintética para a importação seguir sem travar.
+  if (!config) {
+    return { key, url: `/manus-storage/${key}` };
+  }
+
+  const { forgeUrl, forgeKey } = config;
 
   // 1. Get presigned PUT URL from Forge
   const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
@@ -77,7 +85,14 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 }
 
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
+  const config = getForgeConfig();
+
+  // MUDANÇA: se o Forge não estiver configurado, devolve o caminho local.
+  if (!config) {
+    return `/manus-storage/${normalizeKey(relKey)}`;
+  }
+
+  const { forgeUrl, forgeKey } = config;
   const key = normalizeKey(relKey);
 
   const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
