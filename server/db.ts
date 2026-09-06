@@ -1,14 +1,14 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { inventoryAnalytics, protheusImports, type InsertUser, users } from "../drizzle/schema";
+import { familyReferences, inventoryAnalytics, protheusImports, sb1References, sbzReferences, subfamilyReferences, type InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { calculateTurnover } from "./analyticsRules";
 import { parseProtheusWorkbook } from "./protheusImport";
+import { type ReferenceData } from "./protheusCalculations";
+import { importSb1, importSbz, importFamilias, importSubFamilias } from "./referenceImporters";
 import { storagePut } from "./storage";
-
 let _db: ReturnType<typeof drizzle> | null = null;
-
 export async function getDb() {
   if (!_db && process.env.SUPABASE_DATABASE_URL) {
     try {
@@ -29,7 +29,6 @@ export async function getDb() {
   }
   return _db;
 }
-
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
@@ -53,21 +52,84 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     });
   }
 }
-
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
 }
 
-export type ProtheusImportStatus = "pending" | "approved" | "archived";
+// ===== Tabelas de referência (SB1, SBZ, Família, SubFamília) =====
+export async function saveSb1References(records: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  await db.delete(sb1References);
+  if (records.length) await db.insert(sb1References).values(records);
+  return records.length;
+}
+export async function saveSbzReferences(records: { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  await db.delete(sbzReferences);
+  if (records.length) await db.insert(sbzReferences).values(records);
+  return records.length;
+}
+export async function saveFamilyReferences(records: { code: string; descricao: string }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  await db.delete(familyReferences);
+  if (records.length) await db.insert(familyReferences).values(records);
+  return records.length;
+}
+export async function saveSubfamilyReferences(records: { code: string; descricao: string }[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  await db.delete(subfamilyReferences);
+  if (records.length) await db.insert(subfamilyReferences).values(records);
+  return records.length;
+}
+export async function loadSb1References(): Promise<Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>> {
+  const db = await getDb();
+  const map = new Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>();
+  if (!db) return map;
+  const rows = await db.select().from(sb1References);
+  rows.forEach(r => map.set(r.code, { tipo: r.tipo, familiaCode: r.familiaCode, subfamiliaCode: r.subfamiliaCode }));
+  return map;
+}
+export async function loadSbzReferences(): Promise<Map<string, { estoqMin: number | null; estoqMax: number | null; entraMrp: string }>> {
+  const db = await getDb();
+  const map = new Map<string, { estoqMin: number | null; estoqMax: number | null; entraMrp: string }>();
+  if (!db) return map;
+  const rows = await db.select().from(sbzReferences);
+  rows.forEach(r => map.set(r.chave, { estoqMin: r.estoqMin == null ? null : Number(r.estoqMin), estoqMax: r.estoqMax == null ? null : Number(r.estoqMax), entraMrp: r.entraMrp }));
+  return map;
+}
+export async function loadFamilyReferences(): Promise<Map<string, string>> {
+  const db = await getDb();
+  const map = new Map<string, string>();
+  if (!db) return map;
+  const rows = await db.select().from(familyReferences);
+  rows.forEach(r => map.set(r.code, r.descricao));
+  return map;
+}
+export async function loadSubfamilyReferences(): Promise<Map<string, string>> {
+  const db = await getDb();
+  const map = new Map<string, string>();
+  if (!db) return map;
+  const rows = await db.select().from(subfamilyReferences);
+  rows.forEach(r => map.set(r.code, r.descricao));
+  return map;
+}
+export async function loadAllReferences(): Promise<ReferenceData> {
+  const [sb1, sbz, familias, subfamilias] = await Promise.all([loadSb1References(), loadSbzReferences(), loadFamilyReferences(), loadSubfamilyReferences()]);
+  return { sb1, sbz, familias, subfamilias };
+}
 
+export type ProtheusImportStatus = "pending" | "approved" | "archived";
 export async function listProtheusImports() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(protheusImports).orderBy(desc(protheusImports.importedAt));
 }
-
 export async function updateProtheusImportStatus(id: number, status: ProtheusImportStatus) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -75,11 +137,11 @@ export async function updateProtheusImportStatus(id: number, status: ProtheusImp
   if (result.length === 0) throw new Error("Versão de carga não encontrada.");
   return result[0];
 }
-
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-  const records = parseProtheusWorkbook(fileBuffer);
+  const ref = await loadAllReferences();
+  const records = parseProtheusWorkbook(fileBuffer, ref);
   const importedAt = parsePurchaseHistoryDate(fileName);
   const versionName = fileName.replace(/\.xlsx$/i, "");
   const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -125,7 +187,6 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     return { id: importId, rowCount: records.length };
   });
 }
-
 const ANALYSIS_BRANCHES = ["0101", "0102", "0301", "0303"];
 type Curve = "A" | "B" | "C" | "D" | "E";
 type ProductType = "ME" | "PE";
@@ -178,7 +239,6 @@ export type AnalyticsSummary = {
   lowCoverageItems: number;
   lowCoverageStockValue: number;
 };
-
 async function getLatestImportId(selectedId?: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -200,17 +260,13 @@ async function getLatestImportId(selectedId?: number) {
       .limit(1)
   )[0]?.id;
 }
-
 const asNumber = (value: unknown) => Number(value ?? 0);
 const normalizeLabel = (value: string) => value || "Não informado";
-
 export function formatPurchaseVersionName(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `Compras - ${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}`;
 }
-
 const PURCHASE_FILE_NAME_PATTERN = /^Compras - (\d{4})(\d{2})(\d{2})(\d{2})(\d{2}).xlsx$/i;
-
 export function parsePurchaseHistoryDate(fileName: string) {
   const match = fileName.match(PURCHASE_FILE_NAME_PATTERN);
   if (!match) throw new Error("O nome deve seguir o padrão Compras - aaaaMMddHHmm.xlsx.");
@@ -221,12 +277,10 @@ export function parsePurchaseHistoryDate(fileName: string) {
   }
   return date;
 }
-
 function historicalImportDate(fileName: string, versionName: string, importedAt: Date) {
   try { return parsePurchaseHistoryDate(fileName); } catch {}
   try { return parsePurchaseHistoryDate(`${versionName}.xlsx`); } catch { return importedAt; }
 }
-
 export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<AnalyticsSummary | null> {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
@@ -259,7 +313,6 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
     lowCoverageStockValue: asNumber(summary.lowCoverageStockValue),
   };
 }
-
 export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
@@ -302,7 +355,6 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
     byFamily: byFamily.map(mapGroup),
   };
 }
-
 export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
   if (!db) return null;
@@ -313,7 +365,6 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   if (!summary || !breakdown) return null;
   return { summary, breakdown };
 }
-
 export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "importId">) {
   const db = await getDb();
   if (!db) return [];
@@ -351,7 +402,6 @@ export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "impo
     };
   }).sort((left, right) => left.importedAt.getTime() - right.importedAt.getTime());
 }
-
 export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, pageSize = 50) {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
@@ -407,7 +457,6 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
     })),
   };
 }
-
 export async function getAnalyticsFilterOptions(importId?: number) {
   const db = await getDb();
   const selectedImportId = await getLatestImportId(importId);

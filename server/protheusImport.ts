@@ -1,4 +1,9 @@
+// ============================================================
+// server/protheusImport.ts  (REESCRITO)
+// Lê a planilha CRUA do Protheus e calcula tudo no portal.
+// ============================================================
 import * as XLSX from "xlsx";
+import { applyAbcClassification, BRANCHES_ACEITAS, BRANCHES_IGNORADAS, calculatePerRow, type CalculatedRow, type RawProtheusRow, type ReferenceData } from "./protheusCalculations";
 
 export type ProtheusInventoryRecord = {
   code: string;
@@ -17,14 +22,8 @@ export type ProtheusInventoryRecord = {
   excessValue: number;
 };
 
-const requiredHeaders = ["Codigo", "Descricao", "Filial", "Tipo", "Qtd13M", "CustoTot13M", "Estoque", "Total R$", "Classe ABC", "Cobertura (Dias)", "Excedente (R$)", "Família", "SubFamília"] as const;
-const allowedCurves = new Set<ProtheusInventoryRecord["curve"]>(["A", "B", "C", "D", "E"]);
-const allowedBranches = new Set(["0101", "0102", "0301", "0303"]);
-const allowedProductTypes = new Set<ProtheusInventoryRecord["productType"]>(["ME", "PE"]);
-
 function asText(value: unknown) { return String(value ?? "").trim(); }
-
-function asNumber(value: unknown) {
+function asNumber(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const text = asText(value).replace(/[R$\s]/g, "");
   if (!text) return 0;
@@ -32,11 +31,13 @@ function asNumber(value: unknown) {
   const dot = text.lastIndexOf(".");
   const normalized = comma > dot ? text.replace(/\./g, "").replace(",", ".") : text.replace(/,/g, "");
   const result = Number(normalized);
-  if (!Number.isFinite(result)) throw new Error(`Valor numérico inválido: ${asText(value)}`);
-  return result;
+  return Number.isFinite(result) ? result : 0;
 }
 
-export function parseProtheusWorkbook(buffer: Buffer): ProtheusInventoryRecord[] {
+const MONTH_PATTERN = /^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\/\d{4}$/i;
+const MONTH_ORDER: Record<string, number> = { jan:1, fev:2, mar:3, abr:4, mai:5, jun:6, jul:7, ago:8, set:9, out:10, nov:11, dez:12 };
+
+export function parseProtheusWorkbook(buffer: Buffer, ref: ReferenceData, hoje = new Date()): ProtheusInventoryRecord[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellText: false });
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) throw new Error("A planilha não possui uma aba para importação.");
@@ -46,48 +47,73 @@ export function parseProtheusWorkbook(buffer: Buffer): ProtheusInventoryRecord[]
 
   const headerPositions = new Map<string, number>();
   headerRow.forEach((header, position) => { const name = asText(header); if (name && !headerPositions.has(name)) headerPositions.set(name, position); });
-  const missingHeaders = requiredHeaders.filter(header => !headerPositions.has(header));
-  if (missingHeaders.length > 0) throw new Error(`A planilha não contém as colunas obrigatórias: ${missingHeaders.join(", ")}.`);
 
-  const records: ProtheusInventoryRecord[] = [];
-  const recordKeys = new Set<string>();
+  const required = ["Codigo", "Descricao", "Filial", "Ultima Compra", "CustoUn13M", "CustoTot13M", "Prazo", "Estoque", "Pedidos"];
+  const missing = required.filter(h => !headerPositions.has(h));
+  if (missing.length) throw new Error(`A planilha não contém as colunas obrigatórias: ${missing.join(", ")}.`);
+
+  // Detecta as colunas de meses e pega as 13 mais recentes
+  const monthHeaders: { name: string; pos: number; sortKey: number }[] = [];
+  headerRow.forEach((header, position) => {
+    const name = asText(header);
+    const m = name.match(MONTH_PATTERN);
+    if (m) {
+      const month = MONTH_ORDER[m[1].toLowerCase()];
+      const year = Number(m[2]);
+      monthHeaders.push({ name, pos: position, sortKey: year * 12 + month });
+    }
+  });
+  monthHeaders.sort((a, b) => a.sortKey - b.sortKey);
+  const last13 = monthHeaders.slice(-13);
+  if (last13.length < 13) throw new Error("A planilha deve conter 13 colunas de meses (ex.: Ago/2025 a Ago/2026).");
+
+  const rawRows: RawProtheusRow[] = [];
+  const keys = new Set<string>();
   rows.slice(1).forEach((row, index) => {
-    if (!row.some(value => asText(value))) return;
+    if (!row || !row.some(value => asText(value))) return;
     const line = index + 2;
-    const valueOf = (header: string) => row[headerPositions.get(header)!];
+    const valueOf = (h: string) => row[headerPositions.get(h)!];
     const code = asText(valueOf("Codigo"));
-    const description = asText(valueOf("Descricao"));
     const branch = asText(valueOf("Filial"));
-    const productType = asText(valueOf("Tipo")).toUpperCase() as ProtheusInventoryRecord["productType"];
-    const rawMrp = asText(headerPositions.has("MRP") ? valueOf("MRP") : "").toUpperCase();
-    if (rawMrp && rawMrp !== "SIM" && rawMrp !== "NÃO" && rawMrp !== "NAO") throw new Error(`A linha ${line} possui MRP inválido; use Sim ou Não.`);
-    const mrp: ProtheusInventoryRecord["mrp"] = rawMrp === "SIM" ? "Sim" : "Não";
-    const curve = asText(valueOf("Classe ABC")).toUpperCase() as ProtheusInventoryRecord["curve"];
-    if (!code || !description || !branch || !allowedCurves.has(curve)) throw new Error(`A linha ${line} não possui Codigo, Descricao, Filial ou Classe ABCDE válidos.`);
-    if (!allowedProductTypes.has(productType)) throw new Error(`A linha ${line} possui Tipo de produto inválido.`);
-    if (!allowedBranches.has(branch)) return;
-    const recordKey = `${code}::${branch}`;
-    if (recordKeys.has(recordKey)) throw new Error(`A planilha possui o registro duplicado ${code} na filial ${branch}.`);
-    recordKeys.add(recordKey);
-
-    records.push({
+    if (!code || !branch) throw new Error(`A linha ${line} não possui Codigo ou Filial.`);
+    if (BRANCHES_IGNORADAS.has(branch)) return;   // descarta 0105 e 0201
+    if (!BRANCHES_ACEITAS.has(branch)) return;      // mantém só as aceitas
+    const key = `${code}::${branch}`;
+    if (keys.has(key)) throw new Error(`Registro duplicado ${code} na filial ${branch}.`);
+    keys.add(key);
+    const months = last13.map(m => asNumber(row[m.pos]));
+    rawRows.push({
       code,
-      description,
+      description: asText(valueOf("Descricao")),
       branch,
-      productType,
-      mrp,
-      family: asText(valueOf("Família")),
-      subfamily: asText(valueOf("SubFamília")),
-      curve,
-      sales13M: asNumber(valueOf("Qtd13M")),
-      salesValue13M: asNumber(valueOf("CustoTot13M")),
-      stock: asNumber(valueOf("Estoque")),
-      stockValue: asNumber(valueOf("Total R$")),
-      coverageDays: asNumber(valueOf("Cobertura (Dias)")),
-      excessValue: asNumber(valueOf("Excedente (R$)")),
+      ultimaCompra: asText(valueOf("Ultima Compra")),
+      months,
+      custoUn13M: asNumber(valueOf("CustoUn13M")),
+      custoTot13M: asNumber(valueOf("CustoTot13M")),
+      prazo: asNumber(valueOf("Prazo")),
+      estoque: asNumber(valueOf("Estoque")),
+      pedidos: asNumber(valueOf("Pedidos")),
     });
   });
-  if (records.length === 0) throw new Error("A planilha não contém registros para importação.");
-  if (records.length > 25000) throw new Error("A planilha excede o limite de 25.000 registros por importação.");
-  return records;
+  if (rawRows.length === 0) throw new Error("A planilha não contém registros para importação após o descarte das filiais.");
+
+  const calculated = applyAbcClassification(rawRows.map(r => calculatePerRow(r, ref)), hoje);
+  if (calculated.length > 25000) throw new Error("A planilha excede o limite de 25.000 registros por importação.");
+
+  return calculated.map(c => ({
+    code: c.code,
+    description: c.description,
+    branch: c.branch,
+    productType: c.productType,
+    mrp: c.mrp,
+    family: c.family,
+    subfamily: c.subfamily,
+    curve: c.curve,
+    sales13M: c.sales13M,
+    salesValue13M: c.salesValue13M,
+    stock: c.stock,
+    stockValue: c.stockValue,
+    coverageDays: c.coverageDays,
+    excessValue: c.excessValue,
+  }));
 }

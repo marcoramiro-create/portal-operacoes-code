@@ -133,4 +133,42 @@ export const costEvolutionObservations = pgTable(
     cost: decimal("cost", { precision: 20, scale: 6 }).notNull(),
   },
 );
+export const sb1References = pgTable(
+  "sb1References",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    code: varchar("code", { length: 120 }).notNull().unique(),
+    tipo: varchar("tipo", { length: 24 }).notNull().default(""),
+    familiaCode: varchar("familiaCode", { length: 120 }).notNull().default(""),
+    subfamiliaCode: varchar("subfamiliaCode", { length: 120 }).notNull().default(""),
+  },
+);
+export const sbzReferences = pgTable(
+  "sbzReferences",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    chave: varchar("chave", { length: 255 }).notNull().unique(),
+    code: varchar("code", { length: 120 }).notNull(),
+    filial: varchar("filial", { length: 24 }).notNull(),
+    estoqMin: decimal("estoqMin", { precision: 20, scale: 3 }),
+    estoqMax: decimal("estoqMax", { precision: 20, scale: 3 }),
+    entraMrp: varchar("entraMrp", { length: 24 }).notNull().default(""),
+  },
+);
+export const familyReferences = pgTable(
+  "familyReferences",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    code: varchar("code", { length: 120 }).notNull().unique(),
+    descricao: varchar("descricao", { length: 255 }).notNull().default(""),
+  },
+);
+export const subfamilyReferences = pgTable(
+  "subfamilyReferences",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    code: varchar("code", { length: 120 }).notNull().unique(),
+    descricao: varchar("descricao", { length: 255 }).notNull().default(""),
+  },
+);
 export * from './schema-costs';

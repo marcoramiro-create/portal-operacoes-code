@@ -5,6 +5,8 @@ import { assertApplicationPermission, assertPortalAdministrator, getPortalIdenti
 import { updateProtheusImportStatus } from "../db";
 import { invokeLLM } from "../_core/llm";
 import { validatePurchaseRecommendations, type PurchaseRecommendation } from "../analyticsRules";
+import { importSb1, importSbz, importFamilias, importSubFamilias } from "../referenceImporters";
+import { saveSb1References, saveSbzReferences, saveFamilyReferences, saveSubfamilyReferences } from "../db";
 
 const curveSchema = z.enum(["A", "B", "C", "D", "E"]);
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
@@ -40,5 +42,29 @@ export const analyticsRouter = router({
     const fileBuffer = Buffer.from(input.contentBase64, "base64");
     if (fileBuffer.byteLength > 18 * 1024 * 1024) throw new Error("A planilha excede o limite de 18 MB.");
     return importProtheusWorkbook(input.fileName, fileBuffer);
+  }),
+  importReferenceSb1: publicProcedure.input(z.object({ contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
+    await modulePermission(ctx, "manage", "importacoes-compras-protheus");
+    const buffer = Buffer.from(input.contentBase64, "base64");
+    const count = await saveSb1References(importSb1(buffer));
+    return { count };
+  }),
+  importReferenceSbz: publicProcedure.input(z.object({ contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
+    await modulePermission(ctx, "manage", "importacoes-compras-protheus");
+    const buffer = Buffer.from(input.contentBase64, "base64");
+    const count = await saveSbzReferences(importSbz(buffer));
+    return { count };
+  }),
+  importReferenceFamilias: publicProcedure.input(z.object({ contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
+    await modulePermission(ctx, "manage", "importacoes-compras-protheus");
+    const buffer = Buffer.from(input.contentBase64, "base64");
+    const count = await saveFamilyReferences(importFamilias(buffer));
+    return { count };
+  }),
+  importReferenceSubFamilias: publicProcedure.input(z.object({ contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
+    await modulePermission(ctx, "manage", "importacoes-compras-protheus");
+    const buffer = Buffer.from(input.contentBase64, "base64");
+    const count = await saveSubfamilyReferences(importSubFamilias(buffer));
+    return { count };
   }),
 });
