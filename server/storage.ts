@@ -110,3 +110,32 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
   const { url } = (await resp.json()) as { url: string };
   return url;
 }
+// MUDANÇA (07/09/2026): gera link de upload direto (PUT) para arquivos grandes,
+// contornando o limite de ~4,5 MB de corpo de requisição da hospedagem.
+export async function storageGetPresignedPutUrl(
+  relKey: string,
+  contentType = "application/octet-stream",
+): Promise<{ key: string; url: string }> {
+  const config = getForgeConfig();
+  const key = appendHashSuffix(normalizeKey(relKey));
+  if (!config) throw new Error("Armazenamento não configurado.");
+  const { forgeUrl, forgeKey } = config;
+  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
+  presignUrl.searchParams.set("path", key);
+  const presignResp = await fetch(presignUrl, { headers: { Authorization: `Bearer ${forgeKey}` } });
+  if (!presignResp.ok) {
+    const msg = await presignResp.text().catch(() => presignResp.statusText);
+    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
+  }
+  const { url: s3Url } = (await presignResp.json()) as { url: string };
+  if (!s3Url) throw new Error("Forge returned empty presign URL");
+  return { key, url: s3Url };
+}
+
+// MUDANÇA (07/09/2026): lê o conteúdo de um arquivo já enviado ao armazenamento.
+export async function storageReadBuffer(relKey: string): Promise<Buffer> {
+  const signedUrl = await storageGetSignedUrl(relKey);
+  const resp = await fetch(signedUrl);
+  if (!resp.ok) throw new Error(`Falha ao ler o arquivo do armazenamento (${resp.status}).`);
+  return Buffer.from(await resp.arrayBuffer());
+}

@@ -1,3 +1,4 @@
+import { storageGetPresignedPutUrl, storageReadBuffer } from "../storage";
 import { z } from "zod";
 import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, type AnalyticsFilter } from "../db";
 import { publicProcedure, router } from "../_core/trpc";
@@ -35,6 +36,24 @@ export const analyticsRouter = router({
     const parsed = JSON.parse(text) as { recommendations: PurchaseRecommendation[] };
     const recommendations = validatePurchaseRecommendations(parsed.recommendations, new Set(itemPage.items.map(item => item.code)));
     return { generatedAt: new Date(), total: itemPage.items.length, recommendations };
+  }),
+    // MUDANÇA (07/09/2026): upload direto ao armazenamento para arquivos grandes.
+  getUploadUrl: publicProcedure.input(z.object({ fileName: z.string().min(1).max(255), contentType: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+    await modulePermission(ctx, "manage", "importacoes-compras-protheus");
+    return storageGetPresignedPutUrl(`protheus-imports/${Date.now()}-${input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`, input.contentType);
+  }),
+  processWorkbook: publicProcedure.input(z.object({ fileName: z.string().min(1).max(255), key: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+    await modulePermission(ctx, "manage", "importacoes-compras-protheus");
+    const buffer = await storageReadBuffer(input.key);
+    return importProtheusWorkbook(input.fileName, buffer);
+  }),
+  processReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]), key: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+    await modulePermission(ctx, "manage", "importacoes-compras-protheus");
+    const buffer = await storageReadBuffer(input.key);
+    if (input.kind === "sb1") return { count: await saveSb1References(importSb1(buffer)) };
+    if (input.kind === "sbz") return { count: await saveSbzReferences(importSbz(buffer)) };
+    if (input.kind === "familias") return { count: await saveFamilyReferences(importFamilias(buffer)) };
+    return { count: await saveSubfamilyReferences(importSubFamilias(buffer)) };
   }),
   setImportStatus: publicProcedure.input(z.object({ importId: z.number().int().positive(), status: z.enum(["approved", "archived"]) })).mutation(async ({ ctx, input }) => { const identity = await modulePermission(ctx, "manage"); assertPortalAdministrator(identity); const result = await updateProtheusImportStatus(input.importId, input.status); try { await recordPortalAudit(identity, "protheus_import", String(input.importId), `status_${input.status}`, { versionName: result?.versionName ?? null }); } catch (error) { console.warn("[Analytics] Status atualizado, mas a auditoria não foi registrada:", error); } return { success: true as const, status: input.status }; }),
   importWorkbook: publicProcedure.input(z.object({ fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
