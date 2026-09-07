@@ -2,8 +2,9 @@
 // server/referenceImporters.ts
 // Importa cadastros de referência (SB1, SBZ, Famílias, SubFamílias).
 // Módulo: Compras e análise Protheus.
-// MUDANÇA (07/09/2026): detecta automaticamente a linha do cabeçalho
-// (não depende mais de linha fixa), corrigindo importações que retornavam 0 registros.
+// MUDANÇA (07/09/2026): detecta automaticamente a linha do cabeçalho e o deslocamento
+// de colunas causado por células de metadados do Protheus (ex.: "Dt.Ref: ... Hora: ..."),
+// corrigindo importações que retornavam 0 registros (caso da SBZ).
 // ============================================================
 import * as XLSX from "xlsx";
 
@@ -42,6 +43,7 @@ function findHeaderRow(rows: unknown[][], requiredNormalized: string[]): number 
 }
 
 // Lê as linhas a partir do cabeçalho detectado, com colunas normalizadas.
+// Corrige o deslocamento quando o cabeçalho tem metadados antes das colunas reais.
 function readRows(buffer: Buffer, requiredColumns: string[]): Record<string, unknown>[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellText: false });
   const sheetName = workbook.SheetNames[0];
@@ -51,12 +53,20 @@ function readRows(buffer: Buffer, requiredColumns: string[]): Record<string, unk
   if (headerIndex < 0) throw new Error(`Não foi possível localizar o cabeçalho com as colunas: ${requiredColumns.join(", ")}.`);
   const headerRow = rows[headerIndex];
   const headers = headerRow.map(h => normalize(asText(h)));
+  // Posição da primeira coluna obrigatória no cabeçalho (para detectar o deslocamento).
+  const firstRequiredPos = headers.findIndex(h => requiredColumns.map(normalize).includes(h));
   const result: Record<string, unknown>[] = [];
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || !row.some(v => asText(v))) continue;
     const obj: Record<string, unknown> = {};
-    headers.forEach((h, idx) => { if (h) obj[h] = row[idx]; });
+    headers.forEach((h, idx) => {
+      if (!h) return;
+      // Se a linha de dados é mais curta que o cabeçalho, os dados estão deslocados
+      // (sem as células de metadados). Alinha pela primeira coluna real.
+      const dataIdx = row.length < headers.length ? idx - firstRequiredPos : idx;
+      if (dataIdx >= 0) obj[h] = row[dataIdx];
+    });
     result.push(obj);
   }
   return result;
