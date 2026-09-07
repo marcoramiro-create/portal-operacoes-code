@@ -1,67 +1,118 @@
-/**
- * referenceImporters.ts
- * Importadores dos cadastros de referência (SB1, SBZ, Famílias e SubFamílias).
- * Módulo: server (API tRPC)
- * Data: 07/09/2026
- * // MUDANÇA (07/09/2026): arquivo COMPLETO reentregue em bloco único; readRows
- * //   ignora cabeçalhos repetidos e linhas que não são arrays (células
- * //   mescladas/objetos do Excel) — corrige "linha.some is not a function";
- * //   SB1 indexado por Cod Agregado E Codigo (normalizados); SBZ chave =
- * //   código normalizado + filial de 4 dígitos; Famílias/SubFamílias com
- * //   códigos normalizados.
- */
+// ============================================================
+// server/referenceImporters.ts
+// Importadores dos cadastros de referência (SB1, SBZ, Famílias e SubFamílias).
+// Módulo: server (API tRPC)
+// Data: 07/09/2026
+// MUDANÇA (07/09/2026): aceita Buffer OU unknown[][] (auto-detecção) — corrige
+//   "0 registros" quando o router passa o Buffer cru em vez das linhas lidas.
+// MUDANÇA (07/09/2026): localiza as colunas pelo NOME do cabeçalho, funcionando
+//   com as duas formas de exportação do Browse. SB1 indexado por Cod Agregado E
+//   Codigo; a chave primária (code) é o AGREGADO, porque o código da Compras é
+//   o agregado da SB1. SBZ por Chave = código + filial; Famílias/SubFamílias
+//   por código normalizado.
+// ============================================================
+import * as XLSX from "xlsx";
 
-/** Normaliza um código (cópia local, sem importar de outro arquivo). */
+/** Normaliza um código: remove zeros à esquerda preservando sufixos. */
 export function normalizeCode(codigo: string | null | undefined): string {
-  if (!codigo) return '';
+  if (!codigo) return "";
   const texto = String(codigo).trim();
-  const partes = texto.split('-');
-  const numero = (partes[0] || '').replace(/^0+/, '') || '0';
-  if (partes.length > 1) {
-    return `${numero}-${partes.slice(1).join('-')}`;
-  }
+  const partes = texto.split("-");
+  const numero = (partes[0] || "").replace(/^0+/, "") || "0";
+  if (partes.length > 1) return `${numero}-${partes.slice(1).join("-")}`;
   return numero;
 }
 
+function asText(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+/** Normaliza o nome de uma coluna para comparação (minúsculas, sem acento/símbolos). */
+function normNome(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function ehBuffer(valor: unknown): valor is Buffer {
+  return typeof Buffer !== "undefined" && Buffer.isBuffer(valor);
+}
+
+/** Se a origem for Buffer, lê a primeira aba do Excel em linhas brutas (header:1). */
+function lerLinhasBrutas(origem: Buffer | unknown[][]): unknown[][] {
+  if (ehBuffer(origem)) {
+    const workbook = XLSX.read(origem, { type: "buffer", cellText: false });
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) throw new Error("A planilha de referência não possui uma aba.");
+    return XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
+      header: 1,
+      raw: false,
+      defval: "",
+    });
+  }
+  return origem;
+}
+
+/** Localiza a linha do cabeçalho procurando um dos rótulos conhecidos. */
+function encontrarLinhaCabecalho(linhas: unknown[][], rotulos: string[]): number {
+  const rotNorm = rotulos.map(normNome);
+  for (let i = 0; i < linhas.length && i < 80; i++) {
+    const linha = linhas[i];
+    if (!Array.isArray(linha)) continue;
+    if (linha.some((c) => rotNorm.includes(normNome(asText(c))))) return i;
+  }
+  return -1;
+}
+
 /**
- * Remove cabeçalhos repetidos e linhas vazias, devolvendo cabeçalho + dados.
- * // MUDANÇA (07/09/2026): ignora linhas que não são arrays (células mescladas
- * //   ou objetos vindos do Excel) — antes quebrava com "linha.some is not a function".
+ * Lê as linhas de dados, ignorando linhas que não são arrays (células mescladas/
+ * objetos) e cabeçalhos repetidos do Browse. Aceita Buffer ou linhas já lidas.
  */
-export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dados: string[][] } {
+export function readRows(origem: Buffer | unknown[][], rotulosCabecalho: string[] = []): { cabecalho: string[]; dados: string[][] } {
+  const linhasBrutas = lerLinhasBrutas(origem);
   const ehArray = (linha: unknown): linha is unknown[] => Array.isArray(linha);
-  const naoVazia = (linha: unknown[]) => linha.some((c) => String(c ?? '').trim() !== '');
-  const dadosBrutos = linhasBrutas.filter(ehArray).filter(naoVazia);
-  if (dadosBrutos.length === 0) return { cabecalho: [], dados: [] };
-  const cabecalho = dadosBrutos[0].map((c) => String(c ?? '').trim());
-  const chaveCabecalho = JSON.stringify(dadosBrutos[0]);
-  const dados = dadosBrutos
-    .slice(1)
+  const naoVazia = (linha: unknown[]) => linha.some((c) => asText(c) !== "");
+  const arrays = linhasBrutas.filter(ehArray).filter(naoVazia);
+  if (arrays.length === 0) return { cabecalho: [], dados: [] };
+
+  let idxCabecalho = 0;
+  if (rotulosCabecalho.length > 0) {
+    const encontrado = encontrarLinhaCabecalho(arrays, rotulosCabecalho);
+    if (encontrado >= 0) idxCabecalho = encontrado;
+  }
+
+  const cabecalho = arrays[idxCabecalho].map((c) => asText(c));
+  const chaveCabecalho = JSON.stringify(arrays[idxCabecalho]);
+  const dados = arrays
+    .slice(idxCabecalho + 1)
     .filter((linha) => JSON.stringify(linha) !== chaveCabecalho)
-    .map((linha) => linha.map((c) => String(c ?? '').trim()));
+    .map((linha) => linha.map((c) => asText(c)));
+
   return { cabecalho, dados };
 }
 
-/** Encontra o índice de uma coluna pelo nome (case-insensitive). */
-function acharColuna(cabecalho: string[], nomes: string[]): number {
-  return cabecalho.findIndex((c) => nomes.some((n) => String(c ?? '').trim().toLowerCase() === n.toLowerCase()));
+/** Índice de uma coluna pelo nome normalizado (ou -1). */
+function indiceColuna(cabecalho: string[], nomes: string[]): number {
+  const alvo = nomes.map(normNome);
+  return cabecalho.findIndex((c) => alvo.includes(normNome(c)));
 }
 
 // ---------------------------------------------------------------------------
 // SB1
 // ---------------------------------------------------------------------------
 
-/** Linha do cadastro SB1 já normalizada. */
 export interface Sb1Row {
-  codigo: string;      // coluna A (Codigo) normalizado
-  codAgregado: string; // coluna B (Cod Agregado) normalizado
-  descricao: string;   // coluna C (Descrição)
-  tipo: string;        // coluna D (Tipo) — usado no ABC por Filial + Tipo
-  familiaCod: string;  // coluna E (Família) normalizado
-  subFamiliaCod: string; // coluna G (SubFamília) normalizado
+  code: string;            // chave primária: COD AGREGADO (fallback Codigo)
+  codigo: string;          // coluna Codigo normalizada
+  codAgregado: string;     // coluna Cod Agregado normalizada
+  descricao: string;
+  tipo: string;            // usado no ABC por Filial + Tipo
+  familiaCode: string;
+  subfamiliaCode: string;
 }
 
-/** Índice do SB1 pelas DUAS chaves normalizadas. */
 export interface Sb1Index {
   porCodigo: Map<string, Sb1Row>;
   porCodAgregado: Map<string, Sb1Row>;
@@ -69,32 +120,46 @@ export interface Sb1Index {
 }
 
 /**
- * Importa o SB1 e indexa pelas DUAS chaves (Codigo e Cod Agregado), porque a
- * fórmula original era =SEERRO(PROCV(A2;SB1!A:C;3;0);PROCV(A2;SB1!B:C;2;0)).
- * Posições padrão do Browse: A=Codigo, B=Cod Agregado, C=Descrição,
- * D=Tipo, E=Família, F=não usado, G=SubFamília.
+ * Importa o SB1. O código da planilha de Compras é o AGREGADO da SB1, então a
+ * chave primária (code) é o Cod Agregado; o índice também aceita o Codigo
+ * (fórmula original =SEERRO(PROCV(A2;SB1!A:C;3;0);PROCV(A2;SB1!B:C;2;0))).
  */
-export function importSb1(linhasBrutas: unknown[][]): Sb1Index {
-  const { dados } = readRows(linhasBrutas);
+export function importSb1(origem: Buffer | unknown[][]): Sb1Index {
+  const { cabecalho, dados } = readRows(origem, ["cod agregado", "codigo", "tipo"]);
+  const iCod = indiceColuna(cabecalho, ["codigo"]);
+  const iAgr = indiceColuna(cabecalho, ["cod agregado"]);
+  const iTip = indiceColuna(cabecalho, ["tipo"]);
+  const iFam = indiceColuna(cabecalho, ["familia"]);
+  const iSub = indiceColuna(cabecalho, ["sub-familia", "subfamilia"]);
+  const iDesc = indiceColuna(cabecalho, ["descricao"]);
+  // Fallbacks posicionais caso o cabeçalho não seja reconhecido:
+  // padrão A=Codigo, B=Cod Agregado, C=Descrição, D=Tipo, E=Família, G=SubFamília.
+  const col = (idx: number, fallback: number) => (idx >= 0 ? idx : fallback);
+
   const porCodigo = new Map<string, Sb1Row>();
   const porCodAgregado = new Map<string, Sb1Row>();
   const registros: Sb1Row[] = [];
 
   for (const linha of dados) {
-    const codigo = normalizeCode(linha[0]);
-    const codAgregado = normalizeCode(linha[1]);
-    if (!codigo && !codAgregado) continue; // linha sem código é ignorada
+    const codigo = normalizeCode(linha[col(iCod, 0)]);
+    const codAgregado = normalizeCode(linha[col(iAgr, 1)]);
+    if (!codigo && !codAgregado) continue;
     const registro: Sb1Row = {
+      code: codAgregado || codigo,
       codigo,
       codAgregado,
-      descricao: linha[2] ?? '',
-      tipo: linha[3] ?? '',
-      familiaCod: normalizeCode(linha[4]),
-      subFamiliaCod: normalizeCode(linha[6]),
+      descricao: asText(linha[col(iDesc, 2)]),
+      tipo: asText(linha[col(iTip, 3)]),
+      familiaCode: normalizeCode(linha[col(iFam, 4)]),
+      subfamiliaCode: normalizeCode(linha[col(iSub, 6)]),
     };
     registros.push(registro);
     if (codigo) porCodigo.set(codigo, registro);
     if (codAgregado) porCodAgregado.set(codAgregado, registro);
+    if (registro.code) {
+      porCodigo.set(registro.code, registro);
+      porCodAgregado.set(registro.code, registro);
+    }
   }
 
   return { porCodigo, porCodAgregado, registros };
@@ -104,41 +169,68 @@ export function importSb1(linhasBrutas: unknown[][]): Sb1Index {
 // SBZ
 // ---------------------------------------------------------------------------
 
-/** Linha do cadastro SBZ já normalizada. */
 export interface SbzRow {
   chave: string;   // código normalizado + filial (4 dígitos)
-  codigo: string;  // coluna A normalizado
-  filial: string;  // coluna B com 4 dígitos
-  entraMrp: string; // "Sim" | "Não" (origem "Nao" convertida)
+  codigo: string;
+  filial: string;
+  estoqMin: number | null;
+  estoqMax: number | null;
+  entraMrp: string; // "Sim" | "Não"
 }
 
-/** Índice do SBZ por chave = código + filial. */
 export interface SbzIndex {
   porChave: Map<string, SbzRow>;
 }
 
-/**
- * Importa o SBZ e indexa por chave = código normalizado + filial, porque a
- * fórmula original usava =B2&A2 (filial + código). A coluna "Entra MRP" é
- * localizada pelo nome no cabeçalho (padrão: terceira coluna).
- */
-export function importSbz(linhasBrutas: unknown[][]): SbzIndex {
-  const { cabecalho, dados } = readRows(linhasBrutas);
-  let indiceMrp = 2; // padrão: terceira coluna
-  const achouMrp = acharColuna(cabecalho, ['entra mrp', 'mrp']);
-  if (achouMrp >= 0) indiceMrp = achouMrp;
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  const texto = asText(value).replace(/[R$\s]/g, "");
+  if (!texto) return null;
+  const comma = texto.lastIndexOf(",");
+  const dot = texto.lastIndexOf(".");
+  const normalizado = comma > dot ? texto.replace(/\./g, "").replace(",", ".") : texto.replace(/,/g, "");
+  const resultado = Number(normalizado);
+  return Number.isFinite(resultado) ? resultado : null;
+}
+
+function branchCode(value: unknown): string {
+  const texto = asText(value);
+  const match = texto.match(/^(\d{4})/);
+  return match ? match[1] : texto;
+}
+
+function mrpValue(value: unknown): string {
+  const lower = asText(value).toLowerCase();
+  if (!lower) return "";
+  if (lower.startsWith("s")) return "Sim";
+  if (lower.startsWith("n")) return "Não";
+  return asText(value);
+}
+
+/** Importa o SBZ e indexa por Chave = código normalizado + filial (=B2&A2). */
+export function importSbz(origem: Buffer | unknown[][]): SbzIndex {
+  const { cabecalho, dados } = readRows(origem, ["filial", "codigo"]);
+  const iFil = indiceColuna(cabecalho, ["filial"]);
+  const iCod = indiceColuna(cabecalho, ["codigo"]);
+  const iMin = indiceColuna(cabecalho, ["estoq minimo", "estoque minimo"]);
+  const iMax = indiceColuna(cabecalho, ["estoq maximo", "estoque maximo"]);
+  const iMrp = indiceColuna(cabecalho, ["entra mrp", "mrp"]);
 
   const porChave = new Map<string, SbzRow>();
   for (const linha of dados) {
-    const codigo = normalizeCode(linha[0]);
-    const filial = String(linha[1] ?? '').trim().padStart(4, '0');
-    if (!codigo || !filial) continue; // linha sem código/filial é ignorada
-    const mrpBruto = String(linha[indiceMrp] ?? '').trim();
-    const entraMrp = mrpBruto.toLowerCase() === 'nao' ? 'Não'
-      : mrpBruto.toLowerCase() === 'sim' ? 'Sim'
-      : mrpBruto;
-    const chave = `${codigo}${filial}`;
-    porChave.set(chave, { chave, codigo, filial, entraMrp });
+    const codigo = normalizeCode(linha[iCod >= 0 ? iCod : 1]);
+    const filial = branchCode(linha[iFil >= 0 ? iFil : 0]);
+    if (!codigo || !filial) continue;
+    const chave = codigo + filial;
+    if (porChave.has(chave)) continue;
+    porChave.set(chave, {
+      chave,
+      codigo,
+      filial,
+      estoqMin: asNumber(linha[iMin >= 0 ? iMin : 2]),
+      estoqMax: asNumber(linha[iMax >= 0 ? iMax : 3]),
+      entraMrp: mrpValue(linha[iMrp >= 0 ? iMrp : 4]),
+    });
   }
 
   return { porChave };
@@ -148,33 +240,30 @@ export function importSbz(linhasBrutas: unknown[][]): SbzIndex {
 // Famílias e SubFamílias
 // ---------------------------------------------------------------------------
 
-/** Mapa de família/subfamília: código normalizado -> descrição. */
 export type FamiliasMap = Map<string, string>;
 
-/** Importa o cadastro de Famílias e devolve código normalizado -> descrição. */
-export function importFamilias(linhasBrutas: unknown[][]): FamiliasMap {
-  const { cabecalho, dados } = readRows(linhasBrutas);
-  const indiceDesc = acharColuna(cabecalho, ['descricao', 'descrição', 'desc.']);
+/** Importa o cadastro de Famílias: código normalizado -> descrição. */
+export function importFamilias(origem: Buffer | unknown[][]): FamiliasMap {
+  const { cabecalho, dados } = readRows(origem, ["codigo", "descricao"]);
+  const iDesc = indiceColuna(cabecalho, ["descricao", "desc."]);
   const mapa = new Map<string, string>();
   for (const linha of dados) {
     const codigo = normalizeCode(linha[0]);
-    if (!codigo) continue; // linha sem código é ignorada
-    const descricao = indiceDesc >= 0 ? linha[indiceDesc] : linha[1];
-    mapa.set(codigo, descricao ?? '');
+    if (!codigo) continue;
+    mapa.set(codigo, asText(linha[iDesc >= 0 ? iDesc : 1]));
   }
   return mapa;
 }
 
-/** Importa o cadastro de SubFamílias e devolve código normalizado -> descrição. */
-export function importSubFamilias(linhasBrutas: unknown[][]): FamiliasMap {
-  const { cabecalho, dados } = readRows(linhasBrutas);
-  const indiceDesc = acharColuna(cabecalho, ['descricao', 'descrição', 'desc.']);
+/** Importa o cadastro de SubFamílias: código normalizado -> descrição. */
+export function importSubFamilias(origem: Buffer | unknown[][]): FamiliasMap {
+  const { cabecalho, dados } = readRows(origem, ["codigo", "descricao"]);
+  const iDesc = indiceColuna(cabecalho, ["descricao", "desc."]);
   const mapa = new Map<string, string>();
   for (const linha of dados) {
     const codigo = normalizeCode(linha[0]);
-    if (!codigo) continue; // linha sem código é ignorada
-    const descricao = indiceDesc >= 0 ? linha[indiceDesc] : linha[1];
-    mapa.set(codigo, descricao ?? '');
+    if (!codigo) continue;
+    mapa.set(codigo, asText(linha[iDesc >= 0 ? iDesc : 1]));
   }
   return mapa;
 }
