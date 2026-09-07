@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
+import { referenceImports } from "../drizzle/schema";
 import { Pool } from "pg";
 import { familyReferences, inventoryAnalytics, protheusImports, sb1References, sbzReferences, subfamilyReferences, type InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -554,4 +555,30 @@ export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; 
     db.select({ n: sql<number>`count(*)::int` }).from(subfamilyReferences),
   ]);
   return { sb1: sb1[0]?.n ?? 0, sbz: sbz[0]?.n ?? 0, familias: familias[0]?.n ?? 0, subfamilias: subfamilias[0]?.n ?? 0 };
+// MUDANÇA (07/09/2026): histórico e exclusão dos cadastros de referência.
+export async function recordReferenceImport(kind: "sb1" | "sbz" | "familias" | "subfamilias", fileName: string, rowCount: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(referenceImports).values({ kind, fileName, rowCount });
+}
+export async function listReferenceImports() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(referenceImports).orderBy(desc(referenceImports.importedAt));
+}
+export async function deleteReferenceData(kind: "sb1" | "sbz" | "familias" | "subfamilias") {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  if (kind === "sb1") await db.delete(sb1References);
+  else if (kind === "sbz") await db.delete(sbzReferences);
+  else if (kind === "familias") await db.delete(familyReferences);
+  else if (kind === "subfamilias") await db.delete(subfamilyReferences);
+  await db.delete(referenceImports).where(eq(referenceImports.kind, kind));
+}
+export async function deleteProtheusImport(importId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  await db.delete(inventoryAnalytics).where(eq(inventoryAnalytics.importId, importId));
+  await db.delete(protheusImports).where(eq(protheusImports.id, importId));
+}
 }
