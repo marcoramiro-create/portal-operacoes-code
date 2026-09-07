@@ -16,6 +16,17 @@ export const BRANCHES_ACEITAS = new Set([
 // Dias máximos de cobertura por classe (usado no Excedente)
 export const DIAS_MAXIMOS: Record<"A" | "B" | "C", number> = { A: 60, B: 90, C: 120 };
 
+// MUDANÇA (08/09/2026): normaliza um código para texto consistente, removendo
+// espaços e zeros à esquerda da parte numérica, preservando sufixos.
+// Ex.: "00004" -> "4", "00006-MGT" -> "6-MGT", "000000000000135245" -> "135245".
+// Valores (R$) e quantidades NÃO passam por aqui — são numéricos.
+export function normalizeCode(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const match = text.match(/^0+([0-9].*)$/);
+  return match ? match[1] : text;
+}
+
 export type RawProtheusRow = {
   code: string;
   description: string;
@@ -121,6 +132,10 @@ export function calculateMediaP13M(months: number[]): number {
   return sum / 20;
 }
 
+// MUDANÇA (08/09/2026): o código da planilha de Compras é o AGREGADO da SB1.
+// O lookup do SB1 e a chave do SBZ usam o código normalizado, para casar com o
+// SB1 (chaveado por "Cod Agregado") e com o SBZ (chaveado por código+filial),
+// independente do padding de zeros à esquerda do Browse.
 export function calculatePerRow(row: RawProtheusRow, ref: ReferenceData): Omit<CalculatedRow, "pctAcumTipo" | "classeMacro"> {
   const months = row.months;
   const mediaP13M = calculateMediaP13M(months);
@@ -138,7 +153,8 @@ export function calculatePerRow(row: RawProtheusRow, ref: ReferenceData): Omit<C
   const classificacao = total >= 5 ? "IMPORTANTE" : "";
   const diasE = mediaP13M > 0 ? ((row.estoque + row.pedidos + comprar) / mediaP13M) * 30 : 0;
 
-  const chave = row.code + row.branch;
+  const normCode = normalizeCode(row.code);
+  const chave = normCode + row.branch;
   const sbz = ref.sbz.get(chave);
   const eMin = sbz?.estoqMin ?? null;
   const eMax = sbz?.estoqMax ?? null;
@@ -152,7 +168,7 @@ export function calculatePerRow(row: RawProtheusRow, ref: ReferenceData): Omit<C
   const ultimaCompra = parseDate(row.ultimaCompra);
   const mesAno = ultimaCompra ? `${ultimaCompra.getMonth() + 1}/${ultimaCompra.getFullYear()}` : "";
 
-  const sb1 = ref.sb1.get(row.code);
+  const sb1 = ref.sb1.get(normCode);
   const tipo = sb1?.tipo ?? "";
   const familia = (sb1 && ref.familias.get(sb1.familiaCode)) ?? sb1?.familiaCode ?? "";
   const subfamilia = (sb1 && ref.subfamilias.get(sb1.subfamiliaCode)) ?? sb1?.subfamiliaCode ?? "";

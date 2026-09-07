@@ -6,8 +6,13 @@
 // insere a cada bloco/página (aplicado às quatro importações via readRows) e
 // normaliza a filial da SBZ para o código de 4 dígitos (ex.: "0307-MEGATEC
 // CHAPADAC" -> "0307"), além de padronizar o MRP para "Sim"/"Não".
+// MUDANÇA (08/09/2026): o código da planilha de Compras é o AGREGADO da SB1.
+// O SB1 passa a ser chaveado pela coluna "Cod Agregado" (não "Codigo"), e todos
+// os códigos são normalizados (zeros à esquerda removidos) para casar com a
+// planilha de Compras e com o SBZ.
 // ============================================================
 import * as XLSX from "xlsx";
+import { normalizeCode } from "./protheusCalculations";
 
 // Normaliza um texto: minúsculas, sem acentos, sem espaços/símbolos.
 function normalize(text: string): string {
@@ -115,31 +120,33 @@ function findColumn(row: Record<string, unknown>, ...names: string[]): unknown {
   return undefined;
 }
 
-// SB1: chave = Codigo. Colunas: Tipo, Familia, Sub-familia.
+// MUDANÇA (08/09/2026): o SB1 é chaveado pelo "Cod Agregado" (primeira coluna),
+// porque é esse o código que vem na planilha de Compras. Códigos normalizados.
 export function importSb1(buffer: Buffer): {
   code: string;
   tipo: string;
   familiaCode: string;
   subfamiliaCode: string;
 }[] {
-  const rows = readRows(buffer, ["Codigo", "Tipo"]);
+  const rows = readRows(buffer, ["Cod Agregado", "Tipo"]);
   const seen = new Set<string>();
   const out: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[] = [];
   rows.forEach((row) => {
-    const code = asText(findColumn(row, "Codigo", "Código", "Cod Item", "Codigo do Item"));
+    const code = normalizeCode(findColumn(row, "Cod Agregado", "CodAgregado"));
     if (!code || seen.has(code)) return;
     seen.add(code);
     out.push({
       code,
       tipo: asText(findColumn(row, "Tipo")),
-      familiaCode: asText(findColumn(row, "Familia", "Família", "Cod Familia")),
-      subfamiliaCode: asText(findColumn(row, "Sub-familia", "Sub Familia", "SubFamília", "Cod SubFamilia")),
+      familiaCode: normalizeCode(findColumn(row, "Familia", "Família", "Cod Familia")),
+      subfamiliaCode: normalizeCode(findColumn(row, "Sub-familia", "Sub Familia", "SubFamília", "Cod SubFamilia")),
     });
   });
   return out;
 }
 
-// SBZ: chave = Codigo + Filial(normalizada). Colunas: Estoq Minimo, Estoq Maximo, Entra MRP.
+// MUDANÇA (08/09/2026): o código da SBZ é normalizado para casar com o código
+// normalizado da planilha de Compras (chave = código normalizado + filial).
 export function importSbz(buffer: Buffer): {
   chave: string;
   code: string;
@@ -159,7 +166,7 @@ export function importSbz(buffer: Buffer): {
     entraMrp: string;
   }[] = [];
   rows.forEach((row) => {
-    const code = asText(findColumn(row, "Codigo", "Código", "Cod Item"));
+    const code = normalizeCode(findColumn(row, "Codigo", "Código", "Cod Item"));
     const filial = branchCode(findColumn(row, "Filial", "Fil"));
     if (!code || !filial) return;
     const chave = code + filial;
@@ -177,13 +184,14 @@ export function importSbz(buffer: Buffer): {
   return out;
 }
 
-// Famílias: chave = Codigo. Colunas: Codigo, Descricao.
+// MUDANÇA (08/09/2026): códigos das famílias normalizados, para casar com o
+// familiaCode normalizado que vem do SB1.
 export function importFamilias(buffer: Buffer): { code: string; descricao: string }[] {
   const rows = readRows(buffer, ["Codigo", "Descricao"]);
   const seen = new Set<string>();
   const out: { code: string; descricao: string }[] = [];
   rows.forEach((row) => {
-    const code = asText(findColumn(row, "Codigo", "Código"));
+    const code = normalizeCode(findColumn(row, "Codigo", "Código"));
     if (!code || seen.has(code)) return;
     seen.add(code);
     out.push({ code, descricao: asText(findColumn(row, "Descricao", "Descrição", "Desc")) });
@@ -191,13 +199,14 @@ export function importFamilias(buffer: Buffer): { code: string; descricao: strin
   return out;
 }
 
-// SubFamílias: chave = Codigo. Colunas: Codigo, Descricao.
+// MUDANÇA (08/09/2026): códigos das subfamílias normalizados, para casar com o
+// subfamiliaCode normalizado que vem do SB1.
 export function importSubFamilias(buffer: Buffer): { code: string; descricao: string }[] {
   const rows = readRows(buffer, ["Codigo", "Descricao"]);
   const seen = new Set<string>();
   const out: { code: string; descricao: string }[] = [];
   rows.forEach((row) => {
-    const code = asText(findColumn(row, "Codigo", "Código"));
+    const code = normalizeCode(findColumn(row, "Codigo", "Código"));
     if (!code || seen.has(code)) return;
     seen.add(code);
     out.push({ code, descricao: asText(findColumn(row, "Descricao", "Descrição", "Desc")) });
