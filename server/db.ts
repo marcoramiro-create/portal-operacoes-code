@@ -96,6 +96,44 @@ export async function saveSubfamilyReferences(records: { code: string; descricao
   }
   return records.length;
 }
+// MUDANÇA (08/09/2026): gravação atômica dos cadastros de referência.
+// Apaga a versão anterior, insere a nova (lotes de 2.000) e registra o histórico
+// NA MESMA transação. Se a função for encerrada ou falhar, o banco volta sozinho
+// para a versão anterior — nunca fica parcial, e o histórico nasce junto.
+export async function saveReferenceImport(kind: "sb1" | "sbz" | "familias" | "subfamilias", fileName: string, records: unknown[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const batchSize = 2000;
+  return db.transaction(async (tx) => {
+    if (kind === "sb1") {
+      const rows = records as { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[];
+      await tx.delete(sb1References);
+      for (let start = 0; start < rows.length; start += batchSize) {
+        await tx.insert(sb1References).values(rows.slice(start, start + batchSize));
+      }
+    } else if (kind === "sbz") {
+      const rows = records as { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[];
+      await tx.delete(sbzReferences);
+      for (let start = 0; start < rows.length; start += batchSize) {
+        await tx.insert(sbzReferences).values(rows.slice(start, start + batchSize));
+      }
+    } else if (kind === "familias") {
+      const rows = records as { code: string; descricao: string }[];
+      await tx.delete(familyReferences);
+      for (let start = 0; start < rows.length; start += batchSize) {
+        await tx.insert(familyReferences).values(rows.slice(start, start + batchSize));
+      }
+    } else {
+      const rows = records as { code: string; descricao: string }[];
+      await tx.delete(subfamilyReferences);
+      for (let start = 0; start < rows.length; start += batchSize) {
+        await tx.insert(subfamilyReferences).values(rows.slice(start, start + batchSize));
+      }
+    }
+    await tx.insert(referenceImports).values({ kind, fileName, rowCount: records.length });
+    return records.length;
+  });
+}
 export async function loadSb1References(): Promise<Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>> {
   const db = await getDb();
   const map = new Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>();

@@ -1,6 +1,6 @@
 import { supabaseStorageGetPresignedPutUrl, supabaseStorageReadBuffer } from "../storage";
 import { z } from "zod";
-import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, listReferenceImports, deleteReferenceData, deleteProtheusImport, recordReferenceImport, type AnalyticsFilter } from "../db";
+import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, listReferenceImports, deleteReferenceData, deleteProtheusImport, recordReferenceImport, saveReferenceImport, type AnalyticsFilter } from "../db";
 import { publicProcedure, router } from "../_core/trpc";
 import { assertApplicationPermission, assertPortalAdministrator, getPortalIdentity, recordPortalAudit, type PortalIdentity } from "../supabasePortal";
 import { updateProtheusImportStatus } from "../db";
@@ -48,16 +48,16 @@ export const analyticsRouter = router({
     const result = await importProtheusWorkbook(input.fileName, buffer);
     return { ...result, versionName: input.fileName.replace(/\.xlsx$/i, "") };
   }),
-  // MUDANÇA (07/09/2026): registra o histórico da carga do cadastro (arquivo + quantidade).
+  // MUDANÇA (08/09/2026): importação em transação única (apaga + grava + histórico).
+  // Usa a função saveReferenceImport, que registra o histórico na mesma transação.
   processReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]), fileName: z.string().min(1).max(255), key: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     const buffer = await supabaseStorageReadBuffer(input.key);
     let count = 0;
-    if (input.kind === "sb1") count = await saveSb1References(importSb1(buffer));
-    else if (input.kind === "sbz") count = await saveSbzReferences(importSbz(buffer));
-    else if (input.kind === "familias") count = await saveFamilyReferences(importFamilias(buffer));
-    else count = await saveSubfamilyReferences(importSubFamilias(buffer));
-    await recordReferenceImport(input.kind, input.fileName, count);
+    if (input.kind === "sb1") count = await saveReferenceImport("sb1", input.fileName, importSb1(buffer));
+    else if (input.kind === "sbz") count = await saveReferenceImport("sbz", input.fileName, importSbz(buffer));
+    else if (input.kind === "familias") count = await saveReferenceImport("familias", input.fileName, importFamilias(buffer));
+    else count = await saveReferenceImport("subfamilias", input.fileName, importSubFamilias(buffer));
     return { count };
   }),
   // MUDANÇA (07/09/2026): exclusão direto na tela, sem SQL.
