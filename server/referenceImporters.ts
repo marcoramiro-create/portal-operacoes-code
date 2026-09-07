@@ -4,9 +4,11 @@
  * Módulo: server (API tRPC)
  * Data: 07/09/2026
  * // MUDANÇA (07/09/2026): arquivo COMPLETO reentregue em bloco único; readRows
- * //   ignora cabeçalhos repetidos; SB1 indexado por Cod Agregado E Codigo
- * //   (normalizados); SBZ chave = código normalizado + filial de 4 dígitos;
- * //   Famílias/SubFamílias com códigos normalizados.
+ * //   ignora cabeçalhos repetidos e linhas que não são arrays (células
+ * //   mescladas/objetos do Excel) — corrige "linha.some is not a function";
+ * //   SB1 indexado por Cod Agregado E Codigo (normalizados); SBZ chave =
+ * //   código normalizado + filial de 4 dígitos; Famílias/SubFamílias com
+ * //   códigos normalizados.
  */
 
 /** Normaliza um código (cópia local, sem importar de outro arquivo). */
@@ -21,10 +23,15 @@ export function normalizeCode(codigo: string | null | undefined): string {
   return numero;
 }
 
-/** Remove cabeçalhos repetidos e linhas vazias, devolvendo cabeçalho + dados. */
+/**
+ * Remove cabeçalhos repetidos e linhas vazias, devolvendo cabeçalho + dados.
+ * // MUDANÇA (07/09/2026): ignora linhas que não são arrays (células mescladas
+ * //   ou objetos vindos do Excel) — antes quebrava com "linha.some is not a function".
+ */
 export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dados: string[][] } {
+  const ehArray = (linha: unknown): linha is unknown[] => Array.isArray(linha);
   const naoVazia = (linha: unknown[]) => linha.some((c) => String(c ?? '').trim() !== '');
-  const dadosBrutos = linhasBrutas.filter(naoVazia);
+  const dadosBrutos = linhasBrutas.filter(ehArray).filter(naoVazia);
   if (dadosBrutos.length === 0) return { cabecalho: [], dados: [] };
   const cabecalho = dadosBrutos[0].map((c) => String(c ?? '').trim());
   const chaveCabecalho = JSON.stringify(dadosBrutos[0]);

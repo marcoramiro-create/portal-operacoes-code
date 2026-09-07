@@ -3,10 +3,10 @@
  * Importação e tratamento da planilha de Compras (Protheus).
  * Módulo: server (API tRPC)
  * Data: 07/09/2026
- * // MUDANÇA (07/09/2026): arquivo COMPLETO reentregue em bloco único, com
+ * // MUDANÇA (07/09/2026): arquivo COMPLETO reentregue em bloco único; readRows
+ * //   ignora linhas que não são arrays (corrige "linha.some is not a function"),
  * //   código normalizado na entrada, validação das 13 colunas de meses,
- * //   limite de 25.000 registros e exportação de parseProtheusWorkbook
- * //   (exigida pelo server/db.ts).
+ * //   limite de 25.000 registros e exportação de parseProtheusWorkbook.
  */
 
 import type { PurchaseRow } from './protheusCalculations';
@@ -30,10 +30,15 @@ export function normalizeCode(codigo: string | null | undefined): string {
   return numero;
 }
 
-/** Lê linhas ignorando cabeçalhos repetidos e linhas vazias (cópia local). */
+/**
+ * Lê linhas ignorando cabeçalhos repetidos, linhas vazias e linhas que não
+ * são arrays (células mescladas/objetos do Excel).
+ * // MUDANÇA (07/09/2026): ignora linhas não-array — corrige "linha.some is not a function".
+ */
 export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dados: string[][] } {
+  const ehArray = (linha: unknown): linha is unknown[] => Array.isArray(linha);
   const naoVazia = (linha: unknown[]) => linha.some((c) => String(c ?? '').trim() !== '');
-  const dadosBrutos = linhasBrutas.filter(naoVazia);
+  const dadosBrutos = linhasBrutas.filter(ehArray).filter(naoVazia);
   if (dadosBrutos.length === 0) return { cabecalho: [], dados: [] };
   const cabecalho = dadosBrutos[0].map((c) => String(c ?? '').trim());
   const chaveCabecalho = JSON.stringify(dadosBrutos[0]);
