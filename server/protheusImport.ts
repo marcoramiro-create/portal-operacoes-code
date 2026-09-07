@@ -1,133 +1,184 @@
-// ============================================================
-// server/protheusImport.ts
-// Lê a planilha CRUA do Protheus e calcula tudo no portal.
-// Módulo: Compras e análise Protheus.
-// MUDANÇA (07/09/2026): o código da Compras (coluna A) é o AGREGADO da SB1;
-// é normalizado (zeros à esquerda removidos) para casar com o SB1 e o SBZ.
-// ============================================================
-import * as XLSX from "xlsx";
-import { applyAbcClassification, BRANCHES_ACEITAS, BRANCHES_IGNORADAS, calculatePerRow, type CalculatedRow, type RawProtheusRow, type ReferenceData } from "./protheusCalculations";
+/**
+ * protheusImport.ts
+ * Importação e tratamento da planilha de Compras (Protheus).
+ * Módulo: server (API tRPC)
+ * Data: 07/09/2026
+ * // MUDANÇA (07/09/2026): arquivo COMPLETO reentregue em bloco único, com
+ * //   código normalizado na entrada, validação das 13 colunas de meses e
+ * //   limite de 25.000 registros.
+ */
 
-export type ProtheusInventoryRecord = {
-  code: string;
-  description: string;
-  branch: string;
-  productType: "ME" | "PE";
-  mrp: "Sim" | "Não";
-  family: string;
-  subfamily: string;
-  curve: "A" | "B" | "C" | "D" | "E";
-  sales13M: number;
-  salesValue13M: number;
-  stock: number;
-  stockValue: number;
-  coverageDays: number;
-  excessValue: number;
-};
+import type { PurchaseRow } from './protheusCalculations';
+import type { Sb1Index, SbzIndex, FamiliasMap } from './referenceImporters';
 
-function asText(value: unknown) { return String(value ?? "").trim(); }
+/** Limite máximo de registros aceitos na importação de Compras. */
+export const LIMITE_REGISTROS = 25000;
 
-// MUDANÇA (07/09/2026): normalização local (não depende de import), para o
-// build nunca quebrar se este arquivo for trocado sem o outro.
-function normalizeCode(value: unknown): string {
-  const text = asText(value);
-  if (!text) return "";
-  const match = text.match(/^0+([0-9].*)$/);
-  return match ? match[1] : text;
+/** Quantidade de colunas de meses esperadas na planilha de Compras. */
+export const QTD_COLUNAS_MESES = 13;
+
+/** Normaliza um código (cópia local, sem importar de outro arquivo). */
+export function normalizeCode(codigo: string | null | undefined): string {
+  if (!codigo) return '';
+  const texto = String(codigo).trim();
+  const partes = texto.split('-');
+  const numero = (partes[0] || '').replace(/^0+/, '') || '0';
+  if (partes.length > 1) {
+    return `${numero}-${partes.slice(1).join('-')}`;
+  }
+  return numero;
 }
 
-function asNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const text = asText(value).replace(/[R$\s]/g, "");
-  if (!text) return 0;
-  const comma = text.lastIndexOf(",");
-  const dot = text.lastIndexOf(".");
-  const normalized = comma > dot ? text.replace(/\./g, "").replace(",", ".") : text.replace(/,/g, "");
-  const result = Number(normalized);
-  return Number.isFinite(result) ? result : 0;
+/** Lê linhas ignorando cabeçalhos repetidos e linhas vazias (cópia local). */
+export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dados: string[][] } {
+  const naoVazia = (linha: unknown[]) => linha.some((c) => String(c ?? '').trim() !== '');
+  const dadosBrutos = linhasBrutas.filter(naoVazia);
+  if (dadosBrutos.length === 0) return { cabecalho: [], dados: [] };
+  const cabecalho = dadosBrutos[0].map((c) => String(c ?? '').trim());
+  const chaveCabecalho = JSON.stringify(dadosBrutos[0]);
+  const dados = dadosBrutos
+    .slice(1)
+    .filter((linha) => JSON.stringify(linha) !== chaveCabecalho)
+    .map((linha) => linha.map((c) => String(c ?? '').trim()));
+  return { cabecalho, dados };
 }
 
-const MONTH_PATTERN = /^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\/\d{4}$/i;
-const MONTH_ORDER: Record<string, number> = { jan:1, fev:2, mar:3, abr:4, mai:5, jun:6, jul:7, ago:8, set:9, out:10, nov:11, dez:12 };
+/** Localiza as colunas de código, filial e descrição pelo nome no cabeçalho. */
+function localizarColunas(cabecalho: string[]): { codigo: number; filial: number; descricao: number } {
+  const achar = (nomes: string[]) =>
+    cabecalho.findIndex((c) => nomes.some((n) => String(c ?? '').trim().toLowerCase() === n.toLowerCase()));
+  const codigo = achar(['codigo', 'código', 'cod.']);
+  const filial = achar(['filial', 'fil.', 'cod. filial']);
+  const descricao = achar(['descricao', 'descrição', 'desc.']);
+  return {
+    codigo: codigo >= 0 ? codigo : 0,
+    filial: filial >= 0 ? filial : 1,
+    descricao: descricao >= 0 ? descricao : 2,
+  };
+}
 
-export function parseProtheusWorkbook(buffer: Buffer, ref: ReferenceData, hoje = new Date()): ProtheusInventoryRecord[] {
-  const workbook = XLSX.read(buffer, { type: "buffer", cellText: false });
-  const firstSheetName = workbook.SheetNames[0];
-  if (!firstSheetName) throw new Error("A planilha não possui uma aba para importação.");
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[firstSheetName], { header: 1, raw: false, defval: "" });
-  const headerRow = rows[0];
-  if (!headerRow) throw new Error("A planilha não possui uma linha de cabeçalhos.");
-
-  const headerPositions = new Map<string, number>();
-  headerRow.forEach((header, position) => { const name = asText(header); if (name && !headerPositions.has(name)) headerPositions.set(name, position); });
-
-  const required = ["Codigo", "Descricao", "Filial", "Ultima Compra", "CustoUn13M", "CustoTot13M", "Prazo", "Estoque", "Pedidos"];
-  const missing = required.filter(h => !headerPositions.has(h));
-  if (missing.length) throw new Error(`A planilha não contém as colunas obrigatórias: ${missing.join(", ")}.`);
-
-  // Detecta as colunas de meses e pega as 13 mais recentes
-  const monthHeaders: { name: string; pos: number; sortKey: number }[] = [];
-  headerRow.forEach((header, position) => {
-    const name = asText(header);
-    const m = name.match(MONTH_PATTERN);
-    if (m) {
-      const month = MONTH_ORDER[m[1].toLowerCase()];
-      const year = Number(m[2]);
-      monthHeaders.push({ name, pos: position, sortKey: year * 12 + month });
+/**
+ * Valida se o cabeçalho possui 13 colunas de meses consecutivas.
+ * Retorna o índice inicial das colunas de meses (ou erro amigável).
+ */
+export function validarColunasMeses(cabecalho: string[]): { ok: boolean; indiceInicial: number; mensagem: string } {
+  const regexMes = /^(\d{1,2}[\/-]\d{4}|[a-z]{3,9}[\/-]\d{1,4}|[a-z]{3,9}\s*\d{4})$/i;
+  for (let i = 0; i <= cabecalho.length - QTD_COLUNAS_MESES; i++) {
+    const fatia = cabecalho.slice(i, i + QTD_COLUNAS_MESES);
+    if (fatia.every((c) => regexMes.test(String(c ?? '').trim()))) {
+      return { ok: true, indiceInicial: i, mensagem: '' };
     }
-  });
-  monthHeaders.sort((a, b) => a.sortKey - b.sortKey);
-  const last13 = monthHeaders.slice(-13);
-  if (last13.length < 13) throw new Error("A planilha deve conter 13 colunas de meses (ex.: Ago/2025 a Ago/2026).");
+  }
+  return {
+    ok: false,
+    indiceInicial: -1,
+    mensagem: `Não encontrei 13 colunas de meses consecutivas. Cabeçalho recebido: ${cabecalho.join(' | ')}`,
+  };
+}
 
-  const rawRows: RawProtheusRow[] = [];
-  const keys = new Set<string>();
-  rows.slice(1).forEach((row, index) => {
-    if (!row || !row.some(value => asText(value))) return;
-    const line = index + 2;
-    const valueOf = (h: string) => row[headerPositions.get(h)!];
-    // O código da Compras é o AGREGADO da SB1; normalizado para casar com o SB1/SBZ.
-    const code = normalizeCode(asText(valueOf("Codigo")));
-    const branch = asText(valueOf("Filial"));
-    if (!code || !branch) throw new Error(`A linha ${line} não possui Codigo ou Filial.`);
-    if (BRANCHES_IGNORADAS.has(branch)) return;   // descarta 0105 e 0201
-    if (!BRANCHES_ACEITAS.has(branch)) return;      // mantém só as aceitas
-    const key = `${code}::${branch}`;
-    if (keys.has(key)) throw new Error(`Registro duplicado ${code} na filial ${branch}.`);
-    keys.add(key);
-    const months = last13.map(m => asNumber(row[m.pos]));
-    rawRows.push({
-      code,
-      description: asText(valueOf("Descricao")),
-      branch,
-      ultimaCompra: asText(valueOf("Ultima Compra")),
-      months,
-      custoUn13M: asNumber(valueOf("CustoUn13M")),
-      custoTot13M: asNumber(valueOf("CustoTot13M")),
-      prazo: asNumber(valueOf("Prazo")),
-      estoque: asNumber(valueOf("Estoque")),
-      pedidos: asNumber(valueOf("Pedidos")),
+/**
+ * Converte as linhas brutas da planilha de Compras em registros normalizados.
+ * Normaliza o código, mantém valores numéricos e aplica o limite de 25.000.
+ */
+export function parseRegistrosCompras(linhasBrutas: unknown[][]): { registros: PurchaseRow[]; avisos: string[] } {
+  const { cabecalho, dados } = readRows(linhasBrutas);
+  if (dados.length === 0) {
+    throw new Error('A planilha de Compras está vazia (só tem cabeçalho).');
+  }
+  if (dados.length > LIMITE_REGISTROS) {
+    throw new Error(`A planilha tem ${dados.length} registros, acima do limite de ${LIMITE_REGISTROS}.`);
+  }
+  const colunas = localizarColunas(cabecalho);
+  const validacao = validarColunasMeses(cabecalho);
+  if (!validacao.ok) {
+    throw new Error(validacao.mensagem);
+  }
+  const inicioMeses = validacao.indiceInicial;
+  const registros: PurchaseRow[] = [];
+  const avisos: string[] = [];
+
+  dados.forEach((linha) => {
+    const codigoOriginal = String(linha[colunas.codigo] ?? '').trim();
+    if (!codigoOriginal) return; // linha sem código é ignorada
+    const valores: number[] = [];
+    for (let m = 0; m < QTD_COLUNAS_MESES; m++) {
+      const bruto = String(linha[inicioMeses + m] ?? '').trim();
+      // interpreta números no formato brasileiro: 1.234,56 -> 1234.56
+      const numerico = Number(bruto.replace(/\./g, '').replace(',', '.')) || 0;
+      valores.push(numerico);
+    }
+    registros.push({
+      codigoOriginal,
+      codigo: normalizeCode(codigoOriginal),
+      filial: String(linha[colunas.filial] ?? '').trim().padStart(4, '0'),
+      descricao: String(linha[colunas.descricao] ?? '').trim(),
+      familia: '',
+      subFamilia: '',
+      mrp: '',
+      tipo: '',
+      valores,
+      total: valores.reduce((acc, v) => acc + v, 0),
     });
   });
-  if (rawRows.length === 0) throw new Error("A planilha não contém registros para importação após o descarte das filiais.");
 
-  const calculated = applyAbcClassification(rawRows.map(r => calculatePerRow(r, ref)), hoje);
-  if (calculated.length > 25000) throw new Error("A planilha excede o limite de 25.000 registros por importação.");
+  if (registros.length === 0) {
+    throw new Error('Nenhum registro de Compras foi lido. Verifique o cabeçalho da planilha.');
+  }
+  return { registros, avisos };
+}
 
-  return calculated.map(c => ({
-    code: c.code,
-    description: c.description,
-    branch: c.branch,
-    productType: c.productType,
-    mrp: c.mrp,
-    family: c.family,
-    subfamily: c.subfamily,
-    curve: c.curve,
-    sales13M: c.sales13M,
-    salesValue13M: c.salesValue13M,
-    stock: c.stock,
-    stockValue: c.stockValue,
-    coverageDays: c.coverageDays,
-    excessValue: c.excessValue,
-  }));
+/**
+ * Cruza os registros de Compras com SB1, SBZ, Famílias e SubFamílias.
+ * SB1 procura primeiro pelo Codigo; se não achar, procura pelo Cod Agregado
+ * (regra da fórmula original =SEERRO(PROCV(...);PROCV(...))).
+ */
+export function enriquecerCompras(
+  registros: PurchaseRow[],
+  sb1: Sb1Index,
+  sbz: SbzIndex,
+  familias: FamiliasMap,
+  subFamilias: FamiliasMap,
+): PurchaseRow[] {
+  return registros.map((r) => {
+    // 1) SB1 pelas DUAS chaves: Codigo primeiro, depois Cod Agregado
+    const porCodigo = sb1.porCodigo.get(r.codigo);
+    const sb1Row = porCodigo ?? sb1.porCodAgregado.get(r.codigo);
+
+    let familia = '';
+    let subFamilia = '';
+    let tipo = '';
+    let descricao = r.descricao;
+
+    if (sb1Row) {
+      descricao = sb1Row.descricao || r.descricao;
+      tipo = sb1Row.tipo || '';
+      const fam = normalizeCode(sb1Row.familiaCod);
+      if (fam && familias.has(fam)) familia = familias.get(fam) ?? '';
+      const sub = normalizeCode(sb1Row.subFamiliaCod);
+      if (sub && subFamilias.has(sub)) subFamilia = subFamilias.get(sub) ?? '';
+    }
+
+    // 2) SBZ por chave = código normalizado + filial (para o MRP)
+    const chaveSbz = `${r.codigo}${r.filial}`;
+    const mrpBruto = (sbz.porChave.get(chaveSbz)?.entraMrp ?? '').trim().toLowerCase();
+    const mrp = mrpBruto === 'nao' ? 'Não' : mrpBruto === 'sim' ? 'Sim' : mrpBruto;
+
+    return { ...r, descricao, familia, subFamilia, mrp, tipo };
+  });
+}
+
+/**
+ * Pipeline completo de importação: lê, valida e cruza a planilha de Compras.
+ * Devolve os registros prontos para a gravação (a gravação atômica com
+ * histórico fica no router, que já estava funcionando).
+ */
+export function importarCompras(
+  linhasBrutas: unknown[][],
+  sb1: Sb1Index,
+  sbz: SbzIndex,
+  familias: FamiliasMap,
+  subFamilias: FamiliasMap,
+): { registros: PurchaseRow[]; avisos: string[] } {
+  const { registros, avisos } = parseRegistrosCompras(linhasBrutas);
+  return { registros: enriquecerCompras(registros, sb1, sbz, familias, subFamilias), avisos };
 }

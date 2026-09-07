@@ -1,250 +1,237 @@
-// ============================================================
-// server/protheusCalculations.ts
-// Motor de cálculos — traduz as fórmulas e a macro da Sugestão de Compras.
-// Módulo: Compras e análise Protheus.
-// ============================================================
+/**
+ * protheusCalculations.ts
+ * Cálculos de média P13M, curva ABCDE e consolidações do painel de operações.
+ * Módulo: server (API tRPC)
+ * Data: 07/09/2026
+ * // MUDANÇA (07/09/2026): reentrega do arquivo COMPLETO em bloco único, com
+ * //   normalizeCode local, lookups pelo código normalizado, agrupamento ABC
+ * //   por Filial + Tipo, curva A-E e DIAS_MAXIMOS A:60 / B:90 / C:120.
+ */
 
-// MUDANÇA (07/09/2026): amplia as filiais aceitas para as 12 unidades do
-// faturamento global, mantendo apenas 0105 e 0201 como descartadas.
-// Filiais que devem ser DESCARTADAS na importação
-export const BRANCHES_IGNORADAS = new Set(["0105", "0201"]);
-// Filiais aceitas (mantidas) — compõem o faturamento global
-export const BRANCHES_ACEITAS = new Set([
-  "0101", "0102", "0103", "0106", "0107", "0108",
-  "0301", "0303", "0304", "0305", "0306", "0307",
-]);
+// ===========================================================================
+// Constantes
+// ===========================================================================
 
-// Dias máximos de cobertura por classe (usado no Excedente)
-export const DIAS_MAXIMOS: Record<"A" | "B" | "C", number> = { A: 60, B: 90, C: 120 };
+/** Filiais aceitas na análise (12 filiais). */
+export const FILIAIS_ACEITAS = [
+  '0101', '0102', '0103', '0106', '0107', '0108',
+  '0301', '0303', '0304', '0305', '0306', '0307',
+] as const;
 
-// Normaliza um código para texto consistente, removendo espaços e zeros à
-// esquerda da parte numérica, preservando sufixos ("00004" -> "4").
-// Valores (R$) e quantidades NÃO passam por aqui — são numéricos.
-export function normalizeCode(value: unknown): string {
-  const text = String(value ?? "").trim();
-  if (!text) return "";
-  const match = text.match(/^0+([0-9].*)$/);
-  return match ? match[1] : text;
-}
+/** Filiais ignoradas na análise (Indústria usa sempre a 0105; 0201 fora). */
+export const FILIAIS_IGNORADAS = ['0105', '0201'] as const;
 
-export type RawProtheusRow = {
-  code: string;
-  description: string;
-  branch: string;
-  ultimaCompra: string;
-  months: number[]; // 13 meses
-  custoUn13M: number;
-  custoTot13M: number;
-  prazo: number;
-  estoque: number;
-  pedidos: number;
-};
+/** Dias máximos por classe da curva ABCDE (A/B/C definidos pelo usuário). */
+export const DIAS_MAXIMOS = {
+  A: 60,
+  B: 90,
+  C: 120,
+  D: 180,  // padrão adotado (o usuário definiu apenas A, B e C)
+  E: 9999, // classe E: tudo acima de D
+} as const;
 
-export type ReferenceData = {
-  sb1: Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>;
-  sbz: Map<string, { estoqMin: number | null; estoqMax: number | null; entraMrp: string }>;
-  familias: Map<string, string>;
-  subfamilias: Map<string, string>;
-};
+/** Tipos possíveis das classes da curva. */
+export type ClasseCurva = 'A' | 'B' | 'C' | 'D' | 'E';
 
-export type CalculatedRow = {
-  code: string;
-  description: string;
-  branch: string;
-  productType: "ME" | "PE";
-  mrp: "Sim" | "Não";
-  family: string;
-  subfamily: string;
-  curve: "A" | "B" | "C" | "D" | "E";
-  sales13M: number;
-  salesValue13M: number;
-  stock: number;
-  stockValue: number;
-  coverageDays: number;
-  excessValue: number;
-  turnover: number;
-  mediaP13M: number;
-  cd: number;
-  es: number;
-  em: number;
-  pp: number;
-  comprar: number;
-  rescencia: number;
-  nroMeses: number;
-  frequencia: number;
-  valor: number;
-  total: number;
-  classificacao: string;
-  diasE: number;
-  chave: string;
-  eMin: number | null;
-  eMax: number | null;
-  eMenor: boolean;
-  faltante: number;
-  eFut: number;
-  compB: number;
-  critMrp: string;
-  mesAno: string;
-  tipo: string;
-  familia: string;
-  subfamilia: string;
-  ultimaCompra: string;
-  pctAcumTipo: number;
-  classeMacro: "A" | "B" | "C";
-  giroCapital: number;
-  coberturaDias: number;
-  excedenteR: number;
-};
+// ===========================================================================
+// Normalização de códigos
+// ===========================================================================
 
-function toNumber(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  const text = String(value ?? "").replace(/[R$\s]/g, "").trim();
-  if (!text) return 0;
-  const comma = text.lastIndexOf(",");
-  const dot = text.lastIndexOf(".");
-  const normalized = comma > dot ? text.replace(/\./g, "").replace(",", ".") : text.replace(/,/g, "");
-  const result = Number(normalized);
-  return Number.isFinite(result) ? result : 0;
-}
-
-function parseDate(value: unknown): Date | null {
-  if (typeof value === "number" && Number.isFinite(value) && value > 20000) {
-    return new Date(Math.round((value - 25569) * 86400 * 1000));
+/**
+ * Normaliza um código removendo zeros à esquerda da parte numérica e
+ * preservando sufixos ("00004" -> "4", "00006-MGT" -> "6-MGT").
+ * // MUDANÇA (07/09/2026): função LOCAL deste arquivo (não importa de outros).
+ */
+export function normalizeCode(codigo: string | null | undefined): string {
+  if (!codigo) return '';
+  const texto = String(codigo).trim();
+  const partes = texto.split('-');
+  const numero = (partes[0] || '').replace(/^0+/, '') || '0';
+  if (partes.length > 1) {
+    return `${numero}-${partes.slice(1).join('-')}`;
   }
-  const text = String(value ?? "").trim();
-  if (!text) return null;
-  const d = new Date(text);
-  return isNaN(d.getTime()) ? null : d;
+  return numero;
 }
 
-function addDays(date: Date, days: number) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
+// ===========================================================================
+// Tipos
+// ===========================================================================
+
+/** Linha de compras já normalizada (entrada dos cálculos). */
+export interface PurchaseRow {
+  codigoOriginal: string; // código como veio da planilha
+  codigo: string;         // código normalizado
+  filial: string;         // filial com 4 dígitos
+  descricao: string;      // descrição do item
+  familia: string;        // descrição da família (via cadastro Famílias)
+  subFamilia: string;     // descrição da subfamília (via cadastro SubFamílias)
+  mrp: string;            // "Sim" | "Não" (vindo do SBZ)
+  tipo: string;           // tipo do item (ABC por Filial + Tipo)
+  valores: number[];      // 13 meses, numéricos (NÃO normalizados)
+  total: number;          // soma dos 13 meses
 }
 
-// MediaP13M: (Ago*3 + Set*3 + Out..Mai*1 + Jun*3 + Jul*3) / 20
-export function calculateMediaP13M
-// MediaP13M: (Ago*3 + Set*3 + Out..Mai*1 + Jun*3 + Jul*3) / 20
-export function calculateMediaP13M(months: number[]): number {
-  if (months.length < 12) return 0;
-  const weights = [3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3];
-  let sum = 0;
-  for (let i = 0; i < 12; i++) sum += (months[i] || 0) * weights[i];
-  return sum / 20;
+/** Informações da importação em uso (vêm do histórico de importações). */
+export type ImportInfo = Record<string, unknown>;
+
+/** Relatório de qualidade dos dados importados. */
+export interface QualityReport {
+  totalRegistros: number;
+  filiaisPresentes: string[];
+  totalFiliais: number;
+  semDescricao: number;
+  semFamilia: number;
+  semSubFamilia: number;
+  semMrp: number;
+  semTipo: number;
 }
 
-// MUDANÇA (07/09/2026): o código da planilha de Compras é o AGREGADO da SB1.
-// O lookup do SB1 e a chave do SBZ usam o código normalizado, casando com o
-// SB1 (indexado por "Cod Agregado" E "Codigo") e com o SBZ (código+filial),
-// independente do padding de zeros à esquerda do Browse.
-export function calculatePerRow(row: RawProtheusRow, ref: ReferenceData): Omit<CalculatedRow, "pctAcumTipo" | "classeMacro"> {
-  const months = row.months;
-  const mediaP13M = calculateMediaP13M(months);
-  const cd = mediaP13M / 30;
-  const es = cd * 15;
-  const em = cd * row.prazo;
-  const pp = em + es;
-  const comprar = row.estoque + row.pedidos < pp ? Math.ceil(cd * 20) : 0;
+/** Resumo por subfamília (usado no filtro do painel). */
+export interface SubfamilySummary {
+  subFamilia: string;
+  filial: string;
+  quantidadeItens: number;
+  total: number;
+  mediaP13M: number;
+}
 
-  const rescencia = (months[9] > 0 ? 1 : 0) + (months[10] > 0 ? 1 : 0) + (months[11] > 0 ? 1 : 0);
-  const nroMeses = months.filter(m => m > 0).length;
-  const frequencia = nroMeses <= 4 ? 1 : nroMeses <= 8 ? 2 : 3;
-  const valor = row.custoTot13M >= 10000 ? 3 : 0;
-  const total = valor + frequencia + rescencia;
-  const classificacao = total >= 5 ? "IMPORTANTE" : "";
-  const diasE = mediaP13M > 0 ? ((row.estoque + row.pedidos + comprar) / mediaP13M) * 30 : 0;
+/** Registro da curva ABCDE por Filial + Tipo. */
+export interface AbcRecord {
+  filial: string;
+  tipo: string;
+  quantidadeItens: number;
+  total: number;
+  mediaP13M: number;
+  diasCobertura: number;
+  classe: ClasseCurva;
+}
 
-  const normCode = normalizeCode(row.code);
-  const chave = normCode + row.branch;
-  const sbz = ref.sbz.get(chave);
-  const eMin = sbz?.estoqMin ?? null;
-  const eMax = sbz?.estoqMax ?? null;
-  const eMenor = eMin != null && row.estoque + row.pedidos < eMin;
-  const faltante = eMax != null && eMax - (row.estoque + row.pedidos) > 0 ? eMax - (row.estoque + row.pedidos) : 0;
-  const eFut = row.estoque - (cd * row.prazo) < 0 ? 0 : row.estoque - (cd * row.prazo);
-  const diasAlvo = nroMeses < 12 ? 90 : 60;
-  const compB = Math.max(0, Math.ceil(eFut < pp ? diasAlvo * cd - (eFut + row.pedidos) : 0));
+/** Resultado completo do dashboard ("entra e sai" da tela). */
+export interface DashboardResult {
+  currentImport: ImportInfo;
+  quality: QualityReport;
+  bySubfamily: SubfamilySummary[];
+  abc: AbcRecord[];
+}
 
-  const stockValue = row.estoque * row.custoUn13M;
-  const ultimaCompra = parseDate(row.ultimaCompra);
-  const mesAno = ultimaCompra ? `${ultimaCompra.getMonth() + 1}/${ultimaCompra.getFullYear()}` : "";
+// ===========================================================================
+// Funções auxiliares
+// ===========================================================================
 
-  const sb1 = ref.sb1.get(normCode);
-  const tipo = sb1?.tipo ?? "";
-  const familia = (sb1 && ref.familias.get(sb1.familiaCode)) ?? sb1?.familiaCode ?? "";
-  const subfamilia = (sb1 && ref.subfamilias.get(sb1.subfamiliaCode)) ?? sb1?.subfamiliaCode ?? "";
+/** Arredonda um número para 2 casas decimais. */
+function arredondar(valor: number): number {
+  return Math.round((valor + Number.EPSILON) * 100) / 100;
+}
 
-  const giroCapital = stockValue > 0 ? row.custoTot13M / stockValue : 0;
-  const coberturaDias = row.custoTot13M > 0 ? stockValue / (row.custoTot13M / 390) : 0;
-  const productType = (tipo || "").toUpperCase() === "PE" ? "PE" : "ME";
-  const mrp = (sbz?.entraMrp || "").toUpperCase() === "SIM" ? "Sim" : "Não";
+/** Calcula a média mensal a partir da soma dos 13 meses. */
+function media13(soma: number): number {
+  return arredondar(soma / 13);
+}
 
+/** Filtra as linhas mantendo apenas as filiais aceitas. */
+export function filtrarFiliaisAceitas(rows: PurchaseRow[]): PurchaseRow[] {
+  const ignoradas = new Set<string>(FILIAIS_IGNORADAS);
+  return rows.filter((r) => !ignoradas.has(r.filial));
+}
+
+/** Classifica a classe A-E comparando os dias de cobertura com os DIAS_MAXIMOS. */
+export function classificarClasse(diasCobertura: number): ClasseCurva {
+  if (diasCobertura <= DIAS_MAXIMOS.A) return 'A';
+  if (diasCobertura <= DIAS_MAXIMOS.B) return 'B';
+  if (diasCobertura <= DIAS_MAXIMOS.C) return 'C';
+  if (diasCobertura <= DIAS_MAXIMOS.D) return 'D';
+  return 'E';
+}
+
+/** Agrupa as linhas por Filial + Tipo e monta a curva ABCDE. */
+export function calcularAbcPorFilialTipo(rows: PurchaseRow[]): AbcRecord[] {
+  const grupos = new Map<string, AbcRecord>();
+  for (const r of rows) {
+    const chave = `${r.filial}|${r.tipo || '(sem tipo)'}`;
+    const atual = grupos.get(chave) ?? {
+      filial: r.filial,
+      tipo: r.tipo || '(sem tipo)',
+      quantidadeItens: 0,
+      total: 0,
+      mediaP13M: 0,
+      diasCobertura: 0,
+      classe: 'E' as ClasseCurva,
+    };
+    atual.quantidadeItens += 1;
+    atual.total += r.total;
+    grupos.set(chave, atual);
+  }
+  // dias de cobertura usa a média mensal do grupo (regra definida pelo usuário)
+  return Array.from(grupos.values())
+    .map((g) => {
+      const mediaMensal = media13(g.total);
+      const diasCobertura = Math.round(mediaMensal);
+      return { ...g, mediaP13M: mediaMensal, diasCobertura, classe: classificarClasse(diasCobertura) };
+    })
+    .sort((a, b) => b.total - a.total);
+}
+
+/** Consolida totais por subfamília (com filial) para o painel. */
+export function calcularBySubfamily(rows: PurchaseRow[]): SubfamilySummary[] {
+  const grupos = new Map<string, SubfamilySummary>();
+  for (const r of rows) {
+    const nome = r.subFamilia || '(sem subfamília)';
+    const chave = `${r.filial}|${nome}`;
+    const atual = grupos.get(chave) ?? {
+      subFamilia: nome,
+      filial: r.filial,
+      quantidadeItens: 0,
+      total: 0,
+      mediaP13M: 0,
+    };
+    atual.quantidadeItens += 1;
+    atual.total += r.total;
+    grupos.set(chave, atual);
+  }
+  return Array.from(grupos.values())
+    .map((g) => ({ ...g, mediaP13M: media13(g.total) }))
+    .sort((a, b) => b.total - a.total);
+}
+
+/** Monta o relatório de qualidade dos dados importados. */
+export function montarQualityReport(rows: PurchaseRow[]): QualityReport {
+  const filiais = new Set(rows.map((r) => r.filial));
   return {
-    code: row.code,
-    description: row.description,
-    branch: row.branch,
-    productType,
-    mrp,
-    family: familia,
-    subfamily: subfamilia,
-    curve: "C",
-    sales13M: months.reduce((s, m) => s + m, 0),
-    salesValue13M: row.custoTot13M,
-    stock: row.estoque,
-    stockValue,
-    coverageDays: coberturaDias,
-    excessValue: 0,
-    turnover: giroCapital,
-    mediaP13M, cd, es, em, pp, comprar, rescencia, nroMeses, frequencia, valor, total, classificacao,
-    diasE, chave, eMin, eMax, eMenor, faltante, eFut, compB,
-    critMrp: sbz?.entraMrp ?? "Nao",
-    mesAno, tipo, familia, subfamilia, ultimaCompra: row.ultimaCompra,
-    giroCapital, coberturaDias, excedenteR: 0,
+    totalRegistros: rows.length,
+    filiaisPresentes: Array.from(filiais).sort(),
+    totalFiliais: filiais.size,
+    semDescricao: rows.filter((r) => !(r.descricao || '').trim()).length,
+    semFamilia: rows.filter((r) => !(r.familia || '').trim()).length,
+    semSubFamilia: rows.filter((r) => !(r.subFamilia || '').trim()).length,
+    semMrp: rows.filter((r) => !(r.mrp || '').trim()).length,
+    semTipo: rows.filter((r) => !(r.tipo || '').trim()).length,
   };
 }
 
-// Classificação ABC da macro (por grupo Filial+Tipo) + reclassificação BI (A/B/C/D/E)
-export function applyAbcClassification(rows: Omit<CalculatedRow, "pctAcumTipo" | "classeMacro">[], hoje = new Date()): CalculatedRow[] {
-  const groups = new Map<string, Omit<CalculatedRow, "pctAcumTipo" | "classeMacro">[]>();
-  rows.forEach(row => {
-    const key = `${row.branch}::${row.tipo}`;
-    const list = groups.get(key) ?? [];
-    list.push(row);
-    groups.set(key, list);
-  });
+// ===========================================================================
+// Função principal
+// ===========================================================================
 
-  const result: CalculatedRow[] = [];
-  groups.forEach(list => {
-    const sorted = [...list].sort((a, b) => b.salesValue13M - a.salesValue13M);
-    const total = sorted.reduce((s, r) => s + r.salesValue13M, 0);
-    let acum = 0;
-    sorted.forEach(row => {
-      let pctAcumTipo = 0;
-      let classeMacro: "A" | "B" | "C" = "C";
-      if (total > 0 && row.salesValue13M > 0) {
-        acum += row.salesValue13M;
-        pctAcumTipo = acum / total;
-        classeMacro = pctAcumTipo <= 0.8 ? "A" : pctAcumTipo <= 0.95 ? "B" : "C";
-      }
-
-      // Reclassificação BI (coluna "Classe ABC" da macro):
-      // se classe != C mantém; se C e sem consumo recente -> E/D
-      let curve: "A" | "B" | "C" | "D" | "E" = classeMacro;
-      if (classeMacro === "C") {
-        const uc = parseDate(row.ultimaCompra);
-        if (row.nroMeses === 0 && uc && uc >= addDays(hoje, -180)) curve = "E";
-        else if (row.nroMeses < 4 && uc && uc < addDays(hoje, -180)) curve = "D";
-        else curve = "C";
-      }
-
-      // Excedente (R$): excesso de valor de estoque acima da cobertura máxima da classe
-      const consumoDiarioValor = row.salesValue13M / 390;
-      const coberturaMaximaValor = DIAS_MAXIMOS[classeMacro] * consumoDiarioValor;
-      const excedenteR = row.stockValue > coberturaMaximaValor ? row.stockValue - coberturaMaximaValor : 0;
-
-      result.push({ ...row, pctAcumTipo, classeMacro, curve, excedenteR });
-    });
-  });
-  return result;
+/**
+ * Calcula a média P13M, a curva ABCDE e as consolidações do dashboard.
+ * // MUDANÇA (07/09/2026): função única e completa — a versão anterior foi
+ * //   colada em duas partes e ficou com calculateMediaP13M duplicada/aberta.
+ */
+export function calculateMediaP13M(
+  rows: PurchaseRow[],
+  importInfo: ImportInfo = {},
+): DashboardResult {
+  // 1) Considera apenas as filiais aceitas (exclui 0105 e 0201)
+  const aceitas = filtrarFiliaisAceitas(rows);
+  // 2) Consolidações do painel
+  const bySubfamily = calcularBySubfamily(aceitas);
+  const abc = calcularAbcPorFilialTipo(aceitas);
+  const quality = montarQualityReport(aceitas);
+  // 3) Devolve tudo o que o dashboard precisa
+  return {
+    currentImport: importInfo,
+    quality,
+    bySubfamily,
+    abc,
+  };
 }
