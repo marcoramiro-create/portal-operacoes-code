@@ -3,13 +3,14 @@
 // Importadores dos cadastros de referência (SB1, SBZ, Famílias e SubFamílias).
 // Módulo: server (API tRPC)
 // Data: 07/09/2026
-// MUDANÇA (07/09/2026): aceita Buffer OU unknown[][] (auto-detecção) — corrige
-//   "0 registros" quando o router passa o Buffer cru em vez das linhas lidas.
-// MUDANÇA (07/09/2026): localiza as colunas pelo NOME do cabeçalho, funcionando
-//   com as duas formas de exportação do Browse. SB1 indexado por Cod Agregado E
-//   Codigo; a chave primária (code) é o AGREGADO, porque o código da Compras é
-//   o agregado da SB1. SBZ por Chave = código + filial; Famílias/SubFamílias
-//   por código normalizado.
+// MUDANÇA (07/09/2026): corrigido para o LAYOUT REAL dos arquivos (lidos dos
+//   anexos). SB1: cod_agregado | codigo | descricao | familia | sub_familia | tipo.
+//   SBZ: filial | codigo | estoq_minimo | estoq_maximo | entra_mrp.
+//   Famílias/SubFamílias: codigo | descricao.
+// MUDANÇA (07/09/2026): SB1 indexado pelas DUAS chaves (cod_agregado E codigo),
+//   porque o código da Compras casa com o agregado OU com o código (regra da
+//   fórmula =SEERRO(PROCV(A2;SB1!A:C;3;0);PROCV(A2;SB1!B:C;2;0))).
+// MUDANÇA (07/09/2026): aceita Buffer OU unknown[][] (auto-detecção).
 // ============================================================
 import * as XLSX from "xlsx";
 
@@ -104,9 +105,9 @@ function indiceColuna(cabecalho: string[], nomes: string[]): number {
 // ---------------------------------------------------------------------------
 
 export interface Sb1Row {
-  code: string;            // chave primária: COD AGREGADO (fallback Codigo)
-  codigo: string;          // coluna Codigo normalizada
-  codAgregado: string;     // coluna Cod Agregado normalizada
+  code: string;            // chave primária: cod_agregado (fallback codigo)
+  codigo: string;          // coluna codigo normalizada
+  codAgregado: string;     // coluna cod_agregado normalizada
   descricao: string;
   tipo: string;            // usado no ABC por Filial + Tipo
   familiaCode: string;
@@ -120,20 +121,19 @@ export interface Sb1Index {
 }
 
 /**
- * Importa o SB1. O código da planilha de Compras é o AGREGADO da SB1, então a
- * chave primária (code) é o Cod Agregado; o índice também aceita o Codigo
- * (fórmula original =SEERRO(PROCV(A2;SB1!A:C;3;0);PROCV(A2;SB1!B:C;2;0))).
+ * Importa o SB1. Layout real: cod_agregado | codigo | descricao | familia |
+ * sub_familia | tipo. Indexa pelas DUAS chaves (cod_agregado e codigo), porque
+ * o código da Compras casa com o agregado OU com o código.
  */
 export function importSb1(origem: Buffer | unknown[][]): Sb1Index {
   const { cabecalho, dados } = readRows(origem, ["cod agregado", "codigo", "tipo"]);
-  const iCod = indiceColuna(cabecalho, ["codigo"]);
+  // Localiza por nome; fallback para o layout real (posições do arquivo).
   const iAgr = indiceColuna(cabecalho, ["cod agregado"]);
-  const iTip = indiceColuna(cabecalho, ["tipo"]);
+  const iCod = indiceColuna(cabecalho, ["codigo"]);
+  const iDesc = indiceColuna(cabecalho, ["descricao"]);
   const iFam = indiceColuna(cabecalho, ["familia"]);
   const iSub = indiceColuna(cabecalho, ["sub-familia", "subfamilia"]);
-  const iDesc = indiceColuna(cabecalho, ["descricao"]);
-  // Fallbacks posicionais caso o cabeçalho não seja reconhecido:
-  // padrão A=Codigo, B=Cod Agregado, C=Descrição, D=Tipo, E=Família, G=SubFamília.
+  const iTip = indiceColuna(cabecalho, ["tipo"]);
   const col = (idx: number, fallback: number) => (idx >= 0 ? idx : fallback);
 
   const porCodigo = new Map<string, Sb1Row>();
@@ -141,17 +141,17 @@ export function importSb1(origem: Buffer | unknown[][]): Sb1Index {
   const registros: Sb1Row[] = [];
 
   for (const linha of dados) {
-    const codigo = normalizeCode(linha[col(iCod, 0)]);
-    const codAgregado = normalizeCode(linha[col(iAgr, 1)]);
-    if (!codigo && !codAgregado) continue;
+    const codAgregado = normalizeCode(linha[col(iAgr, 0)]);
+    const codigo = normalizeCode(linha[col(iCod, 1)]);
+    if (!codAgregado && !codigo) continue;
     const registro: Sb1Row = {
       code: codAgregado || codigo,
       codigo,
       codAgregado,
       descricao: asText(linha[col(iDesc, 2)]),
-      tipo: asText(linha[col(iTip, 3)]),
-      familiaCode: normalizeCode(linha[col(iFam, 4)]),
-      subfamiliaCode: normalizeCode(linha[col(iSub, 6)]),
+      tipo: asText(linha[col(iTip, 5)]),
+      familiaCode: normalizeCode(linha[col(iFam, 3)]),
+      subfamiliaCode: normalizeCode(linha[col(iSub, 4)]),
     };
     registros.push(registro);
     if (codigo) porCodigo.set(codigo, registro);
