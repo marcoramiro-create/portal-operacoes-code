@@ -171,12 +171,15 @@ export const subfamilyReferences = pgTable(
     descricao: varchar("descricao", { length: 255 }).notNull().default(""),
   },
 );
-export * from './schema-costs';
 // MUDANÇA (07/09/2026): histórico de importações dos cadastros de referência (SB1, SBZ, Famílias, SubFamílias).
-export const referenceImports = pgTable("reference_imports", {
-  id: serial("id").primaryKey(),
-  kind: text("kind").notNull(),
-  fileName: text("file_name").notNull(),
-  rowCount: integer("row_count").notNull().default(0),
-  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const referenceImports = pgTable(
+  "referenceImports",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    kind: varchar("kind", { length: 32 }).notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    rowCount: integer("rowCount").notNull().default(0),
+    importedAt: timestamp("importedAt").defaultNow().notNull(),
+  },
+);
+export * from './schema-costs';

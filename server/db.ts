@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { familyReferences, inventoryAnalytics, protheusImports, sb1References, sbzReferences, subfamilyReferences, type InsertUser, users } from "../drizzle/schema";
+import { familyReferences, inventoryAnalytics, protheusImports, referenceImports, sb1References, sbzReferences, subfamilyReferences, type InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { calculateTurnover } from "./analyticsRules";
 import { parseProtheusWorkbook } from "./protheusImport";
@@ -57,34 +57,43 @@ export async function getUserByOpenId(openId: string) {
   if (!db) return undefined;
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
 }
-
 // ===== Tabelas de referência (SB1, SBZ, Família, SubFamília) =====
+// MUDANÇA (07/09/2026): inserção em lotes de 500 registros por vez,
+// corrigindo "Maximum call stack size exceeded" em arquivos grandes (SB1/SBZ).
 export async function saveSb1References(records: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(sb1References);
-  if (records.length) await db.insert(sb1References).values(records);
+  for (let start = 0; start < records.length; start += 500) {
+    await db.insert(sb1References).values(records.slice(start, start + 500));
+  }
   return records.length;
 }
 export async function saveSbzReferences(records: { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(sbzReferences);
-  if (records.length) await db.insert(sbzReferences).values(records);
+  for (let start = 0; start < records.length; start += 500) {
+    await db.insert(sbzReferences).values(records.slice(start, start + 500));
+  }
   return records.length;
 }
 export async function saveFamilyReferences(records: { code: string; descricao: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(familyReferences);
-  if (records.length) await db.insert(familyReferences).values(records);
+  for (let start = 0; start < records.length; start += 500) {
+    await db.insert(familyReferences).values(records.slice(start, start + 500));
+  }
   return records.length;
 }
 export async function saveSubfamilyReferences(records: { code: string; descricao: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(subfamilyReferences);
-  if (records.length) await db.insert(subfamilyReferences).values(records);
+  for (let start = 0; start < records.length; start += 500) {
+    await db.insert(subfamilyReferences).values(records.slice(start, start + 500));
+  }
   return records.length;
 }
 export async function loadSb1References(): Promise<Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>> {
@@ -123,7 +132,6 @@ export async function loadAllReferences(): Promise<ReferenceData> {
   const [sb1, sbz, familias, subfamilias] = await Promise.all([loadSb1References(), loadSbzReferences(), loadFamilyReferences(), loadSubfamilyReferences()]);
   return { sb1, sbz, familias, subfamilias };
 }
-
 export type ProtheusImportStatus = "pending" | "approved" | "archived";
 export async function listProtheusImports() {
   const db = await getDb();
@@ -187,7 +195,9 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     return { id: importId, rowCount: records.length };
   });
 }
-const ANALYSIS_BRANCHES = ["0101", "0102", "0301", "0303"];
+// MUDANÇA (07/09/2026): alinha as filiais da análise às 12 unidades aceitas na importação
+// (exceto 0105 e 0201), para o painel refletir o faturamento global.
+const ANALYSIS_BRANCHES = ["0101", "0102", "0103", "0106", "0107", "0108", "0301", "0303", "0304", "0305", "0306", "0307"];
 type Curve = "A" | "B" | "C" | "D" | "E";
 type ProductType = "ME" | "PE";
 export type AnalyticsFilter = {
@@ -486,4 +496,42 @@ export async function getAnalyticsFilterOptions(importId?: number) {
     families: families.map((row) => row.value),
     subfamilies: subfamilies.map((row) => row.value),
   };
+}
+// MUDANÇA (07/09/2026): retorna a quantidade de registros de cada cadastro de referência.
+export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; familias: number; subfamilias: number }> {
+  const db = await getDb();
+  if (!db) return { sb1: 0, sbz: 0, familias: 0, subfamilias: 0 };
+  const [sb1, sbz, familias, subfamilias] = await Promise.all([
+    db.select({ n: sql<number>`count(*)::int` }).from(sb1References),
+    db.select({ n: sql<number>`count(*)::int` }).from(sbzReferences),
+    db.select({ n: sql<number>`count(*)::int` }).from(familyReferences),
+    db.select({ n: sql<number>`count(*)::int` }).from(subfamilyReferences),
+  ]);
+  return { sb1: sb1[0]?.n ?? 0, sbz: sbz[0]?.n ?? 0, familias: familias[0]?.n ?? 0, subfamilias: subfamilias[0]?.n ?? 0 };
+}
+// MUDANÇA (07/09/2026): histórico de importações e exclusão dos cadastros de referência.
+export async function recordReferenceImport(kind: "sb1" | "sbz" | "familias" | "subfamilias", fileName: string, rowCount: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(referenceImports).values({ kind, fileName, rowCount });
+}
+export async function listReferenceImports() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(referenceImports).orderBy(desc(referenceImports.importedAt));
+}
+export async function deleteReferenceData(kind: "sb1" | "sbz" | "familias" | "subfamilias") {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  if (kind === "sb1") await db.delete(sb1References);
+  else if (kind === "sbz") await db.delete(sbzReferences);
+  else if (kind === "familias") await db.delete(familyReferences);
+  else if (kind === "subfamilias") await db.delete(subfamilyReferences);
+  await db.delete(referenceImports).where(eq(referenceImports.kind, kind));
+}
+export async function deleteProtheusImport(importId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  await db.delete(inventoryAnalytics).where(eq(inventoryAnalytics.importId, importId));
+  await db.delete(protheusImports).where(eq(protheusImports.id, importId));
 }
