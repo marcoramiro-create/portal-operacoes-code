@@ -57,7 +57,6 @@ export async function getUserByOpenId(openId: string) {
   if (!db) return undefined;
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
 }
-
 // ===== Tabelas de referência (SB1, SBZ, Família, SubFamília) =====
 export async function saveSb1References(records: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[]) {
   const db = await getDb();
@@ -123,7 +122,6 @@ export async function loadAllReferences(): Promise<ReferenceData> {
   const [sb1, sbz, familias, subfamilias] = await Promise.all([loadSb1References(), loadSbzReferences(), loadFamilyReferences(), loadSubfamilyReferences()]);
   return { sb1, sbz, familias, subfamilias };
 }
-
 export type ProtheusImportStatus = "pending" | "approved" | "archived";
 export async function listProtheusImports() {
   const db = await getDb();
@@ -365,7 +363,6 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   if (!db) return null;
   const importId = await getLatestImportId(filters.importId);
   if (!importId) return null;
-
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
   if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
@@ -374,14 +371,12 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
   if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
   const whereClause = and(...conditions);
-
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
     coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
   };
-
   const [summary, breakdown, currentImportRows, qualityRows, subfamilyRows] = await Promise.all([
     getAnalyticsSummary(filters),
     getAnalyticsBreakdown(filters),
@@ -392,9 +387,7 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
     }).from(inventoryAnalytics).where(whereClause),
     db.select({ label: inventoryAnalytics.subfamily, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.subfamily).orderBy(asc(inventoryAnalytics.subfamily)),
   ]);
-
   if (!summary || !breakdown) return null;
-
   const mapGroup = (r: typeof subfamilyRows[number]) => ({
     ...r,
     label: normalizeLabel(r.label),
@@ -404,7 +397,6 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
     coverageDays: asNumber(r.coverageDays),
     excessValue: asNumber(r.excessValue),
   });
-
   return {
     currentImport: currentImportRows[0] ?? null,
     quality: {
@@ -539,7 +531,8 @@ export async function getAnalyticsFilterOptions(importId?: number) {
     families: families.map((row) => row.value),
     subfamilies: subfamilies.map((row) => row.value),
   };
-  // MUDANÇA (07/09/2026): retorna a quantidade de registros de cada cadastro de referência,
+}
+// MUDANÇA (07/09/2026): retorna a quantidade de registros de cada cadastro de referência,
 // para a tela de importação exibir se a importação existe ou não.
 export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; familias: number; subfamilias: number }> {
   const db = await getDb();
@@ -551,5 +544,4 @@ export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; 
     db.select({ n: sql<number>`count(*)::int` }).from(subfamilyReferences),
   ]);
   return { sb1: sb1[0]?.n ?? 0, sbz: sbz[0]?.n ?? 0, familias: familias[0]?.n ?? 0, subfamilias: subfamilias[0]?.n ?? 0 };
-}
 }

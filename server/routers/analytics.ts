@@ -1,7 +1,6 @@
 import { supabaseStorageGetPresignedPutUrl, supabaseStorageReadBuffer } from "../storage";
 import { z } from "zod";
 import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, type AnalyticsFilter } from "../db";
-import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, type AnalyticsFilter } from "../db";
 import { publicProcedure, router } from "../_core/trpc";
 import { assertApplicationPermission, assertPortalAdministrator, getPortalIdentity, recordPortalAudit, type PortalIdentity } from "../supabasePortal";
 import { updateProtheusImportStatus } from "../db";
@@ -9,19 +8,16 @@ import { invokeLLM } from "../_core/llm";
 import { validatePurchaseRecommendations, type PurchaseRecommendation } from "../analyticsRules";
 import { importSb1, importSbz, importFamilias, importSubFamilias } from "../referenceImporters";
 import { saveSb1References, saveSbzReferences, saveFamilyReferences, saveSubfamilyReferences } from "../db";
-
 const curveSchema = z.enum(["A", "B", "C", "D", "E"]);
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 async function modulePermission(ctx: { req: { headers: Record<string, string | string[] | undefined> } }, permission: "view" | "manage", nodeKey = "compras-protheus") { const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers)); await assertApplicationPermission(identity, nodeKey, permission); return identity; }
 export function canAdministerProtheusImports(identity: Pick<PortalIdentity, "isDevelopmentAdmin" | "profiles">) { return identity.isDevelopmentAdmin || identity.profiles.includes("operations-admin"); }
-
-referenceCounts: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return getReferenceCounts(); }),
-
 export const analyticsRouter = router({
   dashboard: publicProcedure.input(z.object({ importId: z.number().int().positive().optional(), branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsDashboard(input); }),
   filterOptions: publicProcedure.input(z.object({ importId: z.number().int().positive().optional() }).optional()).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsFilterOptions(input?.importId); }),
   imports: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return listProtheusImports(); }),
   canAdminister: publicProcedure.query(async ({ ctx }) => { const identity = await modulePermission(ctx, "view"); return canAdministerProtheusImports(identity); }),
+  referenceCounts: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return getReferenceCounts(); }),
   evolution: publicProcedure.input(z.object({ branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsEvolution(input); }),
   items: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); const { page, ...filters } = input; return getAnalyticsItems(filters satisfies AnalyticsFilter, page, 50); }),
   aiRecommendations: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).mutation(async ({ ctx, input }) => {
@@ -40,8 +36,8 @@ export const analyticsRouter = router({
     const recommendations = validatePurchaseRecommendations(parsed.recommendations, new Set(itemPage.items.map(item => item.code)));
     return { generatedAt: new Date(), total: itemPage.items.length, recommendations };
   }),
-    // MUDANÇA (07/09/2026): upload direto ao armazenamento para arquivos grandes.
-    getUploadUrl: publicProcedure.input(z.object({ fileName: z.string().min(1).max(255) })).mutation(async ({ ctx, input }) => {
+  // MUDANÇA (07/09/2026): upload direto ao armazenamento para arquivos grandes.
+  getUploadUrl: publicProcedure.input(z.object({ fileName: z.string().min(1).max(255) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     return supabaseStorageGetPresignedPutUrl(`protheus-imports/${Date.now()}-${input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`);
   }),
