@@ -187,7 +187,9 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     return { id: importId, rowCount: records.length };
   });
 }
-const ANALYSIS_BRANCHES = ["0101", "0102", "0301", "0303"];
+// MUDANÇA (07/09/2026): alinha as filiais da análise às 12 unidades aceitas na importação
+// (exceto 0105 e 0201), para o painel refletir o faturamento global.
+const ANALYSIS_BRANCHES = ["0101", "0102", "0103", "0106", "0107", "0108", "0301", "0303", "0304", "0305", "0306", "0307"];
 type Curve = "A" | "B" | "C" | "D" | "E";
 type ProductType = "ME" | "PE";
 export type AnalyticsFilter = {
