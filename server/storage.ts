@@ -3,6 +3,7 @@
 // Downloads return /manus-storage/{key} paths served via 307 redirect.
 
 import { ENV } from "./_core/env";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
@@ -138,4 +139,41 @@ export async function storageReadBuffer(relKey: string): Promise<Buffer> {
   const resp = await fetch(signedUrl);
   if (!resp.ok) throw new Error(`Falha ao ler o arquivo do armazenamento (${resp.status}).`);
   return Buffer.from(await resp.arrayBuffer());
+}
+// MUDANÇA (07/09/2026): usa o Supabase Storage (configurado no .env) para arquivos grandes,
+// contornando o limite de ~4,5 MB de corpo de requisição da hospedagem.
+function getSupabaseAdmin(): SupabaseClient | null {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey);
+}
+
+const STORAGE_BUCKET = "protheus-imports";
+
+// Garante que o bucket de armazenamento existe (criado automaticamente na primeira vez).
+async function ensureBucket(supabase: SupabaseClient): Promise<void> {
+  const { data: buckets } = await supabase.storage.listBuckets();
+  if (buckets?.some(b => b.name === STORAGE_BUCKET)) return;
+  await supabase.storage.createBucket(STORAGE_BUCKET, { public: false });
+}
+
+// Gera link de upload direto (PUT) para arquivos grandes.
+export async function supabaseStorageGetPresignedPutUrl(relKey: string): Promise<{ key: string; url: string }> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error("Armazenamento não configurado.");
+  await ensureBucket(supabase);
+  const key = appendHashSuffix(normalizeKey(relKey));
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).createSignedUploadUrl(key);
+  if (error || !data?.signedUrl) throw new Error(`Falha ao gerar link de upload: ${error?.message ?? "sem URL"}`);
+  return { key, url: data.signedUrl };
+}
+
+// Lê o conteúdo de um arquivo já enviado ao armazenamento.
+export async function supabaseStorageReadBuffer(key: string): Promise<Buffer> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error("Armazenamento não configurado.");
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(key);
+  if (error || !data) throw new Error(`Falha ao ler o arquivo do armazenamento: ${error?.message ?? "sem dados"}`);
+  return Buffer.from(await data.arrayBuffer());
 }

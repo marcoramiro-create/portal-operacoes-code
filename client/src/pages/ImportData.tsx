@@ -2,8 +2,8 @@
 // client/src/pages/ImportData.tsx
 // Tela de importação de planilhas do Protheus e cadastros de referência.
 // Módulo: Compras e análise Protheus.
-// MUDANÇA (07/09/2026): upload direto ao armazenamento (contorna o limite de ~4,5 MB da API)
-// e adiciona importação de SB1, SBZ, Famílias e SubFamílias.
+// MUDANÇA (07/09/2026): upload direto ao Supabase Storage (contorna o limite de ~4,5 MB da API)
+// e cada botão de cadastro com estado próprio (não aciona os demais).
 // ============================================================
 import { Button } from "@/components/ui/button";
 import OneDriveImportSource from "@/components/OneDriveImportSource";
@@ -14,8 +14,8 @@ import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 // Envia o arquivo direto ao armazenamento, contornando o limite de tamanho da API.
-async function uploadToStorage(file: File, getUploadUrl: (input: { fileName: string; contentType: string }) => Promise<{ key: string; url: string }>) {
-  const { key, url } = await getUploadUrl({ fileName: file.name, contentType: file.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+async function uploadToStorage(file: File, getUploadUrl: (input: { fileName: string }) => Promise<{ key: string; url: string }>) {
+  const { key, url } = await getUploadUrl({ fileName: file.name });
   const resp = await fetch(url, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
   if (!resp.ok) throw new Error(`Falha no envio do arquivo ao armazenamento (${resp.status}).`);
   return key;
@@ -25,13 +25,18 @@ type ReferenceImporterProps = {
   title: string;
   description: string;
   kind: "sb1" | "sbz" | "familias" | "subfamilias";
-  getUploadUrl: ReturnType<typeof trpc.analytics.getUploadUrl.useMutation>;
-  process: ReturnType<typeof trpc.analytics.processReference.useMutation>;
+  successLabel: string;
 };
 
-// Card reutilizável para importar um cadastro de referência (SB1, SBZ, Famílias, SubFamílias).
-function ReferenceImporter({ title, description, kind, getUploadUrl, process }: ReferenceImporterProps) {
+// Card de cadastro com estado próprio (cada um tem suas próprias mutações).
+function ReferenceImporter({ title, description, kind, successLabel }: ReferenceImporterProps) {
+  const utils = trpc.useUtils();
   const [file, setFile] = useState<File | null>(null);
+  const getUploadUrl = trpc.analytics.getUploadUrl.useMutation();
+  const process = trpc.analytics.processReference.useMutation({
+    onSuccess: async result => { await utils.analytics.imports.invalidate(); setFile(null); toast.success(`${successLabel}: ${result.count.toLocaleString("pt-BR")} registros.`); },
+    onError: error => toast.error(error.message),
+  });
 
   useEffect(() => { if (process.isSuccess) setFile(null); }, [process.isSuccess]);
 
@@ -84,17 +89,11 @@ export default function ImportData() {
     onError: error => toast.error(error.message),
   });
 
-  const invalidateAnalytics = async () => { await Promise.all([utils.analytics.imports.invalidate(), utils.analytics.dashboard.invalidate(), utils.analytics.filterOptions.invalidate()]); };
-
   const getUploadUrl = trpc.analytics.getUploadUrl.useMutation();
   const processWorkbook = trpc.analytics.processWorkbook.useMutation({
-    onSuccess: async result => { await invalidateAnalytics(); setFile(null); toast.success(`${result.versionName} criada com ${result.rowCount.toLocaleString("pt-BR")} registros. Aguardando aprovação do ADM para entrar no painel.`); },
+    onSuccess: async result => { await Promise.all([utils.analytics.imports.invalidate(), utils.analytics.dashboard.invalidate(), utils.analytics.filterOptions.invalidate()]); setFile(null); toast.success(`${result.versionName} criada com ${result.rowCount.toLocaleString("pt-BR")} registros. Aguardando aprovação do ADM para entrar no painel.`); },
     onError: error => toast.error(error.message),
   });
-  const processSb1 = trpc.analytics.processReference.useMutation({ onSuccess: async result => { await invalidateAnalytics(); toast.success(`SB1 importado: ${result.count.toLocaleString("pt-BR")} itens de referência.`); }, onError: error => toast.error(error.message) });
-  const processSbz = trpc.analytics.processReference.useMutation({ onSuccess: async result => { await invalidateAnalytics(); toast.success(`SBZ importado: ${result.count.toLocaleString("pt-BR")} itens de referência.`); }, onError: error => toast.error(error.message) });
-  const processFamilias = trpc.analytics.processReference.useMutation({ onSuccess: async result => { await invalidateAnalytics(); toast.success(`Famílias importadas: ${result.count.toLocaleString("pt-BR")} registros.`); }, onError: error => toast.error(error.message) });
-  const processSubFamilias = trpc.analytics.processReference.useMutation({ onSuccess: async result => { await invalidateAnalytics(); toast.success(`SubFamílias importadas: ${result.count.toLocaleString("pt-BR")} registros.`); }, onError: error => toast.error(error.message) });
 
   const chooseFile = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = event.target.files?.[0] ?? null;
@@ -124,10 +123,10 @@ export default function ImportData() {
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#e4ecf4] text-slate-950"><FolderInput className="h-4 w-4" /></span>
           <div><h2 className="text-base font-extrabold tracking-tight text-slate-950">Cadastros de referência</h2><p className="text-xs font-medium text-slate-500">Importe SB1, SBZ, Famílias e SubFamílias para cruzar Tipo (ME/PE), MRP, família e subfamília com os itens das cargas.</p></div>
         </div>
-        <ReferenceImporter title="SB1 · Cadastro de produtos" description="Fornece Tipo (ME/PE), Família e Subfamília de cada item." kind="sb1" getUploadUrl={getUploadUrl} process={processSb1} />
-        <ReferenceImporter title="SBZ · Cadastro por filial" description="Fornece MRP (Sim/Não) e estoques mínimo/máximo por filial." kind="sbz" getUploadUrl={getUploadUrl} process={processSbz} />
-        <ReferenceImporter title="Famílias" description="Nomes das famílias (cabeçalho na linha 4)." kind="familias" getUploadUrl={getUploadUrl} process={processFamilias} />
-        <ReferenceImporter title="SubFamílias" description="Nomes das subfamílias (cabeçalho na linha 4)." kind="subfamilias" getUploadUrl={getUploadUrl} process={processSubFamilias} />
+        <ReferenceImporter title="SB1 · Cadastro de produtos" description="Fornece Tipo (ME/PE), Família e Subfamília de cada item." kind="sb1" successLabel="SB1 importado" />
+        <ReferenceImporter title="SBZ · Cadastro por filial" description="Fornece MRP (Sim/Não) e estoques mínimo/máximo por filial." kind="sbz" successLabel="SBZ importado" />
+        <ReferenceImporter title="Famílias" description="Nomes das famílias (cabeçalho na linha 4)." kind="familias" successLabel="Famílias importadas" />
+        <ReferenceImporter title="SubFamílias" description="Nomes das subfamílias (cabeçalho na linha 4)." kind="subfamilias" successLabel="SubFamílias importadas" />
       </section>
     )}
     <section className="sc-surface mt-5 overflow-hidden"><div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-7"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f1ccd7] text-slate-950"><FileUp className="h-4 w-4" /></span><div><h2 className="text-base font-extrabold tracking-tight text-slate-950">Cargas realizadas</h2><p className="text-xs font-medium text-slate-500">Somente versões aprovadas pelo ADM entram no painel; as demais permanecem no histórico.</p></div></div><div className="divide-y divide-slate-100">{imports.length === 0 && <p className="px-5 py-10 text-center text-sm font-medium text-slate-500">Nenhuma planilha foi importada.</p>}{imports.map(item => <div className="flex flex-col gap-3 px-5 py-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-7" key={item.id}><div><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-slate-950">{item.fileName}</p><span className={`rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] ${item.status === "approved" ? "bg-emerald-100 text-emerald-800" : item.status === "archived" ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-800"}`}>{item.status === "approved" ? "Em uso" : item.status === "archived" ? "Arquivada" : "Pendente"}</span></div><p className="mt-1 font-medium text-slate-500">{item.rowCount.toLocaleString("pt-BR")} registros · Histórico: {formatDate(item.importedAt)}</p></div><div className="flex items-center gap-3"><p className="text-xs font-semibold text-slate-500">{item.status === "pending" ? "Aguardando ADM" : item.status === "approved" ? "Disponível no painel" : "Fora do painel"}</p>{canAdminister && item.status === "pending" && <Button variant="outline" size="sm" disabled={setImportStatus.isPending} onClick={() => setImportStatus.mutate({ importId: item.id, status: "approved" })}><ShieldCheck className="mr-2 h-3.5 w-3.5" />Aprovar uso</Button>}{canAdminister && item.status === "approved" && <Button variant="outline" size="sm" disabled={setImportStatus.isPending} onClick={() => setImportStatus.mutate({ importId: item.id, status: "archived" })}><Archive className="mr-2 h-3.5 w-3.5" />Arquivar</Button>}</div></div>)}</div></section>
