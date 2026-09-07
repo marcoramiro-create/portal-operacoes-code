@@ -180,3 +180,11 @@ export const referenceImports = pgTable("reference_imports", {
   rowCount: integer("row_count").notNull().default(0),
   importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
 });
+// MUDANÇA (07/09/2026): histórico de importações dos cadastros de referência (SB1, SBZ, Famílias, SubFamílias).
+export const referenceImports = pgTable("reference_imports", {
+  id: serial("id").primaryKey(),
+  kind: text("kind").notNull(),
+  fileName: text("file_name").notNull(),
+  rowCount: integer("row_count").notNull().default(0),
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+});

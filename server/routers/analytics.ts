@@ -1,6 +1,6 @@
 import { supabaseStorageGetPresignedPutUrl, supabaseStorageReadBuffer } from "../storage";
 import { z } from "zod";
-import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, type AnalyticsFilter } from "../db";
+import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, listReferenceImports, deleteReferenceData, deleteProtheusImport, recordReferenceImport, type AnalyticsFilter } from "../db";
 import { publicProcedure, router } from "../_core/trpc";
 import { assertApplicationPermission, assertPortalAdministrator, getPortalIdentity, recordPortalAudit, type PortalIdentity } from "../supabasePortal";
 import { updateProtheusImportStatus } from "../db";
@@ -19,8 +19,6 @@ export const analyticsRouter = router({
   canAdminister: publicProcedure.query(async ({ ctx }) => { const identity = await modulePermission(ctx, "view"); return canAdministerProtheusImports(identity); }),
   referenceCounts: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return getReferenceCounts(); }),
   referenceImportHistory: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return listReferenceImports(); }),
-  deleteReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]) })).mutation(async ({ ctx, input }) => { await modulePermission(ctx, "manage", "importacoes-compras-protheus"); await deleteReferenceData(input.kind); return { success: true as const }; }),
-  deleteImport: publicProcedure.input(z.object({ importId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { const identity = await modulePermission(ctx, "manage", "importacoes-compras-protheus"); assertPortalAdministrator(identity); await deleteProtheusImport(input.importId); return { success: true as const }; }),
   evolution: publicProcedure.input(z.object({ branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsEvolution(input); }),
   items: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); const { page, ...filters } = input; return getAnalyticsItems(filters satisfies AnalyticsFilter, page, 50); }),
   aiRecommendations: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).mutation(async ({ ctx, input }) => {
@@ -49,6 +47,7 @@ export const analyticsRouter = router({
     const buffer = await supabaseStorageReadBuffer(input.key);
     return importProtheusWorkbook(input.fileName, buffer);
   }),
+  // MUDANÇA (07/09/2026): registra o histórico da carga do cadastro (arquivo + quantidade).
   processReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]), fileName: z.string().min(1).max(255), key: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     const buffer = await supabaseStorageReadBuffer(input.key);
@@ -60,6 +59,9 @@ export const analyticsRouter = router({
     await recordReferenceImport(input.kind, input.fileName, count);
     return { count };
   }),
+  // MUDANÇA (07/09/2026): exclusão direto na tela, sem SQL.
+  deleteReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]) })).mutation(async ({ ctx, input }) => { await modulePermission(ctx, "manage", "importacoes-compras-protheus"); await deleteReferenceData(input.kind); return { success: true as const }; }),
+  deleteImport: publicProcedure.input(z.object({ importId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { const identity = await modulePermission(ctx, "manage", "importacoes-compras-protheus"); assertPortalAdministrator(identity); await deleteProtheusImport(input.importId); return { success: true as const }; }),
   setImportStatus: publicProcedure.input(z.object({ importId: z.number().int().positive(), status: z.enum(["approved", "archived"]) })).mutation(async ({ ctx, input }) => { const identity = await modulePermission(ctx, "manage"); assertPortalAdministrator(identity); const result = await updateProtheusImportStatus(input.importId, input.status); try { await recordPortalAudit(identity, "protheus_import", String(input.importId), `status_${input.status}`, { versionName: result?.versionName ?? null }); } catch (error) { console.warn("[Analytics] Status atualizado, mas a auditoria não foi registrada:", error); } return { success: true as const, status: input.status }; }),
   importWorkbook: publicProcedure.input(z.object({ fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
@@ -67,7 +69,6 @@ export const analyticsRouter = router({
     if (fileBuffer.byteLength > 18 * 1024 * 1024) throw new Error("A planilha excede o limite de 18 MB.");
     return importProtheusWorkbook(input.fileName, fileBuffer);
   }),
-  import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, listReferenceImports, deleteReferenceData, deleteProtheusImport, recordReferenceImport, type AnalyticsFilter } from "../db";
   importReferenceSb1: publicProcedure.input(z.object({ contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     const buffer = Buffer.from(input.contentBase64, "base64");
