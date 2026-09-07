@@ -355,15 +355,66 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
     byFamily: byFamily.map(mapGroup),
   };
 }
+// MUDANÇA (07/09/2026): alinha o retorno do dashboard ao formato que o painel espera
+// (currentImport, quality, byBranch, byCurve, byFamily, bySubfamily). Reutiliza as
+// funções existentes e apenas adiciona os campos que faltavam — nada do que já funciona é alterado.
 export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
   if (!db) return null;
-  const [summary, breakdown] = await Promise.all([
+  const importId = await getLatestImportId(filters.importId);
+  if (!importId) return null;
+
+  const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
+  if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
+  if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
+  if (filters.productType) conditions.push(eq(inventoryAnalytics.productType, filters.productType));
+  if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
+  if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
+  if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
+  const whereClause = and(...conditions);
+
+  const measures = {
+    salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
+    stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
+    coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
+    excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
+  };
+
+  const [summary, breakdown, currentImportRows, qualityRows, subfamilyRows] = await Promise.all([
     getAnalyticsSummary(filters),
     getAnalyticsBreakdown(filters),
+    db.select().from(protheusImports).where(eq(protheusImports.id, importId)).limit(1),
+    db.select({
+      stockWithoutSalesValue: sql<string>`coalesce(sum(case when ${inventoryAnalytics.salesValue13M} = 0 then ${inventoryAnalytics.stockValue} else 0 end), 0)`,
+      excessStockValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
+    }).from(inventoryAnalytics).where(whereClause),
+    db.select({ label: inventoryAnalytics.subfamily, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.subfamily).orderBy(asc(inventoryAnalytics.subfamily)),
   ]);
+
   if (!summary || !breakdown) return null;
-  return { summary, breakdown };
+
+  const mapGroup = (r: typeof subfamilyRows[number]) => ({
+    ...r,
+    label: normalizeLabel(r.label),
+    salesValue13M: asNumber(r.salesValue13M),
+    stockValue: asNumber(r.stockValue),
+    turnover: calculateTurnover(asNumber(r.salesValue13M), asNumber(r.stockValue)),
+    coverageDays: asNumber(r.coverageDays),
+    excessValue: asNumber(r.excessValue),
+  });
+
+  return {
+    currentImport: currentImportRows[0] ?? null,
+    quality: {
+      stockWithoutSalesValue: asNumber(qualityRows[0]?.stockWithoutSalesValue),
+      lowCoverageStockValue: summary.lowCoverageStockValue,
+      excessStockValue: asNumber(qualityRows[0]?.excessStockValue),
+    },
+    byBranch: breakdown.byBranch,
+    byCurve: breakdown.byCurve,
+    byFamily: breakdown.byFamily,
+    bySubfamily: subfamilyRows.map(mapGroup),
+  };
 }
 export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "importId">) {
   const db = await getDb();
