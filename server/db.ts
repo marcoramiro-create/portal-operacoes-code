@@ -539,4 +539,17 @@ export async function getAnalyticsFilterOptions(importId?: number) {
     families: families.map((row) => row.value),
     subfamilies: subfamilies.map((row) => row.value),
   };
+  // MUDANÇA (07/09/2026): retorna a quantidade de registros de cada cadastro de referência,
+// para a tela de importação exibir se a importação existe ou não.
+export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; familias: number; subfamilias: number }> {
+  const db = await getDb();
+  if (!db) return { sb1: 0, sbz: 0, familias: 0, subfamilias: 0 };
+  const [sb1, sbz, familias, subfamilias] = await Promise.all([
+    db.select({ n: sql<number>`count(*)::int` }).from(sb1References),
+    db.select({ n: sql<number>`count(*)::int` }).from(sbzReferences),
+    db.select({ n: sql<number>`count(*)::int` }).from(familyReferences),
+    db.select({ n: sql<number>`count(*)::int` }).from(subfamilyReferences),
+  ]);
+  return { sb1: sb1[0]?.n ?? 0, sbz: sbz[0]?.n ?? 0, familias: familias[0]?.n ?? 0, subfamilias: subfamilias[0]?.n ?? 0 };
+}
 }

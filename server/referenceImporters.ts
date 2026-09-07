@@ -1,7 +1,9 @@
 // ============================================================
-// server/referenceImporters.ts  (VERSÃO MELHORADA)
-// Detecta automaticamente as colunas pelo cabeçalho,
-// ignorando maiúsculas, acentos e espaços.
+// server/referenceImporters.ts
+// Importa cadastros de referência (SB1, SBZ, Famílias, SubFamílias).
+// Módulo: Compras e análise Protheus.
+// MUDANÇA (07/09/2026): detecta automaticamente a linha do cabeçalho
+// (não depende mais de linha fixa), corrigindo importações que retornavam 0 registros.
 // ============================================================
 import * as XLSX from "xlsx";
 
@@ -9,9 +11,9 @@ import * as XLSX from "xlsx";
 function normalize(text: string): string {
   return text
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")   // remove acentos
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");        // remove espaços e símbolos
+    .replace(/[^a-z0-9]/g, "");
 }
 
 function asText(value: unknown) { return String(value ?? "").trim(); }
@@ -27,18 +29,30 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(result) ? result : null;
 }
 
-// Lê as linhas a partir da linha de cabeçalho e devolve
-// as linhas com as colunas já normalizadas (chave = nome normalizado)
-function readRows(buffer: Buffer, headerRowIndex: number): Record<string, unknown>[] {
+// Encontra a linha do cabeçalho procurando por colunas conhecidas (nas 30 primeiras linhas).
+function findHeaderRow(rows: unknown[][], requiredNormalized: string[]): number {
+  for (let i = 0; i < rows.length && i < 30; i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const names = row.map(h => normalize(asText(h)));
+    const found = requiredNormalized.filter(r => names.includes(r));
+    if (found.length >= Math.min(2, requiredNormalized.length)) return i;
+  }
+  return -1;
+}
+
+// Lê as linhas a partir do cabeçalho detectado, com colunas normalizadas.
+function readRows(buffer: Buffer, requiredColumns: string[]): Record<string, unknown>[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellText: false });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error("A planilha de referência não possui uma aba.");
   const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, raw: false, defval: "" });
-  const headerRow = rows[headerRowIndex - 1];
-  if (!headerRow) throw new Error(`Não foi possível localizar a linha de cabeçalho (linha ${headerRowIndex}).`);
+  const headerIndex = findHeaderRow(rows, requiredColumns.map(normalize));
+  if (headerIndex < 0) throw new Error(`Não foi possível localizar o cabeçalho com as colunas: ${requiredColumns.join(", ")}.`);
+  const headerRow = rows[headerIndex];
   const headers = headerRow.map(h => normalize(asText(h)));
   const result: Record<string, unknown>[] = [];
-  for (let i = headerRowIndex; i < rows.length; i++) {
+  for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || !row.some(v => asText(v))) continue;
     const obj: Record<string, unknown> = {};
@@ -59,7 +73,7 @@ function findColumn(row: Record<string, unknown>, ...names: string[]): unknown {
 
 // SB1: chave = Codigo. Colunas: Tipo, Familia, Sub-familia.
 export function importSb1(buffer: Buffer): { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[] {
-  const rows = readRows(buffer, 3);
+  const rows = readRows(buffer, ["Codigo", "Tipo"]);
   const seen = new Set<string>();
   const out: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[] = [];
   rows.forEach(row => {
@@ -78,7 +92,7 @@ export function importSb1(buffer: Buffer): { code: string; tipo: string; familia
 
 // SBZ: chave = Codigo + Filial. Colunas: Estoq Minimo, Estoq Maximo, Entra MRP.
 export function importSbz(buffer: Buffer): { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[] {
-  const rows = readRows(buffer, 3);
+  const rows = readRows(buffer, ["Codigo", "Filial"]);
   const seen = new Set<string>();
   const out: { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[] = [];
   rows.forEach(row => {
@@ -100,9 +114,9 @@ export function importSbz(buffer: Buffer): { chave: string; code: string; filial
   return out;
 }
 
-// Família fixa (cabeçalho na linha 4)
+// Família (cabeçalho detectado automaticamente)
 export function importFamilias(buffer: Buffer): { code: string; descricao: string }[] {
-  const rows = readRows(buffer, 4);
+  const rows = readRows(buffer, ["Codigo", "Descricao"]);
   const seen = new Set<string>();
   const out: { code: string; descricao: string }[] = [];
   rows.forEach(row => {
@@ -112,9 +126,9 @@ export function importFamilias(buffer: Buffer): { code: string; descricao: strin
   return out;
 }
 
-// Subfamília fixa (cabeçalho na linha 4)
+// Subfamília (cabeçalho detectado automaticamente)
 export function importSubFamilias(buffer: Buffer): { code: string; descricao: string }[] {
-  const rows = readRows(buffer, 4);
+  const rows = readRows(buffer, ["Codigo", "Descricao"]);
   const seen = new Set<string>();
   const out: { code: string; descricao: string }[] = [];
   rows.forEach(row => {
