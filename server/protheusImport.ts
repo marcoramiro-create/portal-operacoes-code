@@ -4,8 +4,9 @@
  * Módulo: server (API tRPC)
  * Data: 07/09/2026
  * // MUDANÇA (07/09/2026): arquivo COMPLETO reentregue em bloco único, com
- * //   código normalizado na entrada, validação das 13 colunas de meses e
- * //   limite de 25.000 registros.
+ * //   código normalizado na entrada, validação das 13 colunas de meses,
+ * //   limite de 25.000 registros e exportação de parseProtheusWorkbook
+ * //   (exigida pelo server/db.ts).
  */
 
 import type { PurchaseRow } from './protheusCalculations';
@@ -125,6 +126,17 @@ export function parseRegistrosCompras(linhasBrutas: unknown[][]): { registros: P
     throw new Error('Nenhum registro de Compras foi lido. Verifique o cabeçalho da planilha.');
   }
   return { registros, avisos };
+}
+
+/**
+ * // MUDANÇA (07/09/2026): função adicionada para atender o server/db.ts,
+ * //   que importa parseProtheusWorkbook. Converte as linhas brutas da
+ * //   planilha de Compras em registros normalizados (sem cruzar cadastros).
+ * Retorna os registros de Compras já normalizados, prontos para gravação.
+ */
+export function parseProtheusWorkbook(linhasBrutas: unknown[][]): PurchaseRow[] {
+  const { registros } = parseRegistrosCompras(linhasBrutas);
+  return registros;
 }
 
 /**
