@@ -1,10 +1,11 @@
 // ============================================================
 // server/protheusCalculations.ts
 // Motor de cálculos — traduz as fórmulas e a macro da Sugestão de Compras.
+// Módulo: Compras e análise Protheus.
 // ============================================================
 
-// MUDANÇA (07/09/2026): amplia as filiais aceitas para as 12 unidades do faturamento global,
-// mantendo apenas 0105 e 0201 como descartadas — definido pelo usuário em 07/09/2026.
+// MUDANÇA (07/09/2026): amplia as filiais aceitas para as 12 unidades do
+// faturamento global, mantendo apenas 0105 e 0201 como descartadas.
 // Filiais que devem ser DESCARTADAS na importação
 export const BRANCHES_IGNORADAS = new Set(["0105", "0201"]);
 // Filiais aceitas (mantidas) — compõem o faturamento global
@@ -16,9 +17,8 @@ export const BRANCHES_ACEITAS = new Set([
 // Dias máximos de cobertura por classe (usado no Excedente)
 export const DIAS_MAXIMOS: Record<"A" | "B" | "C", number> = { A: 60, B: 90, C: 120 };
 
-// MUDANÇA (08/09/2026): normaliza um código para texto consistente, removendo
-// espaços e zeros à esquerda da parte numérica, preservando sufixos.
-// Ex.: "00004" -> "4", "00006-MGT" -> "6-MGT", "000000000000135245" -> "135245".
+// Normaliza um código para texto consistente, removendo espaços e zeros à
+// esquerda da parte numérica, preservando sufixos ("00004" -> "4").
 // Valores (R$) e quantidades NÃO passam por aqui — são numéricos.
 export function normalizeCode(value: unknown): string {
   const text = String(value ?? "").trim();
@@ -124,6 +124,8 @@ function addDays(date: Date, days: number) {
 }
 
 // MediaP13M: (Ago*3 + Set*3 + Out..Mai*1 + Jun*3 + Jul*3) / 20
+export function calculateMediaP13M
+// MediaP13M: (Ago*3 + Set*3 + Out..Mai*1 + Jun*3 + Jul*3) / 20
 export function calculateMediaP13M(months: number[]): number {
   if (months.length < 12) return 0;
   const weights = [3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3];
@@ -132,9 +134,9 @@ export function calculateMediaP13M(months: number[]): number {
   return sum / 20;
 }
 
-// MUDANÇA (08/09/2026): o código da planilha de Compras é o AGREGADO da SB1.
-// O lookup do SB1 e a chave do SBZ usam o código normalizado, para casar com o
-// SB1 (chaveado por "Cod Agregado") e com o SBZ (chaveado por código+filial),
+// MUDANÇA (07/09/2026): o código da planilha de Compras é o AGREGADO da SB1.
+// O lookup do SB1 e a chave do SBZ usam o código normalizado, casando com o
+// SB1 (indexado por "Cod Agregado" E "Codigo") e com o SBZ (código+filial),
 // independente do padding de zeros à esquerda do Browse.
 export function calculatePerRow(row: RawProtheusRow, ref: ReferenceData): Omit<CalculatedRow, "pctAcumTipo" | "classeMacro"> {
   const months = row.months;

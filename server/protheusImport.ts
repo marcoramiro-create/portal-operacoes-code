@@ -1,9 +1,12 @@
 // ============================================================
-// server/protheusImport.ts  (REESCRITO)
+// server/protheusImport.ts
 // Lê a planilha CRUA do Protheus e calcula tudo no portal.
+// Módulo: Compras e análise Protheus.
+// MUDANÇA (07/09/2026): o código da Compras (coluna A) é o AGREGADO da SB1;
+// é normalizado (zeros à esquerda removidos) para casar com o SB1 e o SBZ.
 // ============================================================
 import * as XLSX from "xlsx";
-import { applyAbcClassification, BRANCHES_ACEITAS, BRANCHES_IGNORADAS, calculatePerRow, normalizeCode, type CalculatedRow, type RawProtheusRow, type ReferenceData } from "./protheusCalculations";
+import { applyAbcClassification, BRANCHES_ACEITAS, BRANCHES_IGNORADAS, calculatePerRow, type CalculatedRow, type RawProtheusRow, type ReferenceData } from "./protheusCalculations";
 
 export type ProtheusInventoryRecord = {
   code: string;
@@ -23,6 +26,16 @@ export type ProtheusInventoryRecord = {
 };
 
 function asText(value: unknown) { return String(value ?? "").trim(); }
+
+// MUDANÇA (07/09/2026): normalização local (não depende de import), para o
+// build nunca quebrar se este arquivo for trocado sem o outro.
+function normalizeCode(value: unknown): string {
+  const text = asText(value);
+  if (!text) return "";
+  const match = text.match(/^0+([0-9].*)$/);
+  return match ? match[1] : text;
+}
+
 function asNumber(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const text = asText(value).replace(/[R$\s]/g, "");
@@ -73,8 +86,7 @@ export function parseProtheusWorkbook(buffer: Buffer, ref: ReferenceData, hoje =
     if (!row || !row.some(value => asText(value))) return;
     const line = index + 2;
     const valueOf = (h: string) => row[headerPositions.get(h)!];
-    // MUDANÇA (08/09/2026): o código da Compras é o AGREGADO da SB1; é normalizado
-    // para casar com o SB1 (chaveado por "Cod Agregado") e com o SBZ (código+filial).
+    // O código da Compras é o AGREGADO da SB1; normalizado para casar com o SB1/SBZ.
     const code = normalizeCode(asText(valueOf("Codigo")));
     const branch = asText(valueOf("Filial"));
     if (!code || !branch) throw new Error(`A linha ${line} não possui Codigo ou Filial.`);

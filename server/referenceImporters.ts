@@ -2,17 +2,16 @@
 // server/referenceImporters.ts
 // Importa cadastros de referência (SB1, SBZ, Famílias, SubFamílias).
 // Módulo: Compras e análise Protheus.
-// MUDANÇA (08/09/2026): ignora os cabeçalhos repetidos que o Browse do Protheus
-// insere a cada bloco/página (aplicado às quatro importações via readRows) e
-// normaliza a filial da SBZ para o código de 4 dígitos (ex.: "0307-MEGATEC
-// CHAPADAC" -> "0307"), além de padronizar o MRP para "Sim"/"Não".
-// MUDANÇA (08/09/2026): o código da planilha de Compras é o AGREGADO da SB1.
-// O SB1 passa a ser chaveado pela coluna "Cod Agregado" (não "Codigo"), e todos
-// os códigos são normalizados (zeros à esquerda removidos) para casar com a
-// planilha de Compras e com o SBZ.
+// MUDANÇA (07/09/2026): ignora cabeçalhos repetidos do Browse (aplicado às
+// quatro importações via readRows) e normaliza a filial da SBZ para 4 dígitos.
+// MUDANÇA (07/09/2026): cruzamento conforme as fórmulas originais da Compras:
+//   - Compras.Codigo é a chave de cruzamento;
+//   - casa com o SB1 pelo "Cod Agregado" OU pelo "Codigo" (fórmula original
+//     =SEERRO(PROCV(A2;SB1!A:C;3;0);PROCV(A2;SB1!B:C;2;0)));
+//   - SBZ indexado por Chave = Codigo + Filial (fórmula =B2&A2);
+//   - todos os códigos normalizados (zeros à esquerda removidos).
 // ============================================================
 import * as XLSX from "xlsx";
-import { normalizeCode } from "./protheusCalculations";
 
 // Normaliza um texto: minúsculas, sem acentos, sem espaços/símbolos.
 function normalize(text: string): string {
@@ -21,6 +20,15 @@ function normalize(text: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+}
+
+// Normaliza um código para texto consistente, removendo espaços e zeros à
+// esquerda da parte numérica, preservando sufixos ("00004" -> "4").
+function normalizeCode(value: unknown): string {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const match = text.match(/^0+([0-9].*)$/);
+  return match ? match[1] : text;
 }
 
 function asText(value: unknown): string {
@@ -39,8 +47,7 @@ function asNumber(value: unknown): number | null {
 }
 
 // Extrai o código da filial (4 primeiros dígitos) de valores concatenados
-// como "0307-MEGATEC CHAPADAC" ou "0101-MEGATEC ARACATUBA". Se não houver
-// código numérico no início, mantém o texto original (sem inventar nada).
+// como "0307-MEGATEC CHAPADAC" ou "0101-MEGATEC ARACATUBA".
 function branchCode(value: unknown): string {
   const text = asText(value);
   const match = text.match(/^(\d{4})/);
@@ -56,8 +63,8 @@ function mrpValue(value: unknown): string {
   return asText(value);
 }
 
-// Localiza a linha do cabeçalho procurando as colunas obrigatórias
-// nas primeiras linhas da planilha.
+// Localiza a linha do cabeçalho procurando as colunas obrigatórias nas
+// primeiras linhas da planilha.
 function findHeaderRow(rows: unknown[][], requiredNormalized: string[]): number {
   for (let i = 0; i < rows.length && i < 60; i++) {
     const row = rows[i];
@@ -69,11 +76,9 @@ function findHeaderRow(rows: unknown[][], requiredNormalized: string[]): number 
   return -1;
 }
 
-// Lê as linhas de dados a partir do cabeçalho detectado.
-// Corrige dois problemas típicos da exportação do Browse:
-//  1) cabeçalho repetido a cada bloco/página -> linhas ignoradas;
-//  2) células de metadados antes das colunas reais no 1º cabeçalho
-//     (ex.: "Dt.Ref:", "Hora:", "Emissão:") -> alinhamento pelo deslocamento.
+// Lê as linhas de dados a partir do cabeçalho detectado, ignorando os
+// cabeçalhos repetidos que o Browse insere a cada bloco/página e alinhando
+// pelo deslocamento quando a linha não traz os metadados do 1º cabeçalho.
 function readRows(buffer: Buffer, requiredColumns: string[]): Record<string, unknown>[] {
   const workbook = XLSX.read(buffer, { type: "buffer", cellText: false });
   const sheetName = workbook.SheetNames[0];
@@ -120,8 +125,9 @@ function findColumn(row: Record<string, unknown>, ...names: string[]): unknown {
   return undefined;
 }
 
-// MUDANÇA (08/09/2026): o SB1 é chaveado pelo "Cod Agregado" (primeira coluna),
-// porque é esse o código que vem na planilha de Compras. Códigos normalizados.
+// SB1: indexado pelas DUAS chaves — "Cod Agregado" e "Codigo" (normalizadas) —
+// porque a fórmula original da Compras procura o código primeiro no Codigo e,
+// se não achar, no Cod Agregado. Colunas: Tipo, Familia, Sub-familia.
 export function importSb1(buffer: Buffer): {
   code: string;
   tipo: string;
@@ -132,21 +138,25 @@ export function importSb1(buffer: Buffer): {
   const seen = new Set<string>();
   const out: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[] = [];
   rows.forEach((row) => {
-    const code = normalizeCode(findColumn(row, "Cod Agregado", "CodAgregado"));
-    if (!code || seen.has(code)) return;
-    seen.add(code);
-    out.push({
-      code,
+    const codAgregado = normalizeCode(findColumn(row, "Cod Agregado", "CodAgregado"));
+    const codigo = normalizeCode(findColumn(row, "Codigo", "Código"));
+    const record = {
       tipo: asText(findColumn(row, "Tipo")),
       familiaCode: normalizeCode(findColumn(row, "Familia", "Família", "Cod Familia")),
       subfamiliaCode: normalizeCode(findColumn(row, "Sub-familia", "Sub Familia", "SubFamília", "Cod SubFamilia")),
-    });
+    };
+    const keys = [codAgregado, codigo].filter((k): k is string => !!k);
+    for (const key of keys) {
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ code: key, ...record });
+    }
   });
   return out;
 }
 
-// MUDANÇA (08/09/2026): o código da SBZ é normalizado para casar com o código
-// normalizado da planilha de Compras (chave = código normalizado + filial).
+// SBZ: indexado por Chave = Codigo + Filial (como a fórmula =B2&A2 da planilha
+// original). Código normalizado + filial (4 dígitos).
 export function importSbz(buffer: Buffer): {
   chave: string;
   code: string;
@@ -184,8 +194,7 @@ export function importSbz(buffer: Buffer): {
   return out;
 }
 
-// MUDANÇA (08/09/2026): códigos das famílias normalizados, para casar com o
-// familiaCode normalizado que vem do SB1.
+// Famílias: códigos normalizados para casar com o familiaCode do SB1.
 export function importFamilias(buffer: Buffer): { code: string; descricao: string }[] {
   const rows = readRows(buffer, ["Codigo", "Descricao"]);
   const seen = new Set<string>();
@@ -199,8 +208,7 @@ export function importFamilias(buffer: Buffer): { code: string; descricao: strin
   return out;
 }
 
-// MUDANÇA (08/09/2026): códigos das subfamílias normalizados, para casar com o
-// subfamiliaCode normalizado que vem do SB1.
+// SubFamílias: códigos normalizados para casar com o subfamiliaCode do SB1.
 export function importSubFamilias(buffer: Buffer): { code: string; descricao: string }[] {
   const rows = readRows(buffer, ["Codigo", "Descricao"]);
   const seen = new Set<string>();
