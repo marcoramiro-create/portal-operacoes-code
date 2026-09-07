@@ -58,32 +58,42 @@ export async function getUserByOpenId(openId: string) {
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
 }
 // ===== Tabelas de referência (SB1, SBZ, Família, SubFamília) =====
+// MUDANÇA (07/09/2026): inserção em lotes de 500 registros por vez,
+// corrigindo "Maximum call stack size exceeded" em arquivos grandes (SB1/SBZ).
 export async function saveSb1References(records: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(sb1References);
-  if (records.length) await db.insert(sb1References).values(records);
+  for (let start = 0; start < records.length; start += 500) {
+    await db.insert(sb1References).values(records.slice(start, start + 500));
+  }
   return records.length;
 }
 export async function saveSbzReferences(records: { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(sbzReferences);
-  if (records.length) await db.insert(sbzReferences).values(records);
+  for (let start = 0; start < records.length; start += 500) {
+    await db.insert(sbzReferences).values(records.slice(start, start + 500));
+  }
   return records.length;
 }
 export async function saveFamilyReferences(records: { code: string; descricao: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(familyReferences);
-  if (records.length) await db.insert(familyReferences).values(records);
+  for (let start = 0; start < records.length; start += 500) {
+    await db.insert(familyReferences).values(records.slice(start, start + 500));
+  }
   return records.length;
 }
 export async function saveSubfamilyReferences(records: { code: string; descricao: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(subfamilyReferences);
-  if (records.length) await db.insert(subfamilyReferences).values(records);
+  for (let start = 0; start < records.length; start += 500) {
+    await db.insert(subfamilyReferences).values(records.slice(start, start + 500));
+  }
   return records.length;
 }
 export async function loadSb1References(): Promise<Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>> {
