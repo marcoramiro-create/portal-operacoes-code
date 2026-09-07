@@ -361,6 +361,8 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
     lowCoverageStockValue: asNumber(summary.lowCoverageStockValue),
   };
 }
+// MUDANÇA (08/09/2026): o agrupamento passou a incluir a subfamília, que a
+// tela de análise consome em "Giro por subfamília".
 export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
@@ -379,12 +381,13 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
     coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
   };
-  const [byBranch, byCurve, byProductType, byMrp, byFamily] = await Promise.all([
+  const [byBranch, byCurve, byProductType, byMrp, byFamily, bySubfamily] = await Promise.all([
     db.select({ label: inventoryAnalytics.branch, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.branch).orderBy(asc(inventoryAnalytics.branch)),
     db.select({ label: inventoryAnalytics.curve, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.curve).orderBy(asc(inventoryAnalytics.curve)),
     db.select({ label: inventoryAnalytics.productType, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.productType).orderBy(asc(inventoryAnalytics.productType)),
     db.select({ label: inventoryAnalytics.mrp, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.mrp).orderBy(asc(inventoryAnalytics.mrp)),
     db.select({ label: inventoryAnalytics.family, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.family).orderBy(asc(inventoryAnalytics.family)),
+    db.select({ label: inventoryAnalytics.subfamily, ...measures }).from(inventoryAnalytics).where(whereClause).groupBy(inventoryAnalytics.subfamily).orderBy(asc(inventoryAnalytics.subfamily)),
   ]);
   const mapGroup = (r: typeof byBranch[number]) => ({
     ...r,
@@ -401,17 +404,49 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
     byProductType: byProductType.map(mapGroup),
     byMrp: byMrp.map(mapGroup),
     byFamily: byFamily.map(mapGroup),
+    bySubfamily: bySubfamily.map(mapGroup),
   };
 }
+// MUDANÇA (08/09/2026): o dashboard passou a devolver currentImport, quality e
+// os agrupamentos na raiz — exatamente o formato que a tela de análise consome.
+// Sem essa estrutura, a tela entendia que não havia carga aprovada e caía na
+// tela de "Primeira carga" (o comportamento de "entra e sai" que você viu).
 export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
   if (!db) return null;
-  const [summary, breakdown] = await Promise.all([
-    getAnalyticsSummary(filters),
-    getAnalyticsBreakdown(filters),
+  const importId = await getLatestImportId(filters.importId);
+  if (!importId) {
+    return {
+      currentImport: null,
+      quality: { stockWithoutSalesValue: 0, lowCoverageStockValue: 0, excessStockValue: 0 },
+      byBranch: [] as AnalyticsGroup[],
+      byCurve: [] as AnalyticsGroup[],
+      byProductType: [] as AnalyticsGroup[],
+      byMrp: [] as AnalyticsGroup[],
+      byFamily: [] as AnalyticsGroup[],
+      bySubfamily: [] as AnalyticsGroup[],
+    };
+  }
+  const [importRows, breakdown, qualityRows] = await Promise.all([
+    db.select({ id: protheusImports.id, fileName: protheusImports.fileName, versionName: protheusImports.versionName, importedAt: protheusImports.importedAt }).from(protheusImports).where(eq(protheusImports.id, importId)).limit(1),
+    getAnalyticsBreakdown({ ...filters, importId }),
+    db.select({
+      stockWithoutSalesValue: sql<string>`coalesce(sum(case when ${inventoryAnalytics.salesValue13M} = 0 then ${inventoryAnalytics.stockValue} else 0 end), 0)`,
+      lowCoverageStockValue: sql<string>`coalesce(sum(case when ${inventoryAnalytics.coverageDays} < 30 and ${inventoryAnalytics.stockValue} > 0 then ${inventoryAnalytics.stockValue} else 0 end), 0)`,
+      excessStockValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
+    }).from(inventoryAnalytics).where(and(eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES))),
   ]);
-  if (!summary || !breakdown) return null;
-  return { summary, breakdown };
+  if (!breakdown) return null;
+  const current = importRows[0] ?? null;
+  return {
+    currentImport: current ? { id: current.id, fileName: current.fileName, versionName: current.versionName, importedAt: current.importedAt } : null,
+    quality: {
+      stockWithoutSalesValue: asNumber(qualityRows[0]?.stockWithoutSalesValue),
+      lowCoverageStockValue: asNumber(qualityRows[0]?.lowCoverageStockValue),
+      excessStockValue: asNumber(qualityRows[0]?.excessStockValue),
+    },
+    ...breakdown,
+  };
 }
 export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "importId">) {
   const db = await getDb();
