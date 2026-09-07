@@ -3,10 +3,15 @@
 // Motor de cálculos — traduz as fórmulas e a macro da Sugestão de Compras.
 // ============================================================
 
+// MUDANÇA (07/09/2026): amplia as filiais aceitas para as 12 unidades do faturamento global,
+// mantendo apenas 0105 e 0201 como descartadas — definido pelo usuário em 07/09/2026.
 // Filiais que devem ser DESCARTADAS na importação
 export const BRANCHES_IGNORADAS = new Set(["0105", "0201"]);
-// Filiais aceitas (mantidas)
-export const BRANCHES_ACEITAS = new Set(["0101", "0102", "0301", "0303"]);
+// Filiais aceitas (mantidas) — compõem o faturamento global
+export const BRANCHES_ACEITAS = new Set([
+  "0101", "0102", "0103", "0106", "0107", "0108",
+  "0301", "0303", "0304", "0305", "0306", "0307",
+]);
 
 // Dias máximos de cobertura por classe (usado no Excedente)
 export const DIAS_MAXIMOS: Record<"A" | "B" | "C", number> = { A: 60, B: 90, C: 120 };
