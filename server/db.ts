@@ -18,11 +18,13 @@
 // salesValue13M, stock, stockValue, coverageDays, excessValue) — antes eram
 // gravados como 0, por isso os cards do painel mostravam R$ 0. A data de
 // emissão (nome do arquivo) é passada ao pipeline para o giro e a curva D/E.
-// MUDANÇA (09/09/2026): CORREÇÃO MRP — a coluna mrp no banco é um ENUM
-// ("Sim" | "Não") e NÃO aceita valor vazio. Enviar "" derrubava a importação
-// com erro 500. Agora o MRP sempre vai como "Sim" ou "Não" (sem cruzamento
-// com a SBZ = "Não"). Regra de negócio: item sem correspondência permanece
-// gravado, mas o MRP assume "Não" (o banco não permite branco nesse campo).
+// CORREÇÃO MRP (09/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
+// CORREÇÃO MRP CHAVE (09/09/2026): a chave do cruzamento Compras × SBZ é
+// RECALCULADA em memória a partir de code + filial normalizada (4 dígitos),
+// em vez de confiar na coluna "chave" gravada na importação — que pode ter
+// sido gerada por versão antiga do importador (filial concatenada ex.:
+// "0307-MEGATEC CHAPADAC"). Assim o MRP (e o cruzamento) funciona mesmo com
+// dados antigos no banco, sem precisar reimportar a SBZ.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -34,7 +36,9 @@ import { calculateTurnover } from "./analyticsRules";
 import { emissaoDoNomeArquivo, importarCompras, reenriquecerCompras } from "./protheusImport";
 import type { Sb1Index, Sb1Row, SbzIndex, SbzRow, FamiliasMap } from "./referenceImporters";
 import { storagePut } from "./storage";
+
 let _db: ReturnType<typeof drizzle> | null = null;
+
 export async function getDb() {
   if (!_db && process.env.SUPABASE_DATABASE_URL) {
     try {
@@ -55,6 +59,7 @@ export async function getDb() {
   }
   return _db;
 }
+
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
@@ -78,11 +83,13 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     });
   }
 }
+
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
 }
+
 // ===== Tabelas de referência (SB1, SBZ, Família, SubFamília) =====
 // MUDANÇA (07/09/2026): inserção em lotes de 500 registros por vez,
 // corrigindo "Maximum call stack size exceeded" em arquivos grandes (SB1/SBZ).
@@ -193,15 +200,44 @@ export async function loadSubfamilyReferences(): Promise<Map<string, string>> {
   return map;
 }
 // MUDANÇA (07/09/2026): função mantida por compatibilidade com o router.
-// Sem anotação de tipo externa, pois o tipo ReferenceData não existe mais nos
-// arquivos novos — o retorno é inferido pelo TypeScript.
 export async function loadAllReferences() {
   const [sb1, sbz, familias, subfamilias] = await Promise.all([loadSb1References(), loadSbzReferences(), loadFamilyReferences(), loadSubfamilyReferences()]);
   return { sb1, sbz, familias, subfamilias };
 }
+
+// ============================================================
+// Helpers de normalização (09/09/2026)
+// ============================================================
+/** Normaliza um código: remove zeros à esquerda preservando sufixos. */
+function normalizeCodeLocal(codigo: string | null | undefined): string {
+  if (!codigo) return "";
+  const texto = String(codigo).trim();
+  const partes = texto.split("-");
+  const numero = (partes[0] || "").replace(/^0+/, "") || "0";
+  if (partes.length > 1) return `${numero}-${partes.slice(1).join("-")}`;
+  return numero;
+}
+/**
+ * Normaliza a filial para SEMPRE 4 dígitos numéricos.
+ * // REGRA DE NEGÓCIO (09/09/2026): a filial pode vir concatenada com o nome
+ * //   do local ("0307-MEGATEC CHAPADAC") ou como número "307". Extrai os
+ * //   dígitos iniciais e completa para 4, porque o cruzamento Compras × SBZ
+ * //   usa a chave código + filial (4 dígitos).
+ */
+function normalizarFilial(value: unknown): string {
+  const texto = String(value ?? "").trim();
+  const match = texto.match(/^(\d+)/);
+  const digits = match ? match[1] : texto;
+  return digits.padStart(4, "0");
+}
+
 // MUDANÇA (07/09/2026): monta os índices que o novo enriquecerCompras espera
 // (Sb1Index por Codigo/Cod Agregado, SbzIndex por código+filial, mapas de
 // Famílias e SubFamílias) a partir das tabelas de referência do banco.
+// CORREÇÃO (09/09/2026): a chave da SBZ é RECALCULADA aqui (code normalizado +
+// filial normalizada em 4 dígitos) em vez de confiar na coluna chave gravada —
+// versões antigas gravaram chave com a filial concatenada, o que impedia o
+// cruzamento do MRP. Funciona mesmo com dados antigos no banco.
 async function montarIndicesReferencias(): Promise<{ sb1: Sb1Index; sbz: SbzIndex; familias: FamiliasMap; subFamilias: FamiliasMap }> {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -231,9 +267,12 @@ async function montarIndicesReferencias(): Promise<{ sb1: Sb1Index; sbz: SbzInde
   }
   const porChave = new Map<string, SbzRow>();
   for (const r of sbzRows) {
-    const chave = String(r.chave ?? "").trim();
-    if (!chave) continue;
-    porChave.set(chave, { chave, codigo: r.code, filial: r.filial, entraMrp: r.entraMrp });
+    const codigo = normalizeCodeLocal(r.code);
+    const filial = normalizarFilial(r.filial);
+    if (!codigo || !filial) continue;
+    const chave = codigo + filial;
+    if (porChave.has(chave)) continue;
+    porChave.set(chave, { chave, codigo, filial, entraMrp: r.entraMrp });
   }
   return {
     sb1: { porCodigo, porCodAgregado, registros },
@@ -331,8 +370,7 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
 // MUDANÇA (08/09/2026): re-enriquecimento AUTOMÁTICO da importação de Compras
 // EM USO. Lê os itens da carga aprovada, cruza com os cadastros recém-
 // importados (SB1/SBZ/Famílias/SubFamílias) e grava de volta productType,
-// mrp, family e subfamily. Itens sem correspondência ficam em branco (não
-// são excluídos). Chamado pelo router após cada importação de cadastro.
+// mrp, family e subfamily. Chamado pelo router após cada importação de cadastro.
 // CORREÇÃO MRP (09/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
 export async function reenriquecerImportacaoCompras(): Promise<number> {
   const db = await getDb();
@@ -549,8 +587,6 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
 }
 // MUDANÇA (08/09/2026): o dashboard passou a devolver currentImport, quality e
 // os agrupamentos na raiz — exatamente o formato que a tela de análise consome.
-// Sem essa estrutura, a tela entendia que não havia carga aprovada e caía na
-// tela de "Primeira carga" (o comportamento de "entra e sai" que você viu).
 export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
   if (!db) return null;

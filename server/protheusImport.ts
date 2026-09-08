@@ -10,6 +10,9 @@
  * //   (stockValue, cobertura, excedente, giro, curva ABCDE) são feitos no
  * //   código (protheusCalculations.ts) — as fórmulas da planilha e os valores
  * //   da macro são IGNORADOS. Regras de negócio gravadas como comentários.
+ * // MUDANÇA (09/09/2026): filial da Compras normalizada para 4 dígitos mesmo
+ * //   se vier concatenada (ex.: "0101-MEGATEC" -> "0101"), garantindo que a
+ * //   chave do cruzamento Compras × SBZ seja sempre (código + filial 4 dígitos).
  *
  * // REGRA DE NEGÓCIO — COLUNAS LIDAS DA EXPORTAÇÃO CRUA:
  * //   A=Codigo, D=Filial, K=Última Compra, L..X=13 meses de vendas,
@@ -36,6 +39,20 @@ export function normalizeCode(codigo: string | null | undefined): string {
     return `${numero}-${partes.slice(1).join('-')}`;
   }
   return numero;
+}
+
+/**
+ * Normaliza a filial para SEMPRE 4 dígitos numéricos.
+ * // REGRA DE NEGÓCIO (09/09/2026): a filial pode vir concatenada com o nome
+ * //   do local ("0307-MEGATEC CHAPADAC") ou como número sem zero à esquerda
+ * //   (307). Extrai os dígitos iniciais e completa para 4 (0307), porque o
+ * //   cruzamento Compras × SBZ usa a chave código + filial (4 dígitos).
+ */
+function normalizarFilial(value: unknown): string {
+  const texto = String(value ?? '').trim();
+  const match = texto.match(/^(\d+)/);
+  const digits = match ? match[1] : texto;
+  return digits.padStart(4, '0');
 }
 
 /**
@@ -189,7 +206,7 @@ export function parseRegistrosCompras(linhasBrutas: unknown[][]): { registros: P
     registros.push({
       codigoOriginal,
       codigo: normalizeCode(codigoOriginal),
-      filial: String(linha[colunas.filial] ?? '').trim().padStart(4, '0'),
+      filial: normalizarFilial(linha[colunas.filial]), // sempre 4 dígitos
       descricao: String(linha[colunas.descricao] ?? '').trim(),
       familia: '',
       subFamilia: '',
@@ -229,6 +246,9 @@ export function parseProtheusWorkbook(linhasBrutas: unknown[][], emissao?: Date 
  * Cruza os registros de Compras com SB1, SBZ, Famílias e SubFamílias.
  * SB1 procura primeiro pelo Codigo; se não achar, procura pelo Cod Agregado
  * (regra da fórmula original =SEERRO(PROCV(...);PROCV(...))).
+ * // REGRA DE NEGÓCIO (09/09/2026): SBZ NÃO tem coluna "cod agregado" — o
+ * //   Código da Compras (cod agregado da SB1) aponta para o Código da SBZ,
+ * //   pela chave (código normalizado + filial 4 dígitos).
  */
 export function enriquecerCompras(
   registros: PurchaseRow[],
@@ -265,8 +285,6 @@ export function enriquecerCompras(
  * Pipeline completo de importação: lê, valida, cruza e CALCULA tudo.
  * Devolve os registros prontos para a gravação, com stockValue, coverageDays,
  * excessValue, turnover e curva ABCDE já preenchidos.
- * // MUDANÇA (09/09/2026): emissao (data de emissão do nome do arquivo) é
- * //   usada no giro e na curva D/E. Se não for passada, usa o padrão da macro.
  */
 export function importarCompras(
   linhasBrutas: unknown[][],
