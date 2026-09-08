@@ -11,6 +11,16 @@
 //   porque o código da Compras casa com o agregado OU com o código (regra da
 //   fórmula =SEERRO(PROCV(A2;SB1!A:C;3;0);PROCV(A2;SB1!B:C;2;0))).
 // MUDANÇA (07/09/2026): aceita Buffer OU unknown[][] (auto-detecção).
+// MUDANÇA (08/09/2026): branchCode agora normaliza a filial SEMPRE para 4 dígitos
+//   (trata "0307-MEGATEC CHAPADAC" e também a filial numérica "307"), porque o
+//   cruzamento Compras × SBZ usa a chave código + filial (4 dígitos).
+// MUDANÇA (08/09/2026): readRows reforça a remoção de cabeçalhos repetidos do
+//   browse do Protheus — além de linhas idênticas ao cabeçalho, ignora qualquer
+//   linha cuja primeira célula corresponda a um rótulo conhecido do cabeçalho
+//   (filial, codigo, descricao etc.), cobrindo variações do cabeçalho repetido.
+// REGRA DE NEGÓCIO (08/09/2026): a SBZ NÃO possui coluna "cod agregado" — o
+//   Código da Compras (que é o cod agregado da SB1) deve apontar para o Código
+//   da SBZ no cruzamento Compras × SBZ, usando a chave código + filial.
 // ============================================================
 import * as XLSX from "xlsx";
 
@@ -69,9 +79,18 @@ function encontrarLinhaCabecalho(linhas: unknown[][], rotulos: string[]): number
 
 /**
  * Lê as linhas de dados, ignorando linhas que não são arrays (células mescladas/
- * objetos) e cabeçalhos repetidos do Browse. Aceita Buffer ou linhas já lidas.
+ * objetos) e cabeçalhos repetidos do Browse do Protheus. Aceita Buffer ou linhas já lidas.
+ *
+ * // REGRA DE NEGÓCIO (08/09/2026): as planilhas exportadas pelo browser do
+ * //   Protheus repetem a linha de cabeçalho no meio dos dados — elas devem ser
+ * //   ignoradas. Além da igualdade exata com o cabeçalho, ignora qualquer linha
+ * //   cuja primeira célula corresponda a um rótulo conhecido do cabeçalho
+ * //   (ex.: "Filial", "Codigo", "Descricao"), cobrindo variações do repetido.
  */
-export function readRows(origem: Buffer | unknown[][], rotulosCabecalho: string[] = []): { cabecalho: string[]; dados: string[][] } {
+export function readRows(
+  origem: Buffer | unknown[][],
+  rotulosCabecalho: string[] = []
+): { cabecalho: string[]; dados: string[][] } {
   const linhasBrutas = lerLinhasBrutas(origem);
   const ehArray = (linha: unknown): linha is unknown[] => Array.isArray(linha);
   const naoVazia = (linha: unknown[]) => linha.some((c) => asText(c) !== "");
@@ -85,10 +104,20 @@ export function readRows(origem: Buffer | unknown[][], rotulosCabecalho: string[
   }
 
   const cabecalho = arrays[idxCabecalho].map((c) => asText(c));
-  const chaveCabecalho = JSON.stringify(arrays[idxCabecalho]);
+  const rotulosNorm = new Set(cabecalho.map(normNome).filter(Boolean));
+
+  // Função que decide se a linha é um cabeçalho repetido:
+  // (a) idêntica à linha de cabeçalho, OU
+  // (b) primeira célula corresponde a um rótulo conhecido do cabeçalho.
+  const ehCabecalhoRepetido = (linha: unknown[]): boolean => {
+    if (JSON.stringify(linha) === JSON.stringify(arrays[idxCabecalho])) return true;
+    const primeira = normNome(asText(linha[0]));
+    return primeira !== "" && rotulosNorm.has(primeira);
+  };
+
   const dados = arrays
     .slice(idxCabecalho + 1)
-    .filter((linha) => JSON.stringify(linha) !== chaveCabecalho)
+    .filter((linha) => !ehCabecalhoRepetido(linha))
     .map((linha) => linha.map((c) => asText(c)));
 
   return { cabecalho, dados };
@@ -103,7 +132,6 @@ function indiceColuna(cabecalho: string[], nomes: string[]): number {
 // ---------------------------------------------------------------------------
 // SB1
 // ---------------------------------------------------------------------------
-
 export interface Sb1Row {
   code: string;            // chave primária: cod_agregado (fallback codigo)
   codigo: string;          // coluna codigo normalizada
@@ -127,7 +155,6 @@ export interface Sb1Index {
  */
 export function importSb1(origem: Buffer | unknown[][]): Sb1Index {
   const { cabecalho, dados } = readRows(origem, ["cod agregado", "codigo", "tipo"]);
-  // Localiza por nome; fallback para o layout real (posições do arquivo).
   const iAgr = indiceColuna(cabecalho, ["cod agregado"]);
   const iCod = indiceColuna(cabecalho, ["codigo"]);
   const iDesc = indiceColuna(cabecalho, ["descricao"]);
@@ -161,14 +188,12 @@ export function importSb1(origem: Buffer | unknown[][]): Sb1Index {
       porCodAgregado.set(registro.code, registro);
     }
   }
-
   return { porCodigo, porCodAgregado, registros };
 }
 
 // ---------------------------------------------------------------------------
 // SBZ
 // ---------------------------------------------------------------------------
-
 export interface SbzRow {
   chave: string;   // código normalizado + filial (4 dígitos)
   codigo: string;
@@ -193,10 +218,19 @@ function asNumber(value: unknown): number | null {
   return Number.isFinite(resultado) ? resultado : null;
 }
 
+/**
+ * Extrai e normaliza o código da filial para SEMPRE 4 dígitos.
+ * // REGRA DE NEGÓCIO (08/09/2026): a coluna Filial do export da SBZ vem
+ * //   concatenada com o nome do local após o hífen (ex.: "0307-MEGATEC CHAPADAC").
+ * //   O código deve ser normalizado para apenas os 4 dígitos antes do hífen
+ * //   (ex.: "0307"), porque o cruzamento Compras × SBZ usa a chave código + filial
+ * //   (4 dígitos). Também trata a filial numérica sem zero à esquerda (307 → 0307).
+ */
 function branchCode(value: unknown): string {
   const texto = asText(value);
-  const match = texto.match(/^(\d{4})/);
-  return match ? match[1] : texto;
+  const match = texto.match(/^(\d+)/);
+  const digits = match ? match[1] : texto;
+  return digits.padStart(4, "0");
 }
 
 function mrpValue(value: unknown): string {
@@ -207,7 +241,11 @@ function mrpValue(value: unknown): string {
   return asText(value);
 }
 
-/** Importa o SBZ e indexa por Chave = código normalizado + filial (=B2&A2). */
+/**
+ * Importa o SBZ e indexa por Chave = código normalizado + filial (=B2&A2).
+ * // REGRA DE NEGÓCIO (08/09/2026): a SBZ NÃO tem coluna "cod agregado". O
+ * //   Código da Compras (cod agregado da SB1) aponta para o Código da SBZ.
+ */
 export function importSbz(origem: Buffer | unknown[][]): SbzIndex {
   const { cabecalho, dados } = readRows(origem, ["filial", "codigo"]);
   const iFil = indiceColuna(cabecalho, ["filial"]);
@@ -215,8 +253,8 @@ export function importSbz(origem: Buffer | unknown[][]): SbzIndex {
   const iMin = indiceColuna(cabecalho, ["estoq minimo", "estoque minimo"]);
   const iMax = indiceColuna(cabecalho, ["estoq maximo", "estoque maximo"]);
   const iMrp = indiceColuna(cabecalho, ["entra mrp", "mrp"]);
-
   const porChave = new Map<string, SbzRow>();
+
   for (const linha of dados) {
     const codigo = normalizeCode(linha[iCod >= 0 ? iCod : 1]);
     const filial = branchCode(linha[iFil >= 0 ? iFil : 0]);
@@ -232,14 +270,12 @@ export function importSbz(origem: Buffer | unknown[][]): SbzIndex {
       entraMrp: mrpValue(linha[iMrp >= 0 ? iMrp : 4]),
     });
   }
-
   return { porChave };
 }
 
 // ---------------------------------------------------------------------------
 // Famílias e SubFamílias
 // ---------------------------------------------------------------------------
-
 export type FamiliasMap = Map<string, string>;
 
 /** Importa o cadastro de Famílias: código normalizado -> descrição. */
