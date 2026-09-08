@@ -3,28 +3,15 @@
 // Camada de acesso ao banco (PostgreSQL/Supabase via Drizzle).
 // Módulo: server (API tRPC)
 // Data: 07/09/2026
-// MUDANÇA (07/09/2026): arquivo COMPLETO reconstruído a partir do original,
-// alinhado aos novos protheusImport.ts / protheusCalculations.ts /
-// referenceImporters.ts. O importProtheusWorkbook passou a ler o Excel em
-// linhas brutas e usar o pipeline novo (importarCompras), que cruza SB1
-// (Codigo OU Cod Agregado) e SBZ (código + filial). Resposta inclui rowCount.
-// MUDANÇA (08/09/2026): adicionada reenriquecerImportacaoCompras — re-executa
-// o cruzamento sobre os itens JÁ GRAVADOS da importação de Compras EM USO,
-// usando os cadastros recém-importados. Itens sem correspondência ficam com
-// os campos em branco (não são excluídos). O gatilho automático no router
-// (processReference) chama esta função após cada importação de cadastro.
-// MUDANÇA (09/09/2026): importProteusWorkbook passou a ler com raw:true
-// (preserva números) e a GRAVAR os campos calculados no código (curve,
-// salesValue13M, stock, stockValue, coverageDays, excessValue) — antes eram
-// gravados como 0, por isso os cards do painel mostravam R$ 0. A data de
-// emissão (nome do arquivo) é passada ao pipeline para o giro e a curva D/E.
-// CORREÇÃO MRP (09/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
-// CORREÇÃO MRP CHAVE (09/09/2026): a chave do cruzamento Compras × SBZ é
-// RECALCULADA em memória a partir de code + filial normalizada (4 dígitos),
-// em vez de confiar na coluna "chave" gravada na importação — que pode ter
-// sido gerada por versão antiga do importador (filial concatenada ex.:
-// "0307-MEGATEC CHAPADAC"). Assim o MRP (e o cruzamento) funciona mesmo com
-// dados antigos no banco, sem precisar reimportar a SBZ.
+// MUDANÇA (08/09/2026): raw:true preserva números; grava campos calculados.
+// MUDANÇA (08/09/2026): chave SBZ recalculada em memória (code + filial 4 dígitos)
+//   em vez de confiar na chave antiga gravada (filial concatenada "0307-MEGATEC").
+// MUDANÇA (08/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
+// MUDANÇA (08/09/2026): COBERTURA = MÉDIA PONDERADA pelo valor em estoque
+//   (stockValue). Regra de negócio do usuário: não somar dias de cobertura nem
+//   usar média simples — a cobertura média do grupo pondera cada item pelo
+//   valor em estoque (item com mais R$ pesa mais). Fórmula:
+//   sum(coverageDays * stockValue) / sum(stockValue).
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -91,8 +78,6 @@ export async function getUserByOpenId(openId: string) {
 }
 
 // ===== Tabelas de referência (SB1, SBZ, Família, SubFamília) =====
-// MUDANÇA (07/09/2026): inserção em lotes de 500 registros por vez,
-// corrigindo "Maximum call stack size exceeded" em arquivos grandes (SB1/SBZ).
 export async function saveSb1References(records: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -129,10 +114,6 @@ export async function saveSubfamilyReferences(records: { code: string; descricao
   }
   return records.length;
 }
-// MUDANÇA (08/09/2026): gravação atômica dos cadastros de referência.
-// Apaga a versão anterior, insere a nova (lotes de 2.000) e registra o histórico
-// NA MESMA transação. Se a função for encerrada ou falhar, o banco volta sozinho
-// para a versão anterior — nunca fica parcial, e o histórico nasce junto.
 export async function saveReferenceImport(kind: "sb1" | "sbz" | "familias" | "subfamilias", fileName: string, records: unknown[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -199,16 +180,14 @@ export async function loadSubfamilyReferences(): Promise<Map<string, string>> {
   rows.forEach(r => map.set(r.code, r.descricao));
   return map;
 }
-// MUDANÇA (07/09/2026): função mantida por compatibilidade com o router.
 export async function loadAllReferences() {
   const [sb1, sbz, familias, subfamilias] = await Promise.all([loadSb1References(), loadSbzReferences(), loadFamilyReferences(), loadSubfamilyReferences()]);
   return { sb1, sbz, familias, subfamilias };
 }
 
 // ============================================================
-// Helpers de normalização (09/09/2026)
+// Helpers de normalização (08/09/2026)
 // ============================================================
-/** Normaliza um código: remove zeros à esquerda preservando sufixos. */
 function normalizeCodeLocal(codigo: string | null | undefined): string {
   if (!codigo) return "";
   const texto = String(codigo).trim();
@@ -217,13 +196,6 @@ function normalizeCodeLocal(codigo: string | null | undefined): string {
   if (partes.length > 1) return `${numero}-${partes.slice(1).join("-")}`;
   return numero;
 }
-/**
- * Normaliza a filial para SEMPRE 4 dígitos numéricos.
- * // REGRA DE NEGÓCIO (09/09/2026): a filial pode vir concatenada com o nome
- * //   do local ("0307-MEGATEC CHAPADAC") ou como número "307". Extrai os
- * //   dígitos iniciais e completa para 4, porque o cruzamento Compras × SBZ
- * //   usa a chave código + filial (4 dígitos).
- */
 function normalizarFilial(value: unknown): string {
   const texto = String(value ?? "").trim();
   const match = texto.match(/^(\d+)/);
@@ -231,13 +203,8 @@ function normalizarFilial(value: unknown): string {
   return digits.padStart(4, "0");
 }
 
-// MUDANÇA (07/09/2026): monta os índices que o novo enriquecerCompras espera
-// (Sb1Index por Codigo/Cod Agregado, SbzIndex por código+filial, mapas de
-// Famílias e SubFamílias) a partir das tabelas de referência do banco.
-// CORREÇÃO (09/09/2026): a chave da SBZ é RECALCULADA aqui (code normalizado +
-// filial normalizada em 4 dígitos) em vez de confiar na coluna chave gravada —
-// versões antigas gravaram chave com a filial concatenada, o que impedia o
-// cruzamento do MRP. Funciona mesmo com dados antigos no banco.
+// MUDANÇA (08/09/2026): chave SBZ RECALCULADA aqui (code normalizado + filial
+// normalizada em 4 dígitos) em vez de confiar na coluna chave gravada.
 async function montarIndicesReferencias(): Promise<{ sb1: Sb1Index; sbz: SbzIndex; familias: FamiliasMap; subFamilias: FamiliasMap }> {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -294,18 +261,9 @@ export async function updateProtheusImportStatus(id: number, status: ProtheusImp
   if (result.length === 0) throw new Error("Versão de carga não encontrada.");
   return result[0];
 }
-// MUDANÇA (07/09/2026): reescrito para o pipeline novo. O Excel é lido em
-// linhas brutas (header:1) e o importarCompras cruza SB1 (por Codigo OU
-// Cod Agregado) e SBZ (código + filial). Corrige o erro "A planilha de
-// Compras está vazia" e devolve rowCount para o frontend.
-// MUDANÇA (09/09/2026): raw:true preserva os números; grava os campos
-// calculados no código (curve, salesValue13M, stock, stockValue,
-// coverageDays, excessValue) em vez de 0; passa a data de emissão ao pipeline.
-// CORREÇÃO MRP (09/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-  // 1) Lê a planilha em linhas brutas — o novo pipeline espera unknown[][]
   const workbook = XLSX.read(fileBuffer, { type: "buffer", cellText: false });
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) throw new Error("A planilha não possui uma aba para importação.");
@@ -313,13 +271,9 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     workbook.Sheets[firstSheetName],
     { header: 1, raw: true, defval: "" }
   );
-  // 2) Índices de referência a partir do banco
   const { sb1, sbz, familias, subFamilias } = await montarIndicesReferencias();
-  // 3) Data de emissão (nome do arquivo) — giro (360 + dia do mês corrente) e curva D/E
   const emissao = emissaoDoNomeArquivo(fileName);
-  // 4) Pipeline novo: parse + enriquecimento (SB1, SBZ, Famílias, SubFamílias) + cálculos
   const { registros } = importarCompras(linhasBrutas, sb1, sbz, familias, subFamilias, emissao);
-  // 5) Registro da importação + gravação atômica em lotes
   const importedAt = parsePurchaseHistoryDate(fileName);
   const versionName = fileName.replace(/\.xlsx$/i, "");
   const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -349,29 +303,22 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           description: r.descricao || "",
           branch: r.filial,
           productType: (r.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
-          // CORREÇÃO: mrp NUNCA vazio — sem cruzamento com a SBZ = "Não".
           mrp: r.mrp === "Sim" ? "Sim" : "Não",
           family: r.familia || "",
           subfamily: r.subFamilia || "",
-          // MUDANÇA (09/09/2026): grava os campos calculados no código (antes eram 0).
           curve: r.curva,
           sales13M: r.total,
-          salesValue13M: r.custoTot13M, // valor das vendas em 13 meses (consumo da macro)
+          salesValue13M: r.custoTot13M,
           stock: r.estoque,
-          stockValue: r.stockValue,       // Estoque × CustoUn13M
-          coverageDays: r.coverageDays,   // dias de cobertura
-          excessValue: r.excessValue,     // excedente financeiro
+          stockValue: r.stockValue,
+          coverageDays: r.coverageDays,
+          excessValue: r.excessValue,
         }))
       );
     }
     return { id: importId, rowCount: registros.length };
   });
 }
-// MUDANÇA (08/09/2026): re-enriquecimento AUTOMÁTICO da importação de Compras
-// EM USO. Lê os itens da carga aprovada, cruza com os cadastros recém-
-// importados (SB1/SBZ/Famílias/SubFamílias) e grava de volta productType,
-// mrp, family e subfamily. Chamado pelo router após cada importação de cadastro.
-// CORREÇÃO MRP (09/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
 export async function reenriquecerImportacaoCompras(): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -411,8 +358,6 @@ export async function reenriquecerImportacaoCompras(): Promise<number> {
     return enriquecidos.length;
   });
 }
-// MUDANÇA (07/09/2026): alinha as filiais da análise às 12 unidades aceitas na importação
-// (exceto 0105 e 0201), para o painel refletir o faturamento global.
 const ANALYSIS_BRANCHES = ["0101", "0102", "0103", "0106", "0107", "0108", "0301", "0303", "0304", "0305", "0306", "0307"];
 type Curve = "A" | "B" | "C" | "D" | "E";
 type ProductType = "ME" | "PE";
@@ -522,7 +467,9 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
-    coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
+    // MUDANÇA (08/09/2026): cobertura = MÉDIA PONDERADA pelo valor em estoque.
+    // Não somar dias de cobertura nem usar média simples (regra do usuário).
+    coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.coverageDays} * ${inventoryAnalytics.stockValue}) / nullif(sum(${inventoryAnalytics.stockValue}), 0), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
     totalItems: sql<number>`count(*)`,
     lowCoverageItems: sql<number>`count(case when ${inventoryAnalytics.coverageDays} < 30 and ${inventoryAnalytics.stockValue} > 0 then 1 end)`,
@@ -539,8 +486,6 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
     lowCoverageStockValue: asNumber(summary.lowCoverageStockValue),
   };
 }
-// MUDANÇA (08/09/2026): o agrupamento passou a incluir a subfamília, que a
-// tela de análise consome em "Giro por subfamília".
 export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
@@ -556,7 +501,8 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
-    coverageDays: sql<string>`coalesce(avg(${inventoryAnalytics.coverageDays}), 0)`,
+    // MUDANÇA (08/09/2026): cobertura = MÉDIA PONDERADA pelo valor em estoque.
+    coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.coverageDays} * ${inventoryAnalytics.stockValue}) / nullif(sum(${inventoryAnalytics.stockValue}), 0), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
   };
   const [byBranch, byCurve, byProductType, byMrp, byFamily, bySubfamily] = await Promise.all([
@@ -585,8 +531,6 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
     bySubfamily: bySubfamily.map(mapGroup),
   };
 }
-// MUDANÇA (08/09/2026): o dashboard passou a devolver currentImport, quality e
-// os agrupamentos na raiz — exatamente o formato que a tela de análise consome.
 export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const db = await getDb();
   if (!db) return null;
@@ -746,7 +690,6 @@ export async function getAnalyticsFilterOptions(importId?: number) {
     subfamilies: subfamilies.map((row) => row.value),
   };
 }
-// MUDANÇA (07/09/2026): retorna a quantidade de registros de cada cadastro de referência.
 export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; familias: number; subfamilias: number }> {
   const db = await getDb();
   if (!db) return { sb1: 0, sbz: 0, familias: 0, subfamilias: 0 };
@@ -758,7 +701,6 @@ export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; 
   ]);
   return { sb1: sb1[0]?.n ?? 0, sbz: sbz[0]?.n ?? 0, familias: familias[0]?.n ?? 0, subfamilias: subfamilias[0]?.n ?? 0 };
 }
-// MUDANÇA (07/09/2026): histórico de importações e exclusão dos cadastros de referência.
 export async function recordReferenceImport(kind: "sb1" | "sbz" | "familias" | "subfamilias", fileName: string, rowCount: number) {
   const db = await getDb();
   if (!db) return;

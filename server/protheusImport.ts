@@ -11,8 +11,12 @@
  * //   código (protheusCalculations.ts) — as fórmulas da planilha e os valores
  * //   da macro são IGNORADOS. Regras de negócio gravadas como comentários.
  * // MUDANÇA (09/09/2026): filial da Compras normalizada para 4 dígitos mesmo
- * //   se vier concatenada (ex.: "0101-MEGATEC" -> "0101"), garantindo que a
- * //   chave do cruzamento Compras × SBZ seja sempre (código + filial 4 dígitos).
+ * //   se vier concatenada (ex.: "0101-MEGATEC" -> "0101").
+ * // MUDANÇA (09/09/2026): readRows reforçado para ignorar cabeçalhos repetidos
+ * //   do browser do Protheus — além da linha idêntica ao cabeçalho, remove
+ * //   qualquer linha em que uma célula contenha o TÍTULO da sua coluna
+ * //   (ex.: célula da coluna Filial = "Filial do Item na SBZ"). Isso eliminou
+ * //   uma linha lixo que entrava como dado e distorcia os cruzamentos.
  *
  * // REGRA DE NEGÓCIO — COLUNAS LIDAS DA EXPORTAÇÃO CRUA:
  * //   A=Codigo, D=Filial, K=Última Compra, L..X=13 meses de vendas,
@@ -116,10 +120,24 @@ export function emissaoDoNomeArquivo(nomeArquivo: string | null | undefined): Da
   return isNaN(d.getTime()) ? null : d;
 }
 
+/** Normaliza um texto para comparação (minúsculas, sem acento/símbolos). */
+function normTexto(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
 /**
  * Lê linhas ignorando cabeçalhos repetidos, linhas vazias e linhas que não
  * são arrays. // MUDANÇA (09/09/2026): as células de DADOS preservam o valor
  * original (números continuam números) — só o cabeçalho é convertido em texto.
+ * // MUDANÇA (09/09/2026): reforço do filtro de cabeçalhos repetidos — além da
+ * //   linha idêntica ao cabeçalho, remove qualquer linha em que uma célula
+ * //   contenha o título da SUA coluna (ex.: célula da coluna Filial =
+ * //   "Filial do Item na SBZ"). O browser do Protheus repete cabeçalhos com
+ * //   variações (espaços, mesclagens) que escapavam do filtro de igualdade.
  */
 export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dados: unknown[][] } {
   const ehArray = (linha: unknown): linha is unknown[] => Array.isArray(linha);
@@ -127,10 +145,22 @@ export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dado
   const dadosBrutos = linhasBrutas.filter(ehArray).filter(naoVazia);
   if (dadosBrutos.length === 0) return { cabecalho: [], dados: [] };
   const cabecalho = dadosBrutos[0].map((c) => String(c ?? '').trim());
+  const rotulosColuna = cabecalho.map((c) => normTexto(c)).filter(Boolean);
   const chaveCabecalho = JSON.stringify(dadosBrutos[0]);
+  const ehCabecalhoRepetido = (linha: unknown[]): boolean => {
+    // (a) linha idêntica ao cabeçalho principal
+    if (JSON.stringify(linha) === chaveCabecalho) return true;
+    // (b) alguma célula contém o título da sua própria coluna
+    //     (ex.: coluna Filial = "Filial do Item na SBZ")
+    for (let i = 0; i < linha.length; i++) {
+      const celula = normTexto(String(linha[i] ?? '').trim());
+      if (celula !== '' && rotulosColuna[i] && celula === rotulosColuna[i]) return true;
+    }
+    return false;
+  };
   const dados = dadosBrutos
     .slice(1)
-    .filter((linha) => JSON.stringify(linha) !== chaveCabecalho);
+    .filter((linha) => !ehCabecalhoRepetido(linha));
   return { cabecalho, dados };
 }
 
@@ -307,10 +337,6 @@ export function importarCompras(
  * roda o MESMO cruzamento do enriquecerCompras com os cadastros recém-
  * importados. Itens sem correspondência ficam com os campos em branco (não
  * são excluídos). A gravação de volta fica no router (processReference).
- * // NOTA (09/09/2026): este fluxo re-cruza apenas cadastros (familia/
- * //   subFamilia/mrp/tipo). O recálculo completo (curva/financeiros) ocorre
- * //   na importação da Compras. Se o Tipo mudar aqui, reimporte a Compras
- * //   para recalcular a curva ABCDE.
  */
 export function reenriquecerCompras(
   itens: Array<{ codigo: string; filial: string; descricao: string }>,
