@@ -17,18 +17,24 @@ async function modulePermission(ctx: { req: { headers: Record<string, string | s
 
 export function canAdministerProtheusImports(identity: Pick<PortalIdentity, "isDevelopmentAdmin" | "profiles">) { return identity.isDevelopmentAdmin || identity.profiles.includes("operations-admin"); }
 
-// MUDANÇA (07/09/2026): os importadores de referência agora devolvem índices
-// (Sb1Index/SbzIndex/Map). Estas funções convertem essa saída em ARRAYS simples
-// de registros, no formato exato que o saveReferenceImport/save*References do
-// db.ts esperam gravar. Sem essa conversão, o save recebia um objeto (não um
-// array), records.length ficava undefined, nada era gravado e o histórico
-// registrava "0 registros".
+// MUDANÇA (07/09/2026): os importadores de referência devolvem índices (Sb1Index/
+// SbzIndex/Map). Estas funções convertem essa saída em ARRAYS simples de registros,
+// no formato exato que o saveReferenceImport/save*References do db.ts espera gravar.
+// MUDANÇA (08/09/2026): a SB1 exporta o MESMO código agregado para várias filiais;
+// como a tabela sb1References guarda 1 linha por código, o INSERT em lote abortava
+// ao encontrar código repetido (erro 500 em processReference, nada era gravado).
+// Agora os registros são deduplicados por code (último vence), igual ao índice de
+// consulta (porCodAgregado/porCodigo) — mesmo comportamento que funcionou antes.
 
 function sb1ParaRegistros(buffer: Buffer): { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[] {
   const idx = importSb1(buffer);
-  return idx.registros
-    .filter(r => r.code && r.code !== "0")
-    .map(r => ({ code: r.code, tipo: r.tipo, familiaCode: r.familiaCode, subfamiliaCode: r.subfamiliaCode }));
+  const unicos = new Map<string, { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }>();
+  for (const r of idx.registros) {
+    const code = r.code;
+    if (!code || code === "0") continue;
+    unicos.set(code, { code, tipo: r.tipo, familiaCode: r.familiaCode, subfamiliaCode: r.subfamiliaCode });
+  }
+  return Array.from(unicos.values());
 }
 
 function sbzParaRegistros(buffer: Buffer): { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[] {
@@ -89,8 +95,8 @@ export const analyticsRouter = router({
     return { ...result, versionName: input.fileName.replace(/\.xlsx$/i, "") };
   }),
   // MUDANÇA (07/09/2026): importação em transação única (apaga + grava + histórico).
-  // MUDANÇA (07/09/2026): os importadores devolvem índices — agora convertidos em
-  // arrays simples antes do saveReferenceImport (corrige "0 registros").
+  // MUDANÇA (08/09/2026): sb1ParaRegistros deduplica por code — a SB1 exporta o
+  // mesmo produto em várias filiais e o INSERT em lote abortava com 500.
   processReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]), fileName: z.string().min(1).max(255), key: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     const buffer = await supabaseStorageReadBuffer(input.key);
@@ -105,7 +111,7 @@ export const analyticsRouter = router({
   deleteReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]) })).mutation(async ({ ctx, input }) => { await modulePermission(ctx, "manage", "importacoes-compras-protheus"); await deleteReferenceData(input.kind); return { success: true as const }; }),
   deleteImport: publicProcedure.input(z.object({ importId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { const identity = await modulePermission(ctx, "manage", "importacoes-compras-protheus"); assertPortalAdministrator(identity); await deleteProtheusImport(input.importId); return { success: true as const }; }),
   setImportStatus: publicProcedure.input(z.object({ importId: z.number().int().positive(), status: z.enum(["approved", "archived"]) })).mutation(async ({ ctx, input }) => { const identity = await modulePermission(ctx, "manage"); assertPortalAdministrator(identity); const result = await updateProtheusImportStatus(input.importId, input.status); try { await recordPortalAudit(identity, "protheus_import", String(input.importId), `status_${input.status}`, { versionName: result?.versionName ?? null }); } catch (error) { console.warn("[Analytics] Status atualizado, mas a auditoria não foi registrada:", error); } return { success: true as const, status: input.status }; }),
-  // Rotas legadas (base64) — também convertidas para gravar os arrays corretos.
+  // Rotas legadas (base64) — também usam os conversores com deduplicação.
   importWorkbook: publicProcedure.input(z.object({ fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     const fileBuffer = Buffer.from(input.contentBase64, "base64");
