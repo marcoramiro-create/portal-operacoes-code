@@ -33,9 +33,9 @@ function ReferenceImporter({ title, description, kind, successLabel, count }: Re
   const utils = trpc.useUtils();
   const [file, setFile] = useState<File | null>(null);
   const getUploadUrl = trpc.analytics.getUploadUrl.useMutation();
-  const process = trpc.analytics.processReference.useMutation({
-    onSuccess: async result => { await Promise.all([utils.analytics.imports.invalidate(), utils.analytics.referenceCounts.invalidate(), utils.analytics.referenceImportHistory.invalidate()]); setFile(null); toast.success(`${successLabel}: ${result.count.toLocaleString("pt-BR")} registros.`); },
-    onError: error => toast.error(error.message),
+ // const process = trpc.analytics.processReference.useMutation({
+ //   onSuccess: async result => { await Promise.all([utils.analytics.imports.invalidate(), utils.analytics.referenceCounts.invalidate(), utils.analytics.referenceImportHistory.invalidate()]); setFile(null); toast.success(`${successLabel}: ${result.count.toLocaleString("pt-BR")} registros.`); },
+ //   onError: error => toast.error(error.message),
   });
   const deleteRef = trpc.analytics.deleteReference.useMutation({
     onSuccess: async () => { await Promise.all([utils.analytics.referenceCounts.invalidate(), utils.analytics.referenceImportHistory.invalidate(), utils.analytics.imports.invalidate(), utils.analytics.dashboard.invalidate(), utils.analytics.filterOptions.invalidate()]); toast.success(`${title}: dados excluídos.`); },

@@ -4,20 +4,16 @@
 // Módulo: server (API tRPC)
 // Data: 08/09/2026
 // MUDANÇA (08/09/2026): raw:true preserva números; grava campos calculados.
-// MUDANÇA (08/09/2026): chave SBZ recalculada em memória (code + filial 4 dígitos)
-//   em vez de confiar na chave antiga gravada (filial concatenada "0307-MEGATEC").
+// MUDANÇA (08/09/2026): chave SBZ recalculada em memória (code + filial 4 dígitos).
 // MUDANÇA (08/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
-// MUDANÇA (08/09/2026): COBERTURA = MÉDIA PONDERADA pelo valor em estoque
-//   sum(coverageDays * stockValue) / sum(stockValue). Regra de negócio do usuário.
-// MUDANÇA (08/09/2026): DATA REAL DA IMPORTAÇÃO — importedAt grava o instante da
-//   carga (new Date()), NÃO a data do nome do arquivo (que é a data de EXPORTAÇÃO).
-// MUDANÇA (08/09/2026): RE-ENRIQUECIMENTO NÃO-DESTRUTIVO — o reenriquecerImportacaoCompras
-//   NÃO pode mais rebaixar/apagar valores já gravados. Quando o re-cruzamento NÃO
-//   encontra correspondência no cadastro, o valor existente é MANTIDO (não força "Não").
-//   Isso corrige o sintoma "carrega Sim, depois fica só Não": o gatilho automático
-//   após cada importação de cadastro reescrevia o MRP para "Não" nos itens que não
-//   re-achavam correspondência. Regra de negócio: só atualiza campo quando o cadastro
-//   devolveu valor real ("Sim"/"Não"); caso contrário, preserva o gravado.
+// MUDANÇA (08/09/2026): COBERTURA = MÉDIA PONDERADA pelo valor em estoque.
+// MUDANÇA (08/09/2026): importedAt = data REAL da importação (não a do nome do arquivo).
+// MUDANÇA (08/09/2026): RE-ENRIQUECIMENTO NÃO-DESTRUTIVO DEFINITIVO.
+//   O usuário identificou que o MRP "Sim" aparecia e sumia: o re-enriquecimento
+//   automático reescrevia o MRP, forçando "Não" quando o re-cruzamento não achava
+//   correspondência na SBZ. A partir de agora o MRP NUNCA é reescrito pelo
+//   re-enriquecimento — ele é definido UMA ÚNICA VEZ, na importação da Compras
+//   (cruzamento com a SBZ). Nenhum gatilho posterior pode alterar o MRP gravado.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -350,21 +346,22 @@ export async function reenriquecerImportacaoCompras(): Promise<number> {
     familias,
     subFamilias
   );
-  // MUDANÇA (08/09/2026): RE-ENRIQUECIMENTO NÃO-DESTRUTIVO.
-  // Antes: "mrp: e.mrp === 'Sim' ? 'Sim' : 'Não'" sobrescrevia o item com "Não"
-  // quando o re-cruzamento não achava correspondência — o gatilho automático
-  // (após cada importação de cadastro) destruía os "Sim" carregados na importação.
-  // Agora: só atualiza um campo quando o cadastro DEVOLVEU valor real. Se o
-  // re-cruzamento não achar correspondência, o valor já gravado é MANTIDO.
+  // MUDANÇA (08/09/2026): RE-ENRIQUECIMENTO NÃO-DESTRUTIVO DEFINITIVO.
+  // O usuário identificou o sintoma "MRP Sim aparece e some": o re-enriquecimento
+  // reescrevia o MRP, forçando "Não" quando o re-cruzamento não achava
+  // correspondência na SBZ. A partir de agora o MRP NUNCA é atualizado aqui —
+  // ele é definido UMA ÚNICA VEZ, na importação da Compras (cruzamento com a SBZ).
+  // Este gatilho apenas PREENCHE campos de cadastro (tipo/família/subfamília)
+  // quando o cadastro devolveu valor; caso contrário preserva o gravado.
   return db.transaction(async (tx) => {
     for (let i = 0; i < enriquecidos.length; i++) {
       const e = enriquecidos[i];
       const set: Record<string, unknown> = {};
       const tipo = (e.tipo || "").toUpperCase();
       if (tipo === "PE" || tipo === "ME") set.productType = tipo;
-      if (e.mrp === "Sim" || e.mrp === "Não") set.mrp = e.mrp;
       if (e.familia) set.family = e.familia;
       if (e.subFamilia) set.subfamily = e.subFamilia;
+      // MRP: NUNCA atualizado aqui (preserva o valor vindo da importação da Compras).
       if (Object.keys(set).length > 0) {
         await tx
           .update(inventoryAnalytics)
