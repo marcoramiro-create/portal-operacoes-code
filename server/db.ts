@@ -2,22 +2,22 @@
 // server/db.ts
 // Camada de acesso ao banco (PostgreSQL/Supabase via Drizzle).
 // Módulo: server (API tRPC)
-// Data: 07/09/2026
+// Data: 08/09/2026
 // MUDANÇA (08/09/2026): raw:true preserva números; grava campos calculados.
 // MUDANÇA (08/09/2026): chave SBZ recalculada em memória (code + filial 4 dígitos)
 //   em vez de confiar na chave antiga gravada (filial concatenada "0307-MEGATEC").
 // MUDANÇA (08/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
 // MUDANÇA (08/09/2026): COBERTURA = MÉDIA PONDERADA pelo valor em estoque
-//   (stockValue). Regra de negócio do usuário: não somar dias de cobertura nem
-//   usar média simples — a cobertura média do grupo pondera cada item pelo
-//   valor em estoque. Fórmula: sum(coverageDays * stockValue) / sum(stockValue).
-// MUDANÇA (08/09/2026): DATA REAL DA IMPORTAÇÃO — importedAt agora grava o
-//   instante real em que a planilha foi carregada (new Date()), NÃO a data do
-//   nome do arquivo (que é a data de EXPORTAÇÃO — ex.: "Compras - 202609061240.xlsx"
-//   foi exportado em 06/09 às 12:40, mas pode ter sido importado em outro dia).
-//   O nome do arquivo continua sendo validado (padrão), mas não define a data.
-//   O histórico (evolução) usa SEMPRE importedAt real. Exibição em
-//   America/Sao_Paulo (servidor roda em UTC; timestamp gravado é absoluto).
+//   sum(coverageDays * stockValue) / sum(stockValue). Regra de negócio do usuário.
+// MUDANÇA (08/09/2026): DATA REAL DA IMPORTAÇÃO — importedAt grava o instante da
+//   carga (new Date()), NÃO a data do nome do arquivo (que é a data de EXPORTAÇÃO).
+// MUDANÇA (08/09/2026): RE-ENRIQUECIMENTO NÃO-DESTRUTIVO — o reenriquecerImportacaoCompras
+//   NÃO pode mais rebaixar/apagar valores já gravados. Quando o re-cruzamento NÃO
+//   encontra correspondência no cadastro, o valor existente é MANTIDO (não força "Não").
+//   Isso corrige o sintoma "carrega Sim, depois fica só Não": o gatilho automático
+//   após cada importação de cadastro reescrevia o MRP para "Não" nos itens que não
+//   re-achavam correspondência. Regra de negócio: só atualiza campo quando o cadastro
+//   devolveu valor real ("Sim"/"Não"); caso contrário, preserva o gravado.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -281,12 +281,6 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
   const emissao = emissaoDoNomeArquivo(fileName);
   const { registros } = importarCompras(linhasBrutas, sb1, sbz, familias, subFamilias, emissao);
   // MUDANÇA (08/09/2026): IMPORTEDAT = DATA REAL DA IMPORTAÇÃO.
-  // O nome do arquivo guarda a data de EXPORTAÇÃO (ex.: "Compras - 202609061240.xlsx"
-  // foi exportado em 06/09 às 12:40), NÃO a data em que a planilha foi carregada.
-  // Antes usávamos parsePurchaseHistoryDate(fileName) como importedAt, o que fazia
-  // toda importação aparecer com a data de exportação. Agora gravamos o instante
-  // REAL da importação (new Date()). O parsePurchaseHistoryDate(fileName) continua
-  // sendo chamado apenas para VALIDAR o padrão do nome do arquivo.
   parsePurchaseHistoryDate(fileName); // valida o padrão do nome (não define a data da carga)
   const importedAt = new Date(); // data/hora real em que a planilha foi importada
   const versionName = fileName.replace(/\.xlsx$/i, "");
@@ -356,18 +350,27 @@ export async function reenriquecerImportacaoCompras(): Promise<number> {
     familias,
     subFamilias
   );
+  // MUDANÇA (08/09/2026): RE-ENRIQUECIMENTO NÃO-DESTRUTIVO.
+  // Antes: "mrp: e.mrp === 'Sim' ? 'Sim' : 'Não'" sobrescrevia o item com "Não"
+  // quando o re-cruzamento não achava correspondência — o gatilho automático
+  // (após cada importação de cadastro) destruía os "Sim" carregados na importação.
+  // Agora: só atualiza um campo quando o cadastro DEVOLVEU valor real. Se o
+  // re-cruzamento não achar correspondência, o valor já gravado é MANTIDO.
   return db.transaction(async (tx) => {
     for (let i = 0; i < enriquecidos.length; i++) {
       const e = enriquecidos[i];
-      await tx
-        .update(inventoryAnalytics)
-        .set({
-          productType: (e.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
-          mrp: e.mrp === "Sim" ? "Sim" : "Não",
-          family: e.familia || "",
-          subfamily: e.subFamilia || "",
-        })
-        .where(eq(inventoryAnalytics.id, itens[i].id));
+      const set: Record<string, unknown> = {};
+      const tipo = (e.tipo || "").toUpperCase();
+      if (tipo === "PE" || tipo === "ME") set.productType = tipo;
+      if (e.mrp === "Sim" || e.mrp === "Não") set.mrp = e.mrp;
+      if (e.familia) set.family = e.familia;
+      if (e.subFamilia) set.subfamily = e.subFamilia;
+      if (Object.keys(set).length > 0) {
+        await tx
+          .update(inventoryAnalytics)
+          .set(set)
+          .where(eq(inventoryAnalytics.id, itens[i].id));
+      }
     }
     return enriquecidos.length;
   });
@@ -463,9 +466,7 @@ export function parsePurchaseHistoryDate(fileName: string) {
   return date;
 }
 function historicalImportDate(_fileName: string, _versionName: string, importedAt: Date) {
-  // MUDANÇA (08/09/2026): a data da carga é SEMPRE a data REAL da importação
-  // (importedAt gravado no banco). Nunca remontar do nome do arquivo — o nome
-  // guarda a data de EXPORTAÇÃO, não a data em que a planilha foi importada.
+  // MUDANÇA (08/09/2026): a data da carga é SEMPRE a data REAL da importação.
   return importedAt;
 }
 export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<AnalyticsSummary | null> {
@@ -483,7 +484,6 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
-    // MUDANÇA (08/09/2026): cobertura = MÉDIA PONDERADA pelo valor em estoque.
     coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.coverageDays} * ${inventoryAnalytics.stockValue}) / nullif(sum(${inventoryAnalytics.stockValue}), 0), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
     totalItems: sql<number>`count(*)`,
@@ -516,7 +516,6 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
-    // MUDANÇA (08/09/2026): cobertura = MÉDIA PONDERADA pelo valor em estoque.
     coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.coverageDays} * ${inventoryAnalytics.stockValue}) / nullif(sum(${inventoryAnalytics.stockValue}), 0), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
   };
