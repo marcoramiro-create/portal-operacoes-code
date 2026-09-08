@@ -307,7 +307,7 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           description: r.descricao || "",
           branch: r.filial,
           productType: (r.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
-          mrp: r.mrp === "Sim" ? "Sim" : "Não",
+          //mrp: r.mrp === "Sim" ? "Sim" : "Não",
           family: r.familia || "",
           subfamily: r.subFamilia || "",
           curve: r.curva,
