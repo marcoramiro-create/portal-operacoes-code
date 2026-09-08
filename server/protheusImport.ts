@@ -7,6 +7,11 @@
  * //   ignora linhas que não são arrays (corrige "linha.some is not a function"),
  * //   código normalizado na entrada, validação das 13 colunas de meses,
  * //   limite de 25.000 registros e exportação de parseProtheusWorkbook.
+ * // MUDANÇA (08/09/2026): adicionada reenriquecerCompras — re-executa o
+ * //   cruzamento sobre os itens JÁ GRAVADOS da importação de Compras EM USO,
+ * //   usando os cadastros recém-importados. Itens sem correspondência ficam
+ * //   com os campos em branco (não são excluídos). O gatilho automático no
+ * //   router (processReference) chama esta função após cada importação.
  */
 
 import type { PurchaseRow } from './protheusCalculations';
@@ -198,4 +203,43 @@ export function importarCompras(
 ): { registros: PurchaseRow[]; avisos: string[] } {
   const { registros, avisos } = parseRegistrosCompras(linhasBrutas);
   return { registros: enriquecerCompras(registros, sb1, sbz, familias, subFamilias), avisos };
+}
+
+/**
+ * // MUDANÇA (08/09/2026): re-enriquecimento AUTOMÁTICO dos itens da Compras.
+ * Reconstrói registros a partir dos itens JÁ GRAVADOS da importação EM USO e
+ * roda o MESMO cruzamento do enriquecerCompras com os cadastros recém-
+ * importados. Itens sem correspondência ficam com os campos em branco (não
+ * são excluídos). A gravação de volta fica no router (processReference),
+ * que chama esta função automaticamente após cada importação de cadastro.
+ */
+export function reenriquecerCompras(
+  itens: Array<{ codigo: string; filial: string; descricao: string }>,
+  sb1: Sb1Index,
+  sbz: SbzIndex,
+  familias: FamiliasMap,
+  subFamilias: FamiliasMap,
+): Array<{ codigo: string; filial: string; descricao: string; familia: string; subFamilia: string; mrp: string; tipo: string }> {
+  const base: PurchaseRow[] = itens.map((item) => ({
+    codigoOriginal: item.codigo,
+    codigo: item.codigo,
+    filial: item.filial,
+    descricao: item.descricao,
+    familia: '',
+    subFamilia: '',
+    mrp: '',
+    tipo: '',
+    valores: [],
+    total: 0,
+  }));
+  const enriquecidos = enriquecerCompras(base, sb1, sbz, familias, subFamilias);
+  return enriquecidos.map((r) => ({
+    codigo: r.codigo,
+    filial: r.filial,
+    descricao: r.descricao,
+    familia: r.familia,
+    subFamilia: r.subFamilia,
+    mrp: r.mrp,
+    tipo: r.tipo,
+  }));
 }

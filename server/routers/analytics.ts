@@ -1,6 +1,6 @@
 import { supabaseStorageGetPresignedPutUrl, supabaseStorageReadBuffer } from "../storage";
 import { z } from "zod";
-import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, listReferenceImports, deleteReferenceData, deleteProtheusImport, recordReferenceImport, saveReferenceImport, type AnalyticsFilter } from "../db";
+import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, listReferenceImports, deleteReferenceData, deleteProtheusImport, recordReferenceImport, saveReferenceImport, reenriquecerImportacaoCompras, type AnalyticsFilter } from "../db";
 import { publicProcedure, router } from "../_core/trpc";
 import { assertApplicationPermission, assertPortalAdministrator, getPortalIdentity, recordPortalAudit, type PortalIdentity } from "../supabasePortal";
 import { updateProtheusImportStatus } from "../db";
@@ -83,7 +83,6 @@ export const analyticsRouter = router({
     const recommendations = validatePurchaseRecommendations(parsed.recommendations, new Set(itemPage.items.map(item => item.code)));
     return { generatedAt: new Date(), total: itemPage.items.length, recommendations };
   }),
-  // MUDANÇA (07/09/2026): upload direto ao armazenamento para arquivos grandes.
   getUploadUrl: publicProcedure.input(z.object({ fileName: z.string().min(1).max(255) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     return supabaseStorageGetPresignedPutUrl(`protheus-imports/${Date.now()}-${input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_")}`);
@@ -97,6 +96,8 @@ export const analyticsRouter = router({
   // MUDANÇA (07/09/2026): importação em transação única (apaga + grava + histórico).
   // MUDANÇA (08/09/2026): sb1ParaRegistros deduplica por code — a SB1 exporta o
   // mesmo produto em várias filiais e o INSERT em lote abortava com 500.
+  // MUDANÇA (08/09/2026): após gravar cada cadastro, re-enriquece automaticamente
+  // a importação de Compras EM USO contra os cadastros recém-importados.
   processReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]), fileName: z.string().min(1).max(255), key: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     const buffer = await supabaseStorageReadBuffer(input.key);
@@ -105,13 +106,12 @@ export const analyticsRouter = router({
     else if (input.kind === "sbz") count = await saveReferenceImport("sbz", input.fileName, sbzParaRegistros(buffer));
     else if (input.kind === "familias") count = await saveReferenceImport("familias", input.fileName, familiasParaRegistros(buffer));
     else count = await saveReferenceImport("subfamilias", input.fileName, subFamiliasParaRegistros(buffer));
-    return { count };
+    const reenriquecidos = await reenriquecerImportacaoCompras();
+    return { count, reenriquecidos };
   }),
-  // MUDANÇA (07/09/2026): exclusão direto na tela, sem SQL.
   deleteReference: publicProcedure.input(z.object({ kind: z.enum(["sb1", "sbz", "familias", "subfamilias"]) })).mutation(async ({ ctx, input }) => { await modulePermission(ctx, "manage", "importacoes-compras-protheus"); await deleteReferenceData(input.kind); return { success: true as const }; }),
   deleteImport: publicProcedure.input(z.object({ importId: z.number().int().positive() })).mutation(async ({ ctx, input }) => { const identity = await modulePermission(ctx, "manage", "importacoes-compras-protheus"); assertPortalAdministrator(identity); await deleteProtheusImport(input.importId); return { success: true as const }; }),
   setImportStatus: publicProcedure.input(z.object({ importId: z.number().int().positive(), status: z.enum(["approved", "archived"]) })).mutation(async ({ ctx, input }) => { const identity = await modulePermission(ctx, "manage"); assertPortalAdministrator(identity); const result = await updateProtheusImportStatus(input.importId, input.status); try { await recordPortalAudit(identity, "protheus_import", String(input.importId), `status_${input.status}`, { versionName: result?.versionName ?? null }); } catch (error) { console.warn("[Analytics] Status atualizado, mas a auditoria não foi registrada:", error); } return { success: true as const, status: input.status }; }),
-  // Rotas legadas (base64) — também usam os conversores com deduplicação.
   importWorkbook: publicProcedure.input(z.object({ fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1).max(26_000_000) })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "manage", "importacoes-compras-protheus");
     const fileBuffer = Buffer.from(input.contentBase64, "base64");

@@ -8,6 +8,11 @@
 // referenceImporters.ts. O importProtheusWorkbook passou a ler o Excel em
 // linhas brutas e usar o pipeline novo (importarCompras), que cruza SB1
 // (Codigo OU Cod Agregado) e SBZ (código + filial). Resposta inclui rowCount.
+// MUDANÇA (08/09/2026): adicionada reenriquecerImportacaoCompras — re-executa
+// o cruzamento sobre os itens JÁ GRAVADOS da importação de Compras EM USO,
+// usando os cadastros recém-importados. Itens sem correspondência ficam com
+// os campos em branco (não são excluídos). O gatilho automático no router
+// (processReference) chama esta função após cada importação de cadastro.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -16,12 +21,10 @@ import * as XLSX from "xlsx";
 import { familyReferences, inventoryAnalytics, protheusImports, referenceImports, sb1References, sbzReferences, subfamilyReferences, type InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { calculateTurnover } from "./analyticsRules";
-import { importarCompras } from "./protheusImport";
+import { importarCompras, reenriquecerCompras } from "./protheusImport";
 import type { Sb1Index, Sb1Row, SbzIndex, SbzRow, FamiliasMap } from "./referenceImporters";
 import { storagePut } from "./storage";
-
 let _db: ReturnType<typeof drizzle> | null = null;
-
 export async function getDb() {
   if (!_db && process.env.SUPABASE_DATABASE_URL) {
     try {
@@ -42,7 +45,6 @@ export async function getDb() {
   }
   return _db;
 }
-
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
@@ -66,13 +68,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     });
   }
 }
-
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
 }
-
 // ===== Tabelas de referência (SB1, SBZ, Família, SubFamília) =====
 // MUDANÇA (07/09/2026): inserção em lotes de 500 registros por vez,
 // corrigindo "Maximum call stack size exceeded" em arquivos grandes (SB1/SBZ).
@@ -85,7 +85,6 @@ export async function saveSb1References(records: { code: string; tipo: string; f
   }
   return records.length;
 }
-
 export async function saveSbzReferences(records: { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -95,7 +94,6 @@ export async function saveSbzReferences(records: { chave: string; code: string; 
   }
   return records.length;
 }
-
 export async function saveFamilyReferences(records: { code: string; descricao: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -105,7 +103,6 @@ export async function saveFamilyReferences(records: { code: string; descricao: s
   }
   return records.length;
 }
-
 export async function saveSubfamilyReferences(records: { code: string; descricao: string }[]) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -115,7 +112,6 @@ export async function saveSubfamilyReferences(records: { code: string; descricao
   }
   return records.length;
 }
-
 // MUDANÇA (08/09/2026): gravação atômica dos cadastros de referência.
 // Apaga a versão anterior, insere a nova (lotes de 2.000) e registra o histórico
 // NA MESMA transação. Se a função for encerrada ou falhar, o banco volta sozinho
@@ -154,7 +150,6 @@ export async function saveReferenceImport(kind: "sb1" | "sbz" | "familias" | "su
     return records.length;
   });
 }
-
 export async function loadSb1References(): Promise<Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>> {
   const db = await getDb();
   const map = new Map<string, { tipo: string; familiaCode: string; subfamiliaCode: string }>();
@@ -163,7 +158,6 @@ export async function loadSb1References(): Promise<Map<string, { tipo: string; f
   rows.forEach(r => map.set(r.code, { tipo: r.tipo, familiaCode: r.familiaCode, subfamiliaCode: r.subfamiliaCode }));
   return map;
 }
-
 export async function loadSbzReferences(): Promise<Map<string, { estoqMin: number | null; estoqMax: number | null; entraMrp: string }>> {
   const db = await getDb();
   const map = new Map<string, { estoqMin: number | null; estoqMax: number | null; entraMrp: string }>();
@@ -172,7 +166,6 @@ export async function loadSbzReferences(): Promise<Map<string, { estoqMin: numbe
   rows.forEach(r => map.set(r.chave, { estoqMin: r.estoqMin == null ? null : Number(r.estoqMin), estoqMax: r.estoqMax == null ? null : Number(r.estoqMax), entraMrp: r.entraMrp }));
   return map;
 }
-
 export async function loadFamilyReferences(): Promise<Map<string, string>> {
   const db = await getDb();
   const map = new Map<string, string>();
@@ -181,7 +174,6 @@ export async function loadFamilyReferences(): Promise<Map<string, string>> {
   rows.forEach(r => map.set(r.code, r.descricao));
   return map;
 }
-
 export async function loadSubfamilyReferences(): Promise<Map<string, string>> {
   const db = await getDb();
   const map = new Map<string, string>();
@@ -190,7 +182,6 @@ export async function loadSubfamilyReferences(): Promise<Map<string, string>> {
   rows.forEach(r => map.set(r.code, r.descricao));
   return map;
 }
-
 // MUDANÇA (07/09/2026): função mantida por compatibilidade com o router.
 // Sem anotação de tipo externa, pois o tipo ReferenceData não existe mais nos
 // arquivos novos — o retorno é inferido pelo TypeScript.
@@ -198,7 +189,6 @@ export async function loadAllReferences() {
   const [sb1, sbz, familias, subfamilias] = await Promise.all([loadSb1References(), loadSbzReferences(), loadFamilyReferences(), loadSubfamilyReferences()]);
   return { sb1, sbz, familias, subfamilias };
 }
-
 // MUDANÇA (07/09/2026): monta os índices que o novo enriquecerCompras espera
 // (Sb1Index por Codigo/Cod Agregado, SbzIndex por código+filial, mapas de
 // Famílias e SubFamílias) a partir das tabelas de referência do banco.
@@ -242,15 +232,12 @@ async function montarIndicesReferencias(): Promise<{ sb1: Sb1Index; sbz: SbzInde
     subFamilias: new Map(subRows.map(s => [s.code, s.descricao])),
   };
 }
-
 export type ProtheusImportStatus = "pending" | "approved" | "archived";
-
 export async function listProtheusImports() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(protheusImports).orderBy(desc(protheusImports.importedAt));
 }
-
 export async function updateProtheusImportStatus(id: number, status: ProtheusImportStatus) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -258,7 +245,6 @@ export async function updateProtheusImportStatus(id: number, status: ProtheusImp
   if (result.length === 0) throw new Error("Versão de carga não encontrada.");
   return result[0];
 }
-
 // MUDANÇA (07/09/2026): reescrito para o pipeline novo. O Excel é lido em
 // linhas brutas (header:1) e o importarCompras cruza SB1 (por Codigo OU
 // Cod Agregado) e SBZ (código + filial). Corrige o erro "A planilha de
@@ -266,7 +252,6 @@ export async function updateProtheusImportStatus(id: number, status: ProtheusImp
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-
   // 1) Lê a planilha em linhas brutas — o novo pipeline espera unknown[][]
   const workbook = XLSX.read(fileBuffer, { type: "buffer", cellText: false });
   const firstSheetName = workbook.SheetNames[0];
@@ -275,13 +260,10 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     workbook.Sheets[firstSheetName],
     { header: 1, raw: false, defval: "" }
   );
-
   // 2) Índices de referência a partir do banco
   const { sb1, sbz, familias, subFamilias } = await montarIndicesReferencias();
-
   // 3) Pipeline novo: parse + enriquecimento (SB1, SBZ, Famílias, SubFamílias)
   const { registros } = importarCompras(linhasBrutas, sb1, sbz, familias, subFamilias);
-
   // 4) Registro da importação + gravação atômica em lotes
   const importedAt = parsePurchaseHistoryDate(fileName);
   const versionName = fileName.replace(/\.xlsx$/i, "");
@@ -291,7 +273,6 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     fileBuffer,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
-
   return db.transaction(async (tx) => {
     const [createdImport] = await tx
       .insert(protheusImports)
@@ -329,14 +310,55 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     return { id: importId, rowCount: registros.length };
   });
 }
-
+// MUDANÇA (08/09/2026): re-enriquecimento AUTOMÁTICO da importação de Compras
+// EM USO. Lê os itens da carga aprovada, cruza com os cadastros recém-
+// importados (SB1/SBZ/Famílias/SubFamílias) e grava de volta productType,
+// mrp, family e subfamily. Itens sem correspondência ficam em branco (não
+// são excluídos). Chamado pelo router após cada importação de cadastro.
+export async function reenriquecerImportacaoCompras(): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const importId = await getLatestImportId();
+  if (!importId) return 0;
+  const itens = await db
+    .select({
+      id: inventoryAnalytics.id,
+      codigo: inventoryAnalytics.code,
+      filial: inventoryAnalytics.branch,
+      descricao: inventoryAnalytics.description,
+    })
+    .from(inventoryAnalytics)
+    .where(eq(inventoryAnalytics.importId, importId));
+  if (itens.length === 0) return 0;
+  const { sb1, sbz, familias, subFamilias } = await montarIndicesReferencias();
+  const enriquecidos = reenriquecerCompras(
+    itens.map((i) => ({ codigo: i.codigo, filial: i.filial, descricao: i.descricao })),
+    sb1,
+    sbz,
+    familias,
+    subFamilias
+  );
+  return db.transaction(async (tx) => {
+    for (let i = 0; i < enriquecidos.length; i++) {
+      const e = enriquecidos[i];
+      await tx
+        .update(inventoryAnalytics)
+        .set({
+          productType: (e.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
+          mrp: e.mrp === "Sim" ? "Sim" : "Não",
+          family: e.familia || "",
+          subfamily: e.subFamilia || "",
+        })
+        .where(eq(inventoryAnalytics.id, itens[i].id));
+    }
+    return enriquecidos.length;
+  });
+}
 // MUDANÇA (07/09/2026): alinha as filiais da análise às 12 unidades aceitas na importação
 // (exceto 0105 e 0201), para o painel refletir o faturamento global.
 const ANALYSIS_BRANCHES = ["0101", "0102", "0103", "0106", "0107", "0108", "0301", "0303", "0304", "0305", "0306", "0307"];
-
 type Curve = "A" | "B" | "C" | "D" | "E";
 type ProductType = "ME" | "PE";
-
 export type AnalyticsFilter = {
   importId?: number;
   branch?: string;
@@ -346,7 +368,6 @@ export type AnalyticsFilter = {
   family?: string;
   subfamily?: string;
 };
-
 export type AnalyticsItem = {
   id: number;
   code: string;
@@ -365,13 +386,11 @@ export type AnalyticsItem = {
   excessValue: number;
   turnover: number;
 };
-
 export type StockQuality = {
   stockWithoutSalesValue: number;
   lowCoverageStockValue: number;
   excessStockValue: number;
 };
-
 export type AnalyticsGroup = {
   label: string;
   salesValue13M: number;
@@ -380,7 +399,6 @@ export type AnalyticsGroup = {
   coverageDays: number;
   excessValue: number;
 };
-
 export type AnalyticsSummary = {
   salesValue13M: number;
   stockValue: number;
@@ -390,7 +408,6 @@ export type AnalyticsSummary = {
   lowCoverageItems: number;
   lowCoverageStockValue: number;
 };
-
 async function getLatestImportId(selectedId?: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -412,17 +429,13 @@ async function getLatestImportId(selectedId?: number) {
       .limit(1)
   )[0]?.id;
 }
-
 const asNumber = (value: unknown) => Number(value ?? 0);
 const normalizeLabel = (value: string) => value || "Não informado";
-
 export function formatPurchaseVersionName(date: Date) {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `Compras - ${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}`;
 }
-
 const PURCHASE_FILE_NAME_PATTERN = /^Compras - (\d{4})(\d{2})(\d{2})(\d{2})(\d{2}).xlsx$/i;
-
 export function parsePurchaseHistoryDate(fileName: string) {
   const match = fileName.match(PURCHASE_FILE_NAME_PATTERN);
   if (!match) throw new Error("O nome deve seguir o padrão Compras - aaaaMMddHHmm.xlsx.");
@@ -433,12 +446,10 @@ export function parsePurchaseHistoryDate(fileName: string) {
   }
   return date;
 }
-
 function historicalImportDate(fileName: string, versionName: string, importedAt: Date) {
   try { return parsePurchaseHistoryDate(fileName); } catch {}
   try { return parsePurchaseHistoryDate(`${versionName}.xlsx`); } catch { return importedAt; }
 }
-
 export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<AnalyticsSummary | null> {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
@@ -471,7 +482,6 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
     lowCoverageStockValue: asNumber(summary.lowCoverageStockValue),
   };
 }
-
 // MUDANÇA (08/09/2026): o agrupamento passou a incluir a subfamília, que a
 // tela de análise consome em "Giro por subfamília".
 export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
@@ -518,7 +528,6 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
     bySubfamily: bySubfamily.map(mapGroup),
   };
 }
-
 // MUDANÇA (08/09/2026): o dashboard passou a devolver currentImport, quality e
 // os agrupamentos na raiz — exatamente o formato que a tela de análise consome.
 // Sem essa estrutura, a tela entendia que não havia carga aprovada e caía na
@@ -560,7 +569,6 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
     ...breakdown,
   };
 }
-
 export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "importId">) {
   const db = await getDb();
   if (!db) return [];
@@ -598,7 +606,6 @@ export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "impo
     };
   }).sort((left, right) => left.importedAt.getTime() - right.importedAt.getTime());
 }
-
 export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, pageSize = 50) {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
@@ -654,7 +661,6 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
     })),
   };
 }
-
 export async function getAnalyticsFilterOptions(importId?: number) {
   const db = await getDb();
   const selectedImportId = await getLatestImportId(importId);
@@ -685,7 +691,6 @@ export async function getAnalyticsFilterOptions(importId?: number) {
     subfamilies: subfamilies.map((row) => row.value),
   };
 }
-
 // MUDANÇA (07/09/2026): retorna a quantidade de registros de cada cadastro de referência.
 export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; familias: number; subfamilias: number }> {
   const db = await getDb();
@@ -698,20 +703,17 @@ export async function getReferenceCounts(): Promise<{ sb1: number; sbz: number; 
   ]);
   return { sb1: sb1[0]?.n ?? 0, sbz: sbz[0]?.n ?? 0, familias: familias[0]?.n ?? 0, subfamilias: subfamilias[0]?.n ?? 0 };
 }
-
 // MUDANÇA (07/09/2026): histórico de importações e exclusão dos cadastros de referência.
 export async function recordReferenceImport(kind: "sb1" | "sbz" | "familias" | "subfamilias", fileName: string, rowCount: number) {
   const db = await getDb();
   if (!db) return;
   await db.insert(referenceImports).values({ kind, fileName, rowCount });
 }
-
 export async function listReferenceImports() {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(referenceImports).orderBy(desc(referenceImports.importedAt));
 }
-
 export async function deleteReferenceData(kind: "sb1" | "sbz" | "familias" | "subfamilias") {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -721,7 +723,6 @@ export async function deleteReferenceData(kind: "sb1" | "sbz" | "familias" | "su
   else if (kind === "subfamilias") await db.delete(subfamilyReferences);
   await db.delete(referenceImports).where(eq(referenceImports.kind, kind));
 }
-
 export async function deleteProtheusImport(importId: number) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
