@@ -13,6 +13,11 @@
 // usando os cadastros recém-importados. Itens sem correspondência ficam com
 // os campos em branco (não são excluídos). O gatilho automático no router
 // (processReference) chama esta função após cada importação de cadastro.
+// MUDANÇA (09/09/2026): importProteusWorkbook passou a ler com raw:true
+// (preserva números) e a GRAVAR os campos calculados no código (curve,
+// salesValue13M, stock, stockValue, coverageDays, excessValue) — antes eram
+// gravados como 0, por isso os cards do painel mostravam R$ 0. A data de
+// emissão (nome do arquivo) é passada ao pipeline para o giro e a curva D/E.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -21,7 +26,7 @@ import * as XLSX from "xlsx";
 import { familyReferences, inventoryAnalytics, protheusImports, referenceImports, sb1References, sbzReferences, subfamilyReferences, type InsertUser, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { calculateTurnover } from "./analyticsRules";
-import { importarCompras, reenriquecerCompras } from "./protheusImport";
+import { emissaoDoNomeArquivo, importarCompras, reenriquecerCompras } from "./protheusImport";
 import type { Sb1Index, Sb1Row, SbzIndex, SbzRow, FamiliasMap } from "./referenceImporters";
 import { storagePut } from "./storage";
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -249,6 +254,9 @@ export async function updateProtheusImportStatus(id: number, status: ProtheusImp
 // linhas brutas (header:1) e o importarCompras cruza SB1 (por Codigo OU
 // Cod Agregado) e SBZ (código + filial). Corrige o erro "A planilha de
 // Compras está vazia" e devolve rowCount para o frontend.
+// MUDANÇA (09/09/2026): raw:true preserva os números; grava os campos
+// calculados no código (curve, salesValue13M, stock, stockValue,
+// coverageDays, excessValue) em vez de 0; passa a data de emissão ao pipeline.
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -258,13 +266,15 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
   if (!firstSheetName) throw new Error("A planilha não possui uma aba para importação.");
   const linhasBrutas = XLSX.utils.sheet_to_json<unknown[]>(
     workbook.Sheets[firstSheetName],
-    { header: 1, raw: false, defval: "" }
+    { header: 1, raw: true, defval: "" }
   );
   // 2) Índices de referência a partir do banco
   const { sb1, sbz, familias, subFamilias } = await montarIndicesReferencias();
-  // 3) Pipeline novo: parse + enriquecimento (SB1, SBZ, Famílias, SubFamílias)
-  const { registros } = importarCompras(linhasBrutas, sb1, sbz, familias, subFamilias);
-  // 4) Registro da importação + gravação atômica em lotes
+  // 3) Data de emissão (nome do arquivo) — giro (360 + dia do mês corrente) e curva D/E
+  const emissao = emissaoDoNomeArquivo(fileName);
+  // 4) Pipeline novo: parse + enriquecimento (SB1, SBZ, Famílias, SubFamílias) + cálculos
+  const { registros } = importarCompras(linhasBrutas, sb1, sbz, familias, subFamilias, emissao);
+  // 5) Registro da importação + gravação atômica em lotes
   const importedAt = parsePurchaseHistoryDate(fileName);
   const versionName = fileName.replace(/\.xlsx$/i, "");
   const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -297,13 +307,14 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           mrp: r.mrp === "Sim" ? "Sim" : "Não",
           family: r.familia || "",
           subfamily: r.subFamilia || "",
-          curve: "C",
+          // MUDANÇA (09/09/2026): grava os campos calculados no código (antes eram 0).
+          curve: r.curva,
           sales13M: r.total,
-          salesValue13M: 0,
-          stock: 0,
-          stockValue: 0,
-          coverageDays: 0,
-          excessValue: 0,
+          salesValue13M: r.custoTot13M, // valor das vendas em 13 meses (consumo da macro)
+          stock: r.estoque,
+          stockValue: r.stockValue,       // Estoque × CustoUn13M
+          coverageDays: r.coverageDays,   // dias de cobertura
+          excessValue: r.excessValue,     // excedente financeiro
         }))
       );
     }
