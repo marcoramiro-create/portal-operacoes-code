@@ -18,6 +18,11 @@
 // salesValue13M, stock, stockValue, coverageDays, excessValue) — antes eram
 // gravados como 0, por isso os cards do painel mostravam R$ 0. A data de
 // emissão (nome do arquivo) é passada ao pipeline para o giro e a curva D/E.
+// MUDANÇA (09/09/2026): CORREÇÃO MRP — a coluna mrp no banco é um ENUM
+// ("Sim" | "Não") e NÃO aceita valor vazio. Enviar "" derrubava a importação
+// com erro 500. Agora o MRP sempre vai como "Sim" ou "Não" (sem cruzamento
+// com a SBZ = "Não"). Regra de negócio: item sem correspondência permanece
+// gravado, mas o MRP assume "Não" (o banco não permite branco nesse campo).
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -257,6 +262,7 @@ export async function updateProtheusImportStatus(id: number, status: ProtheusImp
 // MUDANÇA (09/09/2026): raw:true preserva os números; grava os campos
 // calculados no código (curve, salesValue13M, stock, stockValue,
 // coverageDays, excessValue) em vez de 0; passa a data de emissão ao pipeline.
+// CORREÇÃO MRP (09/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
@@ -304,7 +310,8 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           description: r.descricao || "",
           branch: r.filial,
           productType: (r.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
-          mrp: r.mrp === "Sim" ? "Sim" : r.mrp === "Não" ? "Não" : "",
+          // CORREÇÃO: mrp NUNCA vazio — sem cruzamento com a SBZ = "Não".
+          mrp: r.mrp === "Sim" ? "Sim" : "Não",
           family: r.familia || "",
           subfamily: r.subFamilia || "",
           // MUDANÇA (09/09/2026): grava os campos calculados no código (antes eram 0).
@@ -326,6 +333,7 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
 // importados (SB1/SBZ/Famílias/SubFamílias) e grava de volta productType,
 // mrp, family e subfamily. Itens sem correspondência ficam em branco (não
 // são excluídos). Chamado pelo router após cada importação de cadastro.
+// CORREÇÃO MRP (09/09/2026): mrp nunca vai vazio (coluna é enum Sim/Não).
 export async function reenriquecerImportacaoCompras(): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
