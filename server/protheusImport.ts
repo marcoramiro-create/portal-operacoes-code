@@ -14,9 +14,10 @@
  * //   se vier concatenada (ex.: "0101-MEGATEC" -> "0101").
  * // MUDANÇA (09/09/2026): readRows reforçado para ignorar cabeçalhos repetidos
  * //   do browser do Protheus — além da linha idêntica ao cabeçalho, remove
- * //   qualquer linha em que uma célula contenha o TÍTULO da sua coluna
- * //   (ex.: célula da coluna Filial = "Filial do Item na SBZ"). Isso eliminou
- * //   uma linha lixo que entrava como dado e distorcia os cruzamentos.
+ * //   qualquer linha em que uma célula CONTENHA o TÍTULO da sua coluna
+ * //   (ex.: célula da coluna Filial = "Filial do Item na SBZ"). Isso elimina
+ * //   as linhas de cabeçalho repetido que entravam como dado e distorciam
+ * //   os cruzamentos.
  *
  * // REGRA DE NEGÓCIO — COLUNAS LIDAS DA EXPORTAÇÃO CRUA:
  * //   A=Codigo, D=Filial, K=Última Compra, L..X=13 meses de vendas,
@@ -27,12 +28,10 @@
 import type { PurchaseRow } from './protheusCalculations';
 import { calcularCamposBase, calcularCurvasAbcde } from './protheusCalculations';
 import type { Sb1Index, SbzIndex, FamiliasMap } from './referenceImporters';
-
 /** Limite máximo de registros aceitos na importação de Compras. */
 export const LIMITE_REGISTROS = 25000;
 /** Quantidade de colunas de meses esperadas na planilha de Compras. */
 export const QTD_COLUNAS_MESES = 13;
-
 /** Normaliza um código (cópia local, sem importar de outro arquivo). */
 export function normalizeCode(codigo: string | null | undefined): string {
   if (!codigo) return '';
@@ -44,7 +43,6 @@ export function normalizeCode(codigo: string | null | undefined): string {
   }
   return numero;
 }
-
 /**
  * Normaliza a filial para SEMPRE 4 dígitos numéricos.
  * // REGRA DE NEGÓCIO (09/09/2026): a filial pode vir concatenada com o nome
@@ -58,7 +56,6 @@ function normalizarFilial(value: unknown): string {
   const digits = match ? match[1] : texto;
   return digits.padStart(4, '0');
 }
-
 /**
  * Lê uma célula como número, preservando o valor numérico do arquivo.
  * Se a célula já for número (XLSX), usa direto. Se for texto, tenta
@@ -76,12 +73,10 @@ function num(cell: unknown): number {
   const n = Number(t);
   return isNaN(n) ? 0 : n;
 }
-
 /** Converte o serial de data do Excel (base 1899-12-30) em Date. */
 function serialParaData(serial: number): Date {
   return new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
 }
-
 /**
  * Lê uma célula de data (Última Compra). Aceita Date, serial do Excel,
  * texto ISO ou dd/mm/aaaa. Retorna ISO (YYYY-MM-DD) ou '' se não conseguir.
@@ -103,7 +98,6 @@ function lerData(cell: unknown): string {
   if (m) return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
   return '';
 }
-
 /**
  * Extrai a data de emissão do nome do arquivo (ex.: "Compras - 202609061240.xlsx"
  * -> 06/09/2026). Usada no giro (360 + dia do mês corrente) e na curva D/E.
@@ -119,7 +113,6 @@ export function emissaoDoNomeArquivo(nomeArquivo: string | null | undefined): Da
   const d = new Date(ano, mes - 1, dia);
   return isNaN(d.getTime()) ? null : d;
 }
-
 /** Normaliza um texto para comparação (minúsculas, sem acento/símbolos). */
 function normTexto(texto: string): string {
   return texto
@@ -128,14 +121,13 @@ function normTexto(texto: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
 }
-
 /**
  * Lê linhas ignorando cabeçalhos repetidos, linhas vazias e linhas que não
  * são arrays. // MUDANÇA (09/09/2026): as células de DADOS preservam o valor
  * original (números continuam números) — só o cabeçalho é convertido em texto.
  * // MUDANÇA (09/09/2026): reforço do filtro de cabeçalhos repetidos — além da
  * //   linha idêntica ao cabeçalho, remove qualquer linha em que uma célula
- * //   contenha o título da SUA coluna (ex.: célula da coluna Filial =
+ * //   CONTENHA o título da SUA coluna (ex.: célula da coluna Filial =
  * //   "Filial do Item na SBZ"). O browser do Protheus repete cabeçalhos com
  * //   variações (espaços, mesclagens) que escapavam do filtro de igualdade.
  */
@@ -150,11 +142,15 @@ export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dado
   const ehCabecalhoRepetido = (linha: unknown[]): boolean => {
     // (a) linha idêntica ao cabeçalho principal
     if (JSON.stringify(linha) === chaveCabecalho) return true;
-    // (b) alguma célula contém o título da sua própria coluna
+    // (b) alguma célula CONTÉM o título da sua própria coluna
     //     (ex.: coluna Filial = "Filial do Item na SBZ")
     for (let i = 0; i < linha.length; i++) {
       const celula = normTexto(String(linha[i] ?? '').trim());
-      if (celula !== '' && rotulosColuna[i] && celula === rotulosColuna[i]) return true;
+      // MUDANÇA (09/09/2026): trocado === por includes. Antes, linhas de
+      // cabeçalho repetido do browser (ex.: "Filial do Item na SBZ") NÃO eram
+      // removidas porque "filialdoitemnasbz" != "filial". Agora
+      // "filialdoitemnasbz".includes("filial") é true, então são descartadas.
+      if (celula !== '' && rotulosColuna[i] && celula.includes(rotulosColuna[i])) return true;
     }
     return false;
   };
@@ -163,7 +159,6 @@ export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dado
     .filter((linha) => !ehCabecalhoRepetido(linha));
   return { cabecalho, dados };
 }
-
 /** Localiza as colunas relevantes pelo nome no cabeçalho. */
 function localizarColunas(cabecalho: string[]): Record<string, number> {
   const achar = (nomes: string[]) =>
@@ -186,7 +181,6 @@ function localizarColunas(cabecalho: string[]): Record<string, number> {
     qtd13M: col(['qtd13m', 'qtd 13m', 'qtd.13m'], -1),
   };
 }
-
 /**
  * Valida se o cabeçalho possui 13 colunas de meses consecutivas.
  * Retorna o índice inicial das colunas de meses (ou erro amigável).
@@ -205,7 +199,6 @@ export function validarColunasMeses(cabecalho: string[]): { ok: boolean; indiceI
     mensagem: `Não encontrei 13 colunas de meses consecutivas. Cabeçalho recebido: ${cabecalho.join(' | ')}`,
   };
 }
-
 /**
  * Converte as linhas brutas da planilha de Compras em registros normalizados.
  * // MUDANÇA (09/09/2026): lê TODAS as colunas relevantes preservando números.
@@ -262,7 +255,6 @@ export function parseRegistrosCompras(linhasBrutas: unknown[][]): { registros: P
   }
   return { registros, avisos };
 }
-
 /**
  * Converte as linhas brutas em registros normalizados (sem cruzar cadastros).
  * Calcula os campos base (não dependem de Tipo/cadastros).
@@ -271,7 +263,6 @@ export function parseProtheusWorkbook(linhasBrutas: unknown[][], emissao?: Date 
   const { registros } = parseRegistrosCompras(linhasBrutas);
   return calcularCamposBase(registros);
 }
-
 /**
  * Cruza os registros de Compras com SB1, SBZ, Famílias e SubFamílias.
  * SB1 procura primeiro pelo Codigo; se não achar, procura pelo Cod Agregado
@@ -310,7 +301,6 @@ export function enriquecerCompras(
     return { ...r, descricao, familia, subFamilia, mrp, tipo };
   });
 }
-
 /**
  * Pipeline completo de importação: lê, valida, cruza e CALCULA tudo.
  * Devolve os registros prontos para a gravação, com stockValue, coverageDays,
@@ -330,7 +320,6 @@ export function importarCompras(
   const completos = calcularCurvasAbcde(comBase, emissao);
   return { registros: completos, avisos };
 }
-
 /**
  * Re-enriquecimento AUTOMÁTICO dos itens da Compras (08/09/2026).
  * Reconstrói registros a partir dos itens JÁ GRAVADOS da importação EM USO e
