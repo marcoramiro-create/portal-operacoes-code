@@ -266,6 +266,17 @@ export async function updateProtheusImportStatus(id: number, status: ProtheusImp
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
+
+  // REGRA (09/09/2026): só pode existir UMA importação com cada nome de arquivo.
+  const duplicado = await db
+    .select({ id: protheusImports.id })
+    .from(protheusImports)
+    .where(eq(protheusImports.fileName, fileName))
+    .limit(1);
+  if (duplicado.length > 0) {
+    throw new Error("Já existe uma importação com este arquivo. Só é permitida uma carga por nome de arquivo.");
+  }
+
   const workbook = XLSX.read(fileBuffer, { type: "buffer", cellText: false });
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) throw new Error("A planilha não possui uma aba para importação.");
@@ -276,9 +287,12 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
   const { sb1, sbz, familias, subFamilias } = await montarIndicesReferencias();
   const emissao = emissaoDoNomeArquivo(fileName);
   const { registros } = importarCompras(linhasBrutas, sb1, sbz, familias, subFamilias, emissao);
-  // MUDANÇA (08/09/2026): IMPORTEDAT = DATA REAL DA IMPORTAÇÃO.
-  parsePurchaseHistoryDate(fileName); // valida o padrão do nome (não define a data da carga)
-  const importedAt = new Date(); // data/hora real em que a planilha foi importada
+
+  // REGRA (09/09/2026): IMPORTEDAT = DATA/HORA DO NOME DO ARQUIVO (histórico).
+  // A data da importação NÃO é usada como data da carga — o histórico é a data
+  // do nome do arquivo (Compras - aaaaMMddHHmm.xlsx), sempre invertida.
+  const importedAt = parsePurchaseHistoryDate(fileName);
+
   const versionName = fileName.replace(/\.xlsx$/i, "");
   const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const storedFile = await storagePut(
@@ -286,6 +300,43 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     fileBuffer,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
+  return db.transaction(async (tx) => {
+    const [createdImport] = await tx
+      .insert(protheusImports)
+      .values({
+        fileName,
+        versionName,
+        fileKey: storedFile.key,
+        rowCount: registros.length,
+        importedAt,
+      })
+      .returning({ id: protheusImports.id });
+    const importId = createdImport?.id;
+    if (!importId) throw new Error("Não foi possível registrar a importação.");
+    for (let start = 0; start < registros.length; start += 500) {
+      await tx.insert(inventoryAnalytics).values(
+        registros.slice(start, start + 500).map((r) => ({
+          importId,
+          code: r.codigo,
+          description: r.descricao || "",
+          branch: r.filial,
+          productType: (r.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
+          mrp: r.mrp === "Sim" ? "Sim" : "Não",
+          family: r.familia || "",
+          subfamily: r.subFamilia || "",
+          curve: r.curva,
+          sales13M: r.total,
+          salesValue13M: r.custoTot13M,
+          stock: r.estoque,
+          stockValue: r.stockValue,
+          coverageDays: r.coverageDays,
+          excessValue: r.excessValue,
+        }))
+      );
+    }
+    return { id: importId, rowCount: registros.length };
+  });
+}
   return db.transaction(async (tx) => {
     const [createdImport] = await tx
       .insert(protheusImports)
@@ -462,9 +513,10 @@ export function parsePurchaseHistoryDate(fileName: string) {
   }
   return date;
 }
-function historicalImportDate(_fileName: string, _versionName: string, importedAt: Date) {
-  // MUDANÇA (08/09/2026): a data da carga é SEMPRE a data REAL da importação.
-  return importedAt;
+function historicalImportDate(fileName: string, _versionName: string, _importedAt: Date) {
+  // REGRA (09/09/2026): a data do histórico é SEMPRE extraída do nome do arquivo
+  // (Compras - aaaaMMddHHmm.xlsx), nunca a data da importação.
+  return parsePurchaseHistoryDate(fileName);
 }
 export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<AnalyticsSummary | null> {
   const db = await getDb();
