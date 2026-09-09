@@ -9,13 +9,10 @@
 // MUDANÇA (08/09/2026): COBERTURA = MÉDIA PONDERADA pelo valor em estoque.
 // MUDANÇA (08/09/2026): importedAt = data REAL da importação (não a do nome do arquivo).
 // MUDANÇA (08/09/2026): RE-ENRIQUECIMENTO NÃO-DESTRUTIVO DEFINITIVO.
-//   O usuário identificou que o MRP "Sim" aparecia e sumia: o re-enriquecimento
-//   automático reescrevia o MRP, forçando "Não" quando o re-cruzamento não achava
-//   correspondência na SBZ. A partir de agora o MRP NUNCA é reescrito pelo
-//   re-enriquecimento — ele é definido UMA ÚNICA VEZ, na importação da Compras
-//   (cruzamento com a SBZ). Nenhum gatilho posterior pode alterar o MRP gravado.
 // MUDANÇA (09/09/2026): importedAt = data/hora do NOME do arquivo (histórico).
 // MUDANÇA (09/09/2026): bloqueio de duplicidade — só uma importação por nome.
+// MUDANÇA (09/09/2026): COBERTURA CONSOLIDADA = Σ estoque ÷ Σ CD (nunca média).
+//   CD = custoTot13M ÷ dias da carga (360 + dia do mês, da data do arquivo).
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -281,8 +278,6 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
   const emissao = emissaoDoNomeArquivo(fileName);
   const { registros } = importarCompras(linhasBrutas, sb1, sbz, familias, subFamilias, emissao);
   // REGRA (09/09/2026): IMPORTEDAT = DATA/HORA DO NOME DO ARQUIVO (histórico).
-  // A data da importação NÃO é usada como data da carga — o histórico é a data
-  // do nome do arquivo (Compras - aaaaMMddHHmm.xlsx), sempre invertida.
   const importedAt = parsePurchaseHistoryDate(fileName);
   const versionName = fileName.replace(/\.xlsx$/i, "");
   const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -352,12 +347,7 @@ export async function reenriquecerImportacaoCompras(): Promise<number> {
     subFamilias
   );
   // MUDANÇA (08/09/2026): RE-ENRIQUECIMENTO NÃO-DESTRUTIVO DEFINITIVO.
-  // O usuário identificou o sintoma "MRP Sim aparece e some": o re-enriquecimento
-  // reescrevia o MRP, forçando "Não" quando o re-cruzamento não achava
-  // correspondência na SBZ. A partir de agora o MRP NUNCA é atualizado aqui —
-  // ele é definido UMA ÚNICA VEZ, na importação da Compras (cruzamento com a SBZ).
-  // Este gatilho apenas PREENCHE campos de cadastro (tipo/família/subfamília)
-  // quando o cadastro devolveu valor; caso contrário preserva o gravado.
+  // O MRP NUNCA é atualizado aqui — é definido UMA ÚNICA VEZ, na importação.
   return db.transaction(async (tx) => {
     for (let i = 0; i < enriquecidos.length; i++) {
       const e = enriquecidos[i];
@@ -366,7 +356,6 @@ export async function reenriquecerImportacaoCompras(): Promise<number> {
       if (tipo === "PE" || tipo === "ME") set.productType = tipo;
       if (e.familia) set.family = e.familia;
       if (e.subFamilia) set.subfamily = e.subFamilia;
-      // MRP: NUNCA atualizado aqui (preserva o valor vindo da importação da Compras).
       if (Object.keys(set).length > 0) {
         await tx
           .update(inventoryAnalytics)
@@ -468,14 +457,22 @@ export function parsePurchaseHistoryDate(fileName: string) {
   return date;
 }
 function historicalImportDate(fileName: string, _versionName: string, _importedAt: Date) {
-  // REGRA (09/09/2026): a data do histórico é SEMPRE extraída do nome do arquivo
-  // (Compras - aaaaMMddHHmm.xlsx), nunca a data da importação.
+  // REGRA (09/09/2026): a data do histórico é SEMPRE extraída do nome do arquivo.
   return parsePurchaseHistoryDate(fileName);
+}
+// ===== Cobertura consolidada (09/09/2026) =====
+// Regra aprovada: cobertura do grupo = Σ estoque (R$) ÷ Σ CD (R$/dia), nunca média.
+// CD = custoTot13M ÷ dias da carga; dias = 360 + dia do mês (da data do arquivo).
+function diasDaCarga(importedAt: Date | string): number {
+  const d = new Date(importedAt);
+  return isNaN(d.getTime()) ? 390 : 360 + d.getUTCDate();
 }
 export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<AnalyticsSummary | null> {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
   if (!db || !importId) return null;
+  const imp = (await db.select({ importedAt: protheusImports.importedAt }).from(protheusImports).where(eq(protheusImports.id, importId)).limit(1))[0];
+  const dias = diasDaCarga(imp?.importedAt ?? new Date());
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
   if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
@@ -487,7 +484,8 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
-    coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.coverageDays} * ${inventoryAnalytics.stockValue}) / nullif(sum(${inventoryAnalytics.stockValue}), 0), 0)`,
+    // Cobertura = Σ estoque ÷ Σ CD (Σ vendas ÷ dias da carga)
+    coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}) * ${dias} / nullif(sum(${inventoryAnalytics.salesValue13M}), 0), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
     totalItems: sql<number>`count(*)`,
     lowCoverageItems: sql<number>`count(case when ${inventoryAnalytics.coverageDays} < 30 and ${inventoryAnalytics.stockValue} > 0 then 1 end)`,
@@ -508,6 +506,8 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
   if (!db || !importId) return null;
+  const imp = (await db.select({ importedAt: protheusImports.importedAt }).from(protheusImports).where(eq(protheusImports.id, importId)).limit(1))[0];
+  const dias = diasDaCarga(imp?.importedAt ?? new Date());
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
   if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
@@ -519,7 +519,8 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const measures = {
     salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
     stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
-    coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.coverageDays} * ${inventoryAnalytics.stockValue}) / nullif(sum(${inventoryAnalytics.stockValue}), 0), 0)`,
+    // Cobertura = Σ estoque ÷ Σ CD
+    coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}) * ${dias} / nullif(sum(${inventoryAnalytics.salesValue13M}), 0), 0)`,
     excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
   };
   const [byBranch, byCurve, byProductType, byMrp, byFamily, bySubfamily] = await Promise.all([

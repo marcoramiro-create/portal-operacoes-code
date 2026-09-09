@@ -8,8 +8,18 @@
  * //   As fórmulas da planilha (do Protheus e as acrescidas pelo usuário) e os
  * //   valores gravados pela macro são IGNORADOS — só usamos as exportações
  * //   originais. As regras de negócio ficam gravadas aqui como comentários.
+ * // MUDANÇA (09/09/2026): COBERTURA CORRIGIDA (regra aprovada pelo usuário).
+ * //   CD = total de vendas (custoTot13M) ÷ dias que a planilha cobre
+ * //        (360 + dia do mês corrente, da data no nome do arquivo).
+ * //   coverageDays = stockValue ÷ CD (R$ ÷ R$/dia = dias).
+ * //   Sem consumo (custoTot13M = 0) com estoque → 9999 (sentinelas; a tela
+ * //   exibe "Sem consumo", não um número falso).
+ * // MUDANÇA (09/09/2026): ALVOS DE COBERTURA aprovados — A: 60 dias,
+ * //   B: 90 dias, C/D/E: 120 dias (30 de segurança + prazo da curva).
+ * // MUDANÇA (09/09/2026): consolidação multi-filial = Σ estoque ÷ Σ CD
+ * //   (nunca média das coberturas) — regra 5 aprovada.
  *
- * // REGRA DE NEGÓCIO — CÁLCULOS (transpostos da planilha/macro):
+ * // REGRA DE NEGÓCIO – CÁLCULOS (transpostos da planilha/macro):
  * //   MediaP13M = média ponderada dos 12 meses (exclui o mês corrente) com
  * //               pesos [3,3,1,1,1,1,1,1,1,1,3,3] ÷ 20.
  * //   CD  = MediaP13M ÷ 30
@@ -23,10 +33,10 @@
  * //   Nota ("Valor Total") = 3 se CustoTot13M ≥ 10.000, senão 0 (é uma NOTA do item na filial)
  * //   Classificação = "IMPORTANTE" se (Nota + Frequência + Rescência) ≥ 5
  * //   stockValue = Estoque × CustoUn13M (por filial)
- * //   coverageDays = stockValue ÷ (CustoTot13M ÷ 390); se CustoTot13M = 0 →
- * //                  9999 (se há estoque) ou 0
- * //   excessValue = máx(0; stockValue − (CustoTot13M ÷ 390) × dias da classe),
- * //                 com dias A:60 / B:90 / C:120
+ * //   CD (consumo médio diário) = CustoTot13M ÷ totalDias (dias reais da planilha)
+ * //   coverageDays = stockValue ÷ CD; se CD = 0 → 9999 (se há estoque) ou 0
+ * //   excessValue = máx(0; stockValue − CD × dias da classe),
+ * //                 com dias A:60 / B:90 / C:120 / D:120 / E:120
  * //   turnover (giro) = (CustoTot13M ÷ totalDias) × 360 ÷ stockValue;
  * //                 totalDias = 360 + dia do mês corrente (data de emissão no
  * //                 nome do arquivo); 0 se stockValue = 0
@@ -41,52 +51,40 @@
  * //                 por item/fornecedor/filial. Enquanto isso, Prazo = 0 e
  * //                 EM = CD × Prazo = 0 (P.P = ES).
  */
-
 // ===========================================================================
 // Constantes
 // ===========================================================================
-
 /** Filiais aceitas na análise (12 filiais). */
 export const FILIAIS_ACEITAS = [
   '0101', '0102', '0103', '0106', '0107', '0108',
   '0301', '0303', '0304', '0305', '0306', '0307',
 ] as const;
-
 /** Filiais ignoradas na análise (Indústria usa sempre a 0105; 0201 fora). */
 export const FILIAIS_IGNORADAS = ['0105', '0201'] as const;
-
-/** Dias máximos por classe para o Excedente (A/B/C definidos pelo usuário). */
+/** Dias máximos por classe para o Excedente (regra aprovada 09/09/2026). */
 export const DIAS_MAXIMOS = {
   A: 60,
   B: 90,
   C: 120,
-  D: 180,
-  E: 9999,
+  D: 120,
+  E: 120,
 } as const;
-
 /** Pesos da média ponderada dos 12 meses (exclui o mês corrente). */
 export const PESOS_MEDIA_P13M = [3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3] as const;
-
 /** Soma dos pesos (20). */
 export const SOMA_PESOS_MEDIA_P13M = 20;
-
-/** Dias considerados em 13 meses (13 × 30). */
+/** Dias considerados em 13 meses (13 × 30). Usado apenas como fallback. */
 export const DIAS_13_MESES = 390;
-
 /** Limiares do ABC: A até 80%, B até 95%. */
 export const ABC_LIMIAR_A = 0.8;
 export const ABC_LIMIAR_B = 0.95;
-
 /** Dias para reclassificação D/E (180 dias). */
 export const DIAS_RECLASSIFICACAO = 180;
-
 /** Tipos possíveis das classes da curva. */
 export type ClasseCurva = 'A' | 'B' | 'C' | 'D' | 'E';
-
 // ===========================================================================
 // Normalização de códigos
 // ===========================================================================
-
 /** Normaliza um código removendo zeros à esquerda e preservando sufixos. */
 export function normalizeCode(codigo: string | null | undefined): string {
   if (!codigo) return '';
@@ -98,11 +96,9 @@ export function normalizeCode(codigo: string | null | undefined): string {
   }
   return numero;
 }
-
 // ===========================================================================
 // Tipos
 // ===========================================================================
-
 /** Linha de compras já normalizada (entrada dos cálculos). */
 export interface PurchaseRow {
   codigoOriginal: string;
@@ -116,12 +112,12 @@ export interface PurchaseRow {
   valores: number[];      // 13 meses, numéricos
   total: number;          // soma dos 13 meses
   // Campos lidos da exportação crua (09/09/2026)
-  ultimaCompra: string;   // data (ISO YYYY-MM-DD) — coluna K
+  ultimaCompra: string;   // data (ISO YYYY-MM-DD) – coluna K
   qtd13M: number;         // Y
   custoUn13M: number;     // Z
-  custoTot13M: number;    // AA
-  prazo: number;          // NÃO lido (cravado pelo comprador) — sempre 0 por enquanto
-  estoque: number;        // AF
+  custoTot13M: number;    // AA — USADO: base de cobertura, excedente, giro e ABC
+  prazo: number;          // NÃO lido (cravado pelo comprador) – sempre 0 por enquanto
+  estoque: number;        // AF — quantidade (unidades)
   pedidos: number;        // AG
   // Campos calculados no código (09/09/2026)
   mediaP13M: number;
@@ -135,17 +131,15 @@ export interface PurchaseRow {
   frequencia: number;
   nota: number;           // "Valor Total" = nota do item na filial
   classificacao: string;  // "IMPORTANTE" | ""
-  stockValue: number;     // Estoque × CustoUn13M
+  stockValue: number;     // Estoque × CustoUn13M (R$)
   coverageDays: number;
   excessValue: number;
   turnover: number;
   classeMacro: ClasseCurva; // A/B/C da macro (Filial+Tipo)
   curva: ClasseCurva;       // ABCDE final
 }
-
 /** Informações da importação em uso (vêm do histórico de importações). */
 export type ImportInfo = Record<string, unknown>;
-
 /** Relatório de qualidade dos dados importados. */
 export interface QualityReport {
   totalRegistros: number;
@@ -157,7 +151,6 @@ export interface QualityReport {
   semMrp: number;
   semTipo: number;
 }
-
 /** Resumo por subfamília (usado no filtro do painel). */
 export interface SubfamilySummary {
   subFamilia: string;
@@ -166,7 +159,6 @@ export interface SubfamilySummary {
   total: number;
   mediaP13M: number;
 }
-
 /** Registro da curva ABCDE por Filial + Tipo. */
 export interface AbcRecord {
   filial: string;
@@ -177,7 +169,6 @@ export interface AbcRecord {
   diasCobertura: number;
   classe: ClasseCurva;
 }
-
 /** Resultado completo do dashboard ("entra e sai" da tela). */
 export interface DashboardResult {
   currentImport: ImportInfo;
@@ -185,31 +176,26 @@ export interface DashboardResult {
   bySubfamily: SubfamilySummary[];
   abc: AbcRecord[];
 }
-
 // ===========================================================================
 // Funções auxiliares
 // ===========================================================================
-
 /** Arredonda um número para 2 casas decimais. */
 function arredondar(valor: number): number {
   return Math.round((valor + Number.EPSILON) * 100) / 100;
 }
-
 /** Filtra as linhas mantendo apenas as filiais aceitas. */
 export function filtrarFiliaisAceitas(rows: PurchaseRow[]): PurchaseRow[] {
   const ignoradas = new Set<string>(FILIAIS_IGNORADAS);
   return rows.filter((r) => !ignoradas.has(r.filial));
 }
-
 /** Converte uma data ISO (YYYY-MM-DD) em Date (ou null). */
 function dataDeIso(iso: string): Date | null {
   if (!iso) return null;
   const d = new Date(iso);
   return isNaN(d.getTime()) ? null : d;
 }
-
 /**
- * Total de dias para o giro: 360 (12 meses) + dia do mês corrente.
+ * Total de dias da planilha: 360 (12 meses) + dia do mês corrente.
  * O mês corrente é a data de emissão da planilha, contida no nome do arquivo.
  * Sem data de emissão, usa 13 meses × 30 = 390 (comportamento da macro).
  */
@@ -219,16 +205,17 @@ export function totalDiasGiro(emissao?: Date | null): number {
   }
   return DIAS_13_MESES;
 }
-
 // ===========================================================================
 // Cálculo dos campos de negócio
 // ===========================================================================
-
 /**
  * Calcula os campos derivados que NÃO dependem da classe (curva).
  * Roda logo após a leitura e o cruzamento com os cadastros.
+ * MUDANÇA (09/09/2026): recebe a data de emissão para calcular a cobertura
+ * com os dias REAIS da planilha (360 + dia do mês corrente).
  */
-export function calcularCamposBase(rows: PurchaseRow[]): PurchaseRow[] {
+export function calcularCamposBase(rows: PurchaseRow[], emissao?: Date | null): PurchaseRow[] {
+  const totalDias = totalDiasGiro(emissao);
   return rows.map((r) => {
     const valores = r.valores;
     // MediaP13M: média ponderada dos 12 meses (exclui o mês corrente, último).
@@ -251,10 +238,12 @@ export function calcularCamposBase(rows: PurchaseRow[]): PurchaseRow[] {
     const nota = r.custoTot13M >= 10000 ? 3 : 0;
     const classificacao = nota + frequencia + rescencia >= 5 ? 'IMPORTANTE' : '';
     const stockValue = arredondar(r.estoque * r.custoUn13M);
-    // Cobertura: stockValue ÷ (CustoTot13M ÷ 390); se consumo 0 → 9999 (se há estoque) ou 0.
+    // Cobertura CORRIGIDA (09/09/2026): CD = CustoTot13M ÷ dias reais da planilha.
+    // coverageDays = stockValue ÷ CD (R$ ÷ R$/dia = dias).
+    // Sem consumo (CustoTot13M = 0) com estoque → 9999 (tela exibe "Sem consumo").
     let coverageDays = 0;
     if (r.custoTot13M > 0) {
-      coverageDays = Math.round(stockValue / (r.custoTot13M / DIAS_13_MESES));
+      coverageDays = Math.round(stockValue / (r.custoTot13M / totalDias));
     } else if (stockValue > 0) {
       coverageDays = 9999;
     }
@@ -265,7 +254,6 @@ export function calcularCamposBase(rows: PurchaseRow[]): PurchaseRow[] {
     };
   });
 }
-
 /**
  * Calcula a classe ABC (macro) e a curva ABCDE final por Filial+Tipo.
  * Faz o agrupamento e a ordenação EM MEMÓRIA (não reordena a planilha).
@@ -285,7 +273,7 @@ export function calcularCurvasAbcde(rows: PurchaseRow[], emissao?: Date | null):
   const curvaPorItem = new Map<string, ClasseCurva>();
   const hoje = emissao ?? new Date();
   const limite180 = new Date(hoje.getTime() - DIAS_RECLASSIFICACAO * 86400000);
-
+  const totalDias = totalDiasGiro(emissao);
   for (const lista of grupos.values()) {
     const totalGrupo = lista.reduce((acc, r) => acc + r.custoTot13M, 0);
     const ordenados = [...lista].sort((a, b) => b.custoTot13M - a.custoTot13M);
@@ -322,11 +310,11 @@ export function calcularCurvasAbcde(rows: PurchaseRow[], emissao?: Date | null):
     const chaveItem = `${r.codigo}|${r.filial}`;
     const classeMacro = classeMacroPorItem.get(chaveItem) ?? 'C';
     const curva = curvaPorItem.get(chaveItem) ?? 'C';
-    // Excedente: máx(0; stockValue − (CustoTot13M ÷ 390) × dias da classe A/B/C).
+    // Excedente CORRIGIDO (09/09/2026): usa CD real da planilha e alvos A/B/C/D/E.
+    // excessValue = máx(0, stockValue − CD × dias da classe).
     const diasClasse = DIAS_MAXIMOS[classeMacro];
-    const excessValue = Math.max(0, r.stockValue - (r.custoTot13M / DIAS_13_MESES) * diasClasse);
+    const excessValue = Math.max(0, r.stockValue - (r.custoTot13M / totalDias) * diasClasse);
     // Giro: (CustoTot13M ÷ totalDias) × 360 ÷ stockValue.
-    const totalDias = totalDiasGiro(emissao);
     const turnover = r.stockValue > 0 ? ((r.custoTot13M / totalDias) * 360) / r.stockValue : 0;
     return {
       ...r,
@@ -337,11 +325,9 @@ export function calcularCurvasAbcde(rows: PurchaseRow[], emissao?: Date | null):
     };
   });
 }
-
 // ===========================================================================
 // Consolidações do painel
 // ===========================================================================
-
 /** Consolida totais por subfamília (com filial) para o painel. */
 export function calcularBySubfamily(rows: PurchaseRow[]): SubfamilySummary[] {
   const grupos = new Map<string, SubfamilySummary>();
@@ -367,7 +353,6 @@ export function calcularBySubfamily(rows: PurchaseRow[]): SubfamilySummary[] {
     }))
     .sort((a, b) => b.total - a.total);
 }
-
 /** Agrupa por Filial+Tipo e resume a curva ABCDE (para o painel). */
 export function calcularAbcPorFilialTipo(rows: PurchaseRow[]): AbcRecord[] {
   const grupos = new Map<string, AbcRecord>();
@@ -396,7 +381,6 @@ export function calcularAbcPorFilialTipo(rows: PurchaseRow[]): AbcRecord[] {
     }))
     .sort((a, b) => b.total - a.total);
 }
-
 /** Monta o relatório de qualidade dos dados importados. */
 export function montarQualityReport(rows: PurchaseRow[]): QualityReport {
   const filiais = new Set(rows.map((r) => r.filial));
@@ -411,11 +395,9 @@ export function montarQualityReport(rows: PurchaseRow[]): QualityReport {
     semTipo: rows.filter((r) => !(r.tipo || '').trim()).length,
   };
 }
-
 // ===========================================================================
 // Função principal do dashboard
 // ===========================================================================
-
 /**
  * Calcula a média P13M, a curva ABCDE e as consolidações do dashboard.
  * As linhas já devem vir com os campos calculados (importação/pipeline).

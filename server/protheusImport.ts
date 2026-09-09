@@ -26,6 +26,7 @@
  * //   As demais colunas (fórmulas do usuário e da macro) são ignoradas.
  */
 import type { PurchaseRow } from './protheusCalculations';
+const comBase = calcularCamposBase(enriquecidos, emissao)
 import { calcularCamposBase, calcularCurvasAbcde } from './protheusCalculations';
 import type { Sb1Index, SbzIndex, FamiliasMap } from './referenceImporters';
 /** Limite máximo de registros aceitos na importação de Compras. */
