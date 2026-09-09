@@ -137,26 +137,23 @@ export function readRows(linhasBrutas: unknown[][]): { cabecalho: string[]; dado
   const dadosBrutos = linhasBrutas.filter(ehArray).filter(naoVazia);
   if (dadosBrutos.length === 0) return { cabecalho: [], dados: [] };
   const cabecalho = dadosBrutos[0].map((c) => String(c ?? '').trim());
-  const rotulosColuna = cabecalho.map((c) => normTexto(c)).filter(Boolean);
+  const rotulosNorm = new Set(cabecalho.map((c) => normTexto(c)).filter(Boolean));
   const chaveCabecalho = JSON.stringify(dadosBrutos[0]);
+  // REGRA (09/09/2026): nenhum item é descartado na importação, exceto os das
+  // filiais 0105 e 0201 (feito na análise, não aqui). Este filtro só remove
+  // cabeçalhos repetidos do browse do Protheus.
   const ehCabecalhoRepetido = (linha: unknown[]): boolean => {
     // (a) linha idêntica ao cabeçalho principal
     if (JSON.stringify(linha) === chaveCabecalho) return true;
-    // (b) alguma célula CONTÉM o título da sua própria coluna
-    //     (ex.: coluna Filial = "Filial do Item na SBZ")
-    for (let i = 0; i < linha.length; i++) {
-      const celula = normTexto(String(linha[i] ?? '').trim());
-      // MUDANÇA (09/09/2026): trocado === por includes. Antes, linhas de
-      // cabeçalho repetido do browser (ex.: "Filial do Item na SBZ") NÃO eram
-      // removidas porque "filialdoitemnasbz" != "filial". Agora
-      // "filialdoitemnasbz".includes("filial") é true, então são descartadas.
-      if (celula !== '' && rotulosColuna[i] && celula.includes(rotulosColuna[i])) return true;
-    }
-    return false;
+    // (b) SÓ a PRIMEIRA célula decide: se ela for um rótulo de cabeçalho
+    //     conhecido ("codigo", "filial"...), é cabeçalho repetido do browse.
+    //     NÃO testa as demais células — evita descartar linhas de dados cujo
+    //     conteúdo por acaso contenha o título da coluna (ex.: descrição com
+    //     "filial", "codigo"...). Mesmo padrão do referenceImporters.ts.
+    const primeira = normTexto(String(linha[0] ?? '').trim());
+    return primeira !== '' && rotulosNorm.has(primeira);
   };
-  const dados = dadosBrutos
-    .slice(1)
-    .filter((linha) => !ehCabecalhoRepetido(linha));
+  const dados = dadosBrutos.slice(1).filter((linha) => !ehCabecalhoRepetido(linha));
   return { cabecalho, dados };
 }
 /** Localiza as colunas relevantes pelo nome no cabeçalho. */
