@@ -13,6 +13,10 @@
 // MUDANÇA (09/09/2026): bloqueio de duplicidade — só uma importação por nome.
 // MUDANÇA (09/09/2026): COBERTURA CONSOLIDADA = Σ estoque ÷ Σ CD (nunca média).
 //   CD = custoTot13M ÷ dias da carga (360 + dia do mês, da data do arquivo).
+// MUDANÇA (09/09/2026): P1 — SELEÇÃO MÚLTIPLA DE FILIAL. O filtro aceita
+//   branches: string[] (várias filiais). Se branches vier preenchido, ele
+//   vence sobre branch (filial única), mantido por compatibilidade com a
+//   interface atual até a nova tela entrar.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -372,6 +376,7 @@ type ProductType = "ME" | "PE";
 export type AnalyticsFilter = {
   importId?: number;
   branch?: string;
+  branches?: string[]; // P1 (09/09/2026): seleção múltipla — vence sobre branch.
   curve?: Curve;
   productType?: ProductType;
   mrp?: "Sim" | "Não";
@@ -467,6 +472,14 @@ function diasDaCarga(importedAt: Date | string): number {
   const d = new Date(importedAt);
   return isNaN(d.getTime()) ? 390 : 360 + d.getUTCDate();
 }
+// ===== Seleção de filiais (P1 — 09/09/2026) =====
+// branches (lista) vence sobre branch (único). Sem nenhum dos dois, todas as
+// filiais da análise (ANALYSIS_BRANCHES) entram.
+function filiaisDoFiltro(filters: AnalyticsFilter): string[] | undefined {
+  if (filters.branches && filters.branches.length > 0) return filters.branches;
+  if (filters.branch) return [filters.branch];
+  return undefined;
+}
 export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<AnalyticsSummary | null> {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);
@@ -474,7 +487,8 @@ export async function getAnalyticsSummary(filters: AnalyticsFilter): Promise<Ana
   const imp = (await db.select({ importedAt: protheusImports.importedAt }).from(protheusImports).where(eq(protheusImports.id, importId)).limit(1))[0];
   const dias = diasDaCarga(imp?.importedAt ?? new Date());
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
-  if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
+  const filiais = filiaisDoFiltro(filters);
+  if (filiais) conditions.push(inArray(inventoryAnalytics.branch, filiais));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
   if (filters.productType) conditions.push(eq(inventoryAnalytics.productType, filters.productType));
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
@@ -509,7 +523,8 @@ export async function getAnalyticsBreakdown(filters: AnalyticsFilter) {
   const imp = (await db.select({ importedAt: protheusImports.importedAt }).from(protheusImports).where(eq(protheusImports.id, importId)).limit(1))[0];
   const dias = diasDaCarga(imp?.importedAt ?? new Date());
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
-  if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
+  const filiais = filiaisDoFiltro(filters);
+  if (filiais) conditions.push(inArray(inventoryAnalytics.branch, filiais));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
   if (filters.productType) conditions.push(eq(inventoryAnalytics.productType, filters.productType));
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
@@ -568,11 +583,16 @@ export async function getAnalyticsDashboard(filters: AnalyticsFilter) {
   const [importRows, breakdown, qualityRows] = await Promise.all([
     db.select({ id: protheusImports.id, fileName: protheusImports.fileName, versionName: protheusImports.versionName, importedAt: protheusImports.importedAt }).from(protheusImports).where(eq(protheusImports.id, importId)).limit(1),
     getAnalyticsBreakdown({ ...filters, importId }),
-    db.select({
-      stockWithoutSalesValue: sql<string>`coalesce(sum(case when ${inventoryAnalytics.salesValue13M} = 0 then ${inventoryAnalytics.stockValue} else 0 end), 0)`,
-      lowCoverageStockValue: sql<string>`coalesce(sum(case when ${inventoryAnalytics.coverageDays} < 30 and ${inventoryAnalytics.stockValue} > 0 then ${inventoryAnalytics.stockValue} else 0 end), 0)`,
-      excessStockValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
-    }).from(inventoryAnalytics).where(and(eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES))),
+    (async () => {
+      const qualityConditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
+      const qFiliais = filiaisDoFiltro(filters);
+      if (qFiliais) qualityConditions.push(inArray(inventoryAnalytics.branch, qFiliais));
+      return db.select({
+        stockWithoutSalesValue: sql<string>`coalesce(sum(case when ${inventoryAnalytics.salesValue13M} = 0 then ${inventoryAnalytics.stockValue} else 0 end), 0)`,
+        lowCoverageStockValue: sql<string>`coalesce(sum(case when ${inventoryAnalytics.coverageDays} < 30 and ${inventoryAnalytics.stockValue} > 0 then ${inventoryAnalytics.stockValue} else 0 end), 0)`,
+        excessStockValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
+      }).from(inventoryAnalytics).where(and(...qualityConditions));
+    })(),
   ]);
   if (!breakdown) return null;
   const current = importRows[0] ?? null;
@@ -590,7 +610,8 @@ export async function getAnalyticsEvolution(filters: Omit<AnalyticsFilter, "impo
   const db = await getDb();
   if (!db) return [];
   const conditions = [eq(protheusImports.status, "approved"), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
-  if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
+  const filiais = filiaisDoFiltro(filters);
+  if (filiais) conditions.push(inArray(inventoryAnalytics.branch, filiais));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
   if (filters.productType) conditions.push(eq(inventoryAnalytics.productType, filters.productType));
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
@@ -628,7 +649,8 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
   const importId = await getLatestImportId(filters.importId);
   if (!db || !importId) return { items: [] as AnalyticsItem[], total: 0, page, pageSize, importId: null };
   const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
-  if (filters.branch) conditions.push(eq(inventoryAnalytics.branch, filters.branch));
+  const filiais = filiaisDoFiltro(filters);
+  if (filiais) conditions.push(inArray(inventoryAnalytics.branch, filiais));
   if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
   if (filters.productType) conditions.push(eq(inventoryAnalytics.productType, filters.productType));
   if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));

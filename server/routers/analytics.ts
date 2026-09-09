@@ -8,15 +8,16 @@ import { invokeLLM } from "../_core/llm";
 import { validatePurchaseRecommendations, type PurchaseRecommendation } from "../analyticsRules";
 import { importSb1, importSbz, importFamilias, importSubFamilias } from "../referenceImporters";
 import { saveSb1References, saveSbzReferences, saveFamilyReferences, saveSubfamilyReferences } from "../db";
-
 const curveSchema = z.enum(["A", "B", "C", "D", "E"]);
-
+// MUDANÇA (09/09/2026): P1 — SELEÇÃO MÚLTIPLA DE FILIAL.
+//   branches (lista) vence sobre branch (único). O db.ts já trata ambos.
+const branchFilterSchema = {
+  branch: z.string().min(1).optional(),
+  branches: z.array(z.string().min(1)).optional(),
+};
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
-
 async function modulePermission(ctx: { req: { headers: Record<string, string | string[] | undefined> } }, permission: "view" | "manage", nodeKey = "compras-protheus") { const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers)); await assertApplicationPermission(identity, nodeKey, permission); return identity; }
-
 export function canAdministerProtheusImports(identity: Pick<PortalIdentity, "isDevelopmentAdmin" | "profiles">) { return identity.isDevelopmentAdmin || identity.profiles.includes("operations-admin"); }
-
 // MUDANÇA (07/09/2026): os importadores de referência devolvem índices (Sb1Index/
 // SbzIndex/Map). Estas funções convertem essa saída em ARRAYS simples de registros,
 // no formato exato que o saveReferenceImport/save*References do db.ts espera gravar.
@@ -25,7 +26,6 @@ export function canAdministerProtheusImports(identity: Pick<PortalIdentity, "isD
 // ao encontrar código repetido (erro 500 em processReference, nada era gravado).
 // Agora os registros são deduplicados por code (último vence), igual ao índice de
 // consulta (porCodAgregado/porCodigo) — mesmo comportamento que funcionou antes.
-
 function sb1ParaRegistros(buffer: Buffer): { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[] {
   const idx = importSb1(buffer);
   const unicos = new Map<string, { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }>();
@@ -36,38 +36,34 @@ function sb1ParaRegistros(buffer: Buffer): { code: string; tipo: string; familia
   }
   return Array.from(unicos.values());
 }
-
 function sbzParaRegistros(buffer: Buffer): { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[] {
   const idx = importSbz(buffer);
   return Array.from(idx.porChave.values())
     .filter(r => r.chave)
     .map(r => ({ chave: r.chave, code: r.codigo, filial: r.filial, estoqMin: r.estoqMin, estoqMax: r.estoqMax, entraMrp: r.entraMrp }));
 }
-
 function familiasParaRegistros(buffer: Buffer): { code: string; descricao: string }[] {
   const mapa = importFamilias(buffer);
   return Array.from(mapa.entries())
     .filter(([code]) => code && code !== "0")
     .map(([code, descricao]) => ({ code, descricao }));
 }
-
 function subFamiliasParaRegistros(buffer: Buffer): { code: string; descricao: string }[] {
   const mapa = importSubFamilias(buffer);
   return Array.from(mapa.entries())
     .filter(([code]) => code && code !== "0")
     .map(([code, descricao]) => ({ code, descricao }));
 }
-
 export const analyticsRouter = router({
-  dashboard: publicProcedure.input(z.object({ importId: z.number().int().positive().optional(), branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsDashboard(input); }),
+  dashboard: publicProcedure.input(z.object({ importId: z.number().int().positive().optional(), ...branchFilterSchema, curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsDashboard(input); }),
   filterOptions: publicProcedure.input(z.object({ importId: z.number().int().positive().optional() }).optional()).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsFilterOptions(input?.importId); }),
   imports: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return listProtheusImports(); }),
   canAdminister: publicProcedure.query(async ({ ctx }) => { const identity = await modulePermission(ctx, "view"); return canAdministerProtheusImports(identity); }),
   referenceCounts: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return getReferenceCounts(); }),
   referenceImportHistory: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return listReferenceImports(); }),
-  evolution: publicProcedure.input(z.object({ branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsEvolution(input); }),
-  items: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); const { page, ...filters } = input; return getAnalyticsItems(filters satisfies AnalyticsFilter, page, 50); }),
-  aiRecommendations: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), branch: z.string().min(1).optional(), curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).mutation(async ({ ctx, input }) => {
+  evolution: publicProcedure.input(z.object({ ...branchFilterSchema, curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsEvolution(input); }),
+  items: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), ...branchFilterSchema, curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); const { page, ...filters } = input; return getAnalyticsItems(filters satisfies AnalyticsFilter, page, 50); }),
+  aiRecommendations: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), ...branchFilterSchema, curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "view");
     const { page, ...filters } = input;
     const itemPage = await getAnalyticsItems(filters, page, 50);
