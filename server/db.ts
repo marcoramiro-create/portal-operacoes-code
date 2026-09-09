@@ -14,6 +14,8 @@
 //   correspondência na SBZ. A partir de agora o MRP NUNCA é reescrito pelo
 //   re-enriquecimento — ele é definido UMA ÚNICA VEZ, na importação da Compras
 //   (cruzamento com a SBZ). Nenhum gatilho posterior pode alterar o MRP gravado.
+// MUDANÇA (09/09/2026): importedAt = data/hora do NOME do arquivo (histórico).
+// MUDANÇA (09/09/2026): bloqueio de duplicidade — só uma importação por nome.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -25,9 +27,7 @@ import { calculateTurnover } from "./analyticsRules";
 import { emissaoDoNomeArquivo, importarCompras, reenriquecerCompras } from "./protheusImport";
 import type { Sb1Index, Sb1Row, SbzIndex, SbzRow, FamiliasMap } from "./referenceImporters";
 import { storagePut } from "./storage";
-
 let _db: ReturnType<typeof drizzle> | null = null;
-
 export async function getDb() {
   if (!_db && process.env.SUPABASE_DATABASE_URL) {
     try {
@@ -48,7 +48,6 @@ export async function getDb() {
   }
   return _db;
 }
-
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
@@ -72,13 +71,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     });
   }
 }
-
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) return undefined;
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
 }
-
 // ===== Tabelas de referência (SB1, SBZ, Família, SubFamília) =====
 export async function saveSb1References(records: { code: string; tipo: string; familiaCode: string; subfamiliaCode: string }[]) {
   const db = await getDb();
@@ -186,7 +183,6 @@ export async function loadAllReferences() {
   const [sb1, sbz, familias, subfamilias] = await Promise.all([loadSb1References(), loadSbzReferences(), loadFamilyReferences(), loadSubfamilyReferences()]);
   return { sb1, sbz, familias, subfamilias };
 }
-
 // ============================================================
 // Helpers de normalização (08/09/2026)
 // ============================================================
@@ -204,7 +200,6 @@ function normalizarFilial(value: unknown): string {
   const digits = match ? match[1] : texto;
   return digits.padStart(4, "0");
 }
-
 // MUDANÇA (08/09/2026): chave SBZ RECALCULADA aqui (code normalizado + filial
 // normalizada em 4 dígitos) em vez de confiar na coluna chave gravada.
 async function montarIndicesReferencias(): Promise<{ sb1: Sb1Index; sbz: SbzIndex; familias: FamiliasMap; subFamilias: FamiliasMap }> {
@@ -266,7 +261,6 @@ export async function updateProtheusImportStatus(id: number, status: ProtheusImp
 export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffer) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-
   // REGRA (09/09/2026): só pode existir UMA importação com cada nome de arquivo.
   const duplicado = await db
     .select({ id: protheusImports.id })
@@ -276,7 +270,6 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
   if (duplicado.length > 0) {
     throw new Error("Já existe uma importação com este arquivo. Só é permitida uma carga por nome de arquivo.");
   }
-
   const workbook = XLSX.read(fileBuffer, { type: "buffer", cellText: false });
   const firstSheetName = workbook.SheetNames[0];
   if (!firstSheetName) throw new Error("A planilha não possui uma aba para importação.");
@@ -287,12 +280,10 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
   const { sb1, sbz, familias, subFamilias } = await montarIndicesReferencias();
   const emissao = emissaoDoNomeArquivo(fileName);
   const { registros } = importarCompras(linhasBrutas, sb1, sbz, familias, subFamilias, emissao);
-
   // REGRA (09/09/2026): IMPORTEDAT = DATA/HORA DO NOME DO ARQUIVO (histórico).
   // A data da importação NÃO é usada como data da carga — o histórico é a data
   // do nome do arquivo (Compras - aaaaMMddHHmm.xlsx), sempre invertida.
   const importedAt = parsePurchaseHistoryDate(fileName);
-
   const versionName = fileName.replace(/\.xlsx$/i, "");
   const safeFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const storedFile = await storagePut(
@@ -300,43 +291,6 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
     fileBuffer,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
-  return db.transaction(async (tx) => {
-    const [createdImport] = await tx
-      .insert(protheusImports)
-      .values({
-        fileName,
-        versionName,
-        fileKey: storedFile.key,
-        rowCount: registros.length,
-        importedAt,
-      })
-      .returning({ id: protheusImports.id });
-    const importId = createdImport?.id;
-    if (!importId) throw new Error("Não foi possível registrar a importação.");
-    for (let start = 0; start < registros.length; start += 500) {
-      await tx.insert(inventoryAnalytics).values(
-        registros.slice(start, start + 500).map((r) => ({
-          importId,
-          code: r.codigo,
-          description: r.descricao || "",
-          branch: r.filial,
-          productType: (r.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
-          mrp: r.mrp === "Sim" ? "Sim" : "Não",
-          family: r.familia || "",
-          subfamily: r.subFamilia || "",
-          curve: r.curva,
-          sales13M: r.total,
-          salesValue13M: r.custoTot13M,
-          stock: r.estoque,
-          stockValue: r.stockValue,
-          coverageDays: r.coverageDays,
-          excessValue: r.excessValue,
-        }))
-      );
-    }
-    return { id: importId, rowCount: registros.length };
-  });
-}
   return db.transaction(async (tx) => {
     const [createdImport] = await tx
       .insert(protheusImports)
