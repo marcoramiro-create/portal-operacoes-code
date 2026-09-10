@@ -1,6 +1,6 @@
 import { supabaseStorageGetPresignedPutUrl, supabaseStorageReadBuffer } from "../storage";
 import { z } from "zod";
-import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, listReferenceImports, deleteReferenceData, deleteProtheusImport, recordReferenceImport, saveReferenceImport, reenriquecerImportacaoCompras, type AnalyticsFilter } from "../db";
+import { getAnalyticsDashboard, getAnalyticsEvolution, getAnalyticsFilterOptions, getAnalyticsItems, getAnalyticsCardItems, importProtheusWorkbook, listProtheusImports, getReferenceCounts, listReferenceImports, deleteReferenceData, deleteProtheusImport, recordReferenceImport, saveReferenceImport, reenriquecerImportacaoCompras, type AnalyticsFilter } from "../db";
 import { publicProcedure, router } from "../_core/trpc";
 import { assertApplicationPermission, assertPortalAdministrator, getPortalIdentity, recordPortalAudit, type PortalIdentity } from "../supabasePortal";
 import { updateProtheusImportStatus } from "../db";
@@ -63,6 +63,7 @@ export const analyticsRouter = router({
   referenceImportHistory: publicProcedure.query(async ({ ctx }) => { await modulePermission(ctx, "view"); return listReferenceImports(); }),
   evolution: publicProcedure.input(z.object({ ...branchFilterSchema, curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); return getAnalyticsEvolution(input); }),
   items: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), ...branchFilterSchema, curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); const { page, ...filters } = input; return getAnalyticsItems(filters satisfies AnalyticsFilter, page, 50); }),
+  cardItems: publicProcedure.input(z.object({ metric: z.enum(["lowCoverage", "stockValue", "excess", "withoutSales"]), ...branchFilterSchema, curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).query(async ({ ctx, input }) => { await modulePermission(ctx, "view"); const { metric, ...filters } = input; return getAnalyticsCardItems(filters satisfies AnalyticsFilter, metric); }),
   aiRecommendations: publicProcedure.input(z.object({ page: z.number().int().min(1).default(1), ...branchFilterSchema, curve: curveSchema.optional(), productType: z.enum(["ME", "PE"]).optional(), mrp: z.enum(["Sim", "Não"]).optional(), family: z.string().min(1).optional(), subfamily: z.string().min(1).optional() })).mutation(async ({ ctx, input }) => {
     await modulePermission(ctx, "view");
     const { page, ...filters } = input;
