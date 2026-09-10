@@ -80,6 +80,7 @@ export const inventoryAnalytics = pgTable(
     code: varchar("code", { length: 120 }).notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
     ultimaCompra: date("ultimaCompra"),
+    pedidos: decimal("pedidos", { precision: 20, scale: 3 }).notNull().default("0"),
     branch: varchar("branch", { length: 24 }).notNull(),
     productType: productTypeEnum("productType").default("ME").notNull(),
     mrp: mrpEnum("mrp").default("Não").notNull(),
