@@ -309,6 +309,7 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           importId,
           code: r.codigo,
           description: r.descricao || "",
+          ultimaCompra: r.ultimaCompra || null,
           branch: r.filial,
           productType: (r.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
           mrp: r.mrp === "Sim" ? "Sim" : "Não",
@@ -387,6 +388,7 @@ export type AnalyticsItem = {
   id: number;
   code: string;
   description: string;
+  ultimaCompra: string | null;
   branch: string;
   productType: ProductType;
   mrp: "Sim" | "Não";
@@ -664,6 +666,7 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
         id: inventoryAnalytics.id,
         code: inventoryAnalytics.code,
         description: inventoryAnalytics.description,
+        ultimaCompra: inventoryAnalytics.ultimaCompra,
         branch: inventoryAnalytics.branch,
         productType: inventoryAnalytics.productType,
         mrp: inventoryAnalytics.mrp,
@@ -694,11 +697,44 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
       salesValue13M: asNumber(row.salesValue13M),
       stock: asNumber(row.stock),
       stockValue: asNumber(row.stockValue),
+      ultimaCompra: row.ultimaCompra ? String(row.ultimaCompra) : null,
       coverageDays: asNumber(row.coverageDays),
       excessValue: asNumber(row.excessValue),
       turnover: calculateTurnover(asNumber(row.salesValue13M), asNumber(row.stockValue)),
     })),
   };
+}
+export type AnalyticsCardMetric = "lowCoverage" | "stockValue" | "excess" | "withoutSales";
+
+export async function getAnalyticsCardItems(filters: AnalyticsFilter, metric: AnalyticsCardMetric) {
+  const db = await getDb();
+  const importId = await getLatestImportId(filters.importId);
+  if (!db || !importId) return [] as AnalyticsItem[];
+  const conditions = [eq(inventoryAnalytics.importId, importId), inArray(inventoryAnalytics.branch, ANALYSIS_BRANCHES)];
+  const filiais = filiaisDoFiltro(filters);
+  if (filiais) conditions.push(inArray(inventoryAnalytics.branch, filiais));
+  if (filters.curve) conditions.push(eq(inventoryAnalytics.curve, filters.curve));
+  if (filters.productType) conditions.push(eq(inventoryAnalytics.productType, filters.productType));
+  if (filters.mrp) conditions.push(eq(inventoryAnalytics.mrp, filters.mrp));
+  if (filters.family) conditions.push(eq(inventoryAnalytics.family, filters.family));
+  if (filters.subfamily) conditions.push(eq(inventoryAnalytics.subfamily, filters.subfamily));
+  if (metric === "lowCoverage") conditions.push(sql`${inventoryAnalytics.coverageDays} < 30 and ${inventoryAnalytics.stockValue} > 0`);
+  if (metric === "stockValue") conditions.push(sql`${inventoryAnalytics.stockValue} > 0`);
+  if (metric === "excess") conditions.push(sql`${inventoryAnalytics.excessValue} > 0`);
+  if (metric === "withoutSales") conditions.push(sql`${inventoryAnalytics.salesValue13M} = 0`);
+  const rows = await db.select({
+    id: inventoryAnalytics.id, code: inventoryAnalytics.code, description: inventoryAnalytics.description,
+    ultimaCompra: inventoryAnalytics.ultimaCompra, branch: inventoryAnalytics.branch,
+    productType: inventoryAnalytics.productType, mrp: inventoryAnalytics.mrp, family: inventoryAnalytics.family,
+    subfamily: inventoryAnalytics.subfamily, curve: inventoryAnalytics.curve, sales13M: inventoryAnalytics.sales13M,
+    salesValue13M: inventoryAnalytics.salesValue13M, stock: inventoryAnalytics.stock, stockValue: inventoryAnalytics.stockValue,
+    coverageDays: inventoryAnalytics.coverageDays, excessValue: inventoryAnalytics.excessValue,
+  }).from(inventoryAnalytics).where(and(...conditions)).orderBy(desc(inventoryAnalytics.stockValue)).limit(5000);
+  return rows.map(row => ({ ...row, ultimaCompra: row.ultimaCompra ? String(row.ultimaCompra) : null,
+    sales13M: asNumber(row.sales13M), salesValue13M: asNumber(row.salesValue13M), stock: asNumber(row.stock),
+    stockValue: asNumber(row.stockValue), coverageDays: asNumber(row.coverageDays), excessValue: asNumber(row.excessValue),
+    turnover: calculateTurnover(asNumber(row.salesValue13M), asNumber(row.stockValue)),
+  }));
 }
 export async function getAnalyticsFilterOptions(importId?: number) {
   const db = await getDb();
