@@ -1,0 +1,5 @@
+import { createHash } from "node:crypto";
+import { parseOperationMap, type OperationMapRow } from "./operationMapParser";
+export type OperationMapPreview = { sourceKind: "MAPA_OPERACOES"; fileName: string; fileHash: string; sourceRows: number; validRows: number; skippedRows: number; duplicateRows: number; operationCounts: Record<string, number>; issues: { row: number; field: string; message: string }[]; sampleRows: OperationMapRow[] };
+function hash(content: Buffer|string){return createHash("sha256").update(content).digest("hex");}
+export function previewOperationMap(fileName:string,content:Buffer|string):OperationMapPreview{const parsed=parseOperationMap(content);const operationCounts:Record<string,number>={};for(const row of parsed.rows)operationCounts[row.operation]=(operationCounts[row.operation]??0)+1;return{sourceKind:"MAPA_OPERACOES",fileName,fileHash:hash(content),sourceRows:parsed.sourceRows,validRows:parsed.rows.length,skippedRows:parsed.skippedRows,duplicateRows:parsed.duplicateRows,operationCounts,issues:parsed.issues.slice(0,200),sampleRows:parsed.rows.slice(0,20)};}
