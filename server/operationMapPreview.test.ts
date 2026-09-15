@@ -1,0 +1,4 @@
+import { describe, expect, it } from "vitest";
+import * as XLSX from "xlsx";
+import { previewOperationMap } from "./operationMapPreview";
+describe("previewOperationMap",()=>{it("classifica operações sem gravar no banco",()=>{const sheet=XLSX.utils.aoa_to_sheet([["Armazem","Empresa","UF","DEPTO"],["01-DISPONIVEL","0101","SP","PEÇAS"],["01-DISPONIVEL","0102","SP","OFICINAS"],["02-PROD","0105","INDÚSTRIA","IND - PEÇAS"],["31-LOC","0301","MG","IMPLEMENTOS"]]);const workbook=XLSX.utils.book_new();XLSX.utils.book_append_sheet(workbook,sheet,"Planilha1");const content=XLSX.write(workbook,{type:"buffer",bookType:"xlsx"});const result=previewOperationMap("mapa.xlsx",content);expect(result.sourceKind).toBe("MAPA_OPERACOES");expect(result.validRows).toBe(4);expect(result.operationCounts.AUTOPECAS).toBe(1);expect(result.operationCounts.SERVICOS).toBe(1);expect(result.operationCounts.INDUSTRIA).toBe(1);expect(result.operationCounts.IMPLEMENTOS).toBe(1);});});
