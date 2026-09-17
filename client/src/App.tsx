@@ -8,6 +8,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
 import ImportData from "./pages/ImportData";
+import OperationalAudit from "./pages/OperationalAudit";
 import NotFound from "./pages/NotFound";
 import PortalAccess from "./pages/PortalAccess";
 import RegistrationImport from "./pages/RegistrationImport";
@@ -48,6 +49,7 @@ function Router() {
     <Route path="/importacoes/custos-autopecas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-autopecas" level="manage"><CostEvolutionImport segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/custos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-industria" level="manage"><CostEvolutionImport segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/administracao/auditoria-cruzamentos"><WithLayout><OperationalAudit /></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
     <Route path="/recebimentos/nf"><WithLayout><ApplicationRouteGuard nodeKey="chaves-nf"><NfReceipts /></ApplicationRouteGuard></WithLayout></Route>
