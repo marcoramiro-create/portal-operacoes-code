@@ -193,28 +193,35 @@ export function buildOperationalAuditReport(input: OperationalAuditInput): Opera
     metrics.push(finishMetric(ordersMetric));
   }
 
-  // NF → SA2 por documento (CNPJ/CPF); duplicidade de documento é ambiguidade.
+  // NF Legal → SA2 por documento (CNPJ/CPF). A fonte NF Legal atual é
+  // documental e não possui produto/item; portanto, não inferir duplicidade
+  // por linha de produto. Duplicidade de NF usa a chave documental original.
   if (input.invoices) {
     const invoicesMetric = emptyMetric("NF→SA2 por documento");
     const supplierDocuments = countKeys(input.sa2, row => cleanSourceText(row.document).replace(/\D/g, ""));
     duplicates.push(...duplicatesFrom(supplierDocuments, "SA2.Documento"));
+    const invoiceDocumentKeys = countKeys(input.invoices, row => cleanSourceText(row.key));
+    duplicates.push(...duplicatesFrom(invoiceDocumentKeys, "NF_LEGAL.Documento"));
     for (const row of input.invoices) {
       invoicesMetric.total += 1;
       const document = cleanSourceText(row.supplierDocument).replace(/\D/g, "");
       if (!document) {
         invoicesMetric.notFound += 1;
         exceptions.push({ kind: "NF_SEM_DOCUMENTO_FORNECEDOR", source: row.origin, sourceKey: row.key, detail: `NF ${cleanSourceText(row.invoiceNumber)} sem CNPJ/CPF utilizável para cruzar com a SA2.` });
-        continue;
-      }
-      const occurrences = supplierDocuments.get(document) ?? 0;
-      if (occurrences === 0) {
-        invoicesMetric.notFound += 1;
-        exceptions.push({ kind: "FORNECEDOR_NAO_ENCONTRADO_SA2", source: row.origin, sourceKey: row.key, detail: `Fornecedor com documento ${document} não localizado na SA2.` });
-      } else if (occurrences > 1) {
-        invoicesMetric.ambiguous += 1;
-        exceptions.push({ kind: "CHAVE_DUPLICADA", source: row.origin, sourceKey: row.key, detail: `Documento ${document} aparece ${occurrences} vezes na SA2; fornecedor ambíguo — não inferir fornecedor único.` });
       } else {
-        invoicesMetric.direct += 1;
+        const occurrences = supplierDocuments.get(document) ?? 0;
+        if (occurrences === 0) {
+          invoicesMetric.notFound += 1;
+          exceptions.push({ kind: "FORNECEDOR_NAO_ENCONTRADO_SA2", source: row.origin, sourceKey: row.key, detail: `Fornecedor com documento ${document} não localizado na SA2.` });
+        } else if (occurrences > 1) {
+          invoicesMetric.ambiguous += 1;
+          exceptions.push({ kind: "CHAVE_DUPLICADA", source: row.origin, sourceKey: row.key, detail: `Documento ${document} aparece ${occurrences} vezes na SA2; fornecedor ambíguo — não inferir fornecedor único.` });
+        } else {
+          invoicesMetric.direct += 1;
+        }
+      }
+      if ((invoiceDocumentKeys.get(row.key) ?? 0) > 1) {
+        exceptions.push({ kind: "CHAVE_DUPLICADA", source: row.origin, sourceKey: row.key, detail: `A chave documental ${row.key} aparece ${invoiceDocumentKeys.get(row.key)} vezes na NF Legal. A fonte não possui produto/item; a chave representa a NF, não uma linha de produto. Confirmar se a repetição é duplicidade da extração.` });
       }
     }
     metrics.push(finishMetric(invoicesMetric));

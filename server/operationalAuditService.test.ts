@@ -153,6 +153,12 @@ describe("operationalAuditService", () => {
     expect(report.exceptions).toHaveLength(0);
   });
 
+  it("trata repetição de NF pela chave documental, sem inventar produto ou item", () => {
+    const invoices = [invoiceRow({ key: "0101|10|1|59918136000128" }), invoiceRow({ key: "0101|10|1|59918136000128" })];
+    const report = buildOperationalAuditReport({ sb1: [], sbz: [], sa2: [sa2Row("59918136000128")], invoices });
+    expect(report.duplicates.some(item => item.scope === "NF_LEGAL.Documento" && item.occurrences === 2)).toBe(true);
+    expect(report.exceptions.filter(item => item.source === "NF_LEGAL" && item.kind === "CHAVE_DUPLICADA")).toHaveLength(2);
+  });
   it("marca NF com fornecedor ausente e NF sem documento", () => {
     const invoices = [invoiceRow({ key: "nf-a", supplierDocument: "11111111111111" }), invoiceRow({ key: "nf-b", supplierDocument: "" })];
     const report = buildOperationalAuditReport({ sb1: [], sbz: [], sa2: [sa2Row("59918136000128")], invoices });
