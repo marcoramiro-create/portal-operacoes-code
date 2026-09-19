@@ -106,6 +106,7 @@ const MENU: MenuSection[] = [
       { label: "Usuários", path: "/usuarios", icon: Users },
       { label: "Perfis de Acesso", path: "/perfis-acesso", icon: ShieldCheck },
       { label: "Auditoria de Cruzamentos", path: "/administracao/auditoria-cruzamentos", icon: ShieldCheck },
+      { label: "Backlog da Auditoria", path: "/administracao/auditoria-backlog", icon: ShieldCheck },
     ],
   },
 ];
