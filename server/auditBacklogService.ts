@@ -27,18 +27,23 @@ export async function syncAuditFindings(actor: PortalIdentity) {
   const client = await pool.connect();
   try {
     await client.query("begin");
-    const run = await client.query<{ id: string }>(`insert into public.audit_runs (triggered_by, finished_at, metrics, exception_count, duplicate_count) values ($1, now(), $2::jsonb, $3, $4) returning id`, [actor.id, JSON.stringify(report.metrics), report.exceptions.length, report.duplicates.length]);
+    const run = await client.query<{ id: string }>(`insert into public.audit_runs (triggered_by, metrics, exception_count, duplicate_count) values ($1, $2::jsonb, $3, $4) returning id`, [actor.id, JSON.stringify(report.metrics), report.exceptions.length, report.duplicates.length]);
     const runId = run.rows[0].id;
     let findingsNew = 0;
     let findingsUpdated = 0;
     for (const finding of findings) {
       const key = findingFingerprint(finding);
-      const result = await client.query<{ id: string }>(`insert into public.audit_findings (finding_key, category, kind, scope, source, source_key, detail, last_run_id) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (finding_key) do update set detail=excluded.detail, last_seen_at=now(), occurrences=public.audit_findings.occurrences+1, last_run_id=excluded.last_run_id returning id`, [key, finding.category, finding.kind, finding.scope, finding.source, finding.sourceKey, finding.detail, runId]);
-      if (result.rows[0]) findingsNew += 1;
+      const inserted = await client.query<{ id: string }>(`insert into public.audit_findings (finding_key, category, kind, scope, source, source_key, detail, last_run_id) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict do nothing returning id`, [key, finding.category, finding.kind, finding.scope, finding.source, finding.sourceKey, finding.detail, runId]);
+      if (inserted.rowCount) {
+        findingsNew += 1;
+      } else {
+        await client.query(`update public.audit_findings set detail=$2, last_seen_at=now(), occurrences=occurrences+1, last_run_id=$3 where finding_key=$1`, [key, finding.detail, runId]);
+        findingsUpdated += 1;
+      }
     }
-    await client.query(`update public.audit_runs set findings_new=$2, findings_updated=$3 where id=$1`, [runId, findingsNew, findingsUpdated]);
+    await client.query(`update public.audit_runs set finished_at=now(), findings_new=$2, findings_updated=$3 where id=$1`, [runId, findingsNew, findingsUpdated]);
     await client.query("commit");
-    return { runId, findingCount: findings.length, exceptionCount: report.exceptions.length, duplicateCount: report.duplicates.length };
+    return { runId, findingCount: findings.length, findingsNew, findingsUpdated, exceptionCount: report.exceptions.length, duplicateCount: report.duplicates.length };
   } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
 }
 
@@ -64,6 +69,13 @@ export async function listAuditFindings(filters: { status?: AuditTreatmentStatus
 
 export async function upsertAuditTreatment(input: { findingId: string; status: AuditTreatmentStatus; priority: AuditPriority; responsibleName: string; dueDate?: string | null; note?: string }, actor: PortalIdentity) {
   const db = getSupabasePool();
-  await db.query(`insert into public.audit_finding_treatments (finding_id,status,priority,responsible_name,due_date,note,updated_by,resolved_at) values ($1,$2,$3,$4,$5,$6,$7,case when $2='resolvido' then now() else null end) on conflict (finding_id) do update set status=excluded.status, priority=excluded.priority, responsible_name=excluded.responsible_name, due_date=excluded.due_date, note=excluded.note, updated_by=excluded.updated_by, resolved_at=case when excluded.status='resolvido' then now() else null end, updated_at=now()`, [input.findingId, input.status, input.priority, input.responsibleName, input.dueDate ?? null, input.note ?? '', actor.id]);
-  return { success: true };
+  const client = await db.connect();
+  try {
+    await client.query("begin");
+    const previous = await client.query(`select status, priority, responsible_name as "responsibleName", due_date as "dueDate", note from public.audit_finding_treatments where finding_id=$1`, [input.findingId]);
+    await client.query(`insert into public.audit_finding_treatments (finding_id,status,priority,responsible_name,due_date,note,updated_by,resolved_by,resolved_at) values ($1,$2,$3,$4,$5,$6,$7,case when $2='resolvido' then $7 else null end,case when $2='resolvido' then now() else null end) on conflict (finding_id) do update set status=excluded.status, priority=excluded.priority, responsible_name=excluded.responsible_name, due_date=excluded.due_date, note=excluded.note, updated_by=excluded.updated_by, resolved_by=case when excluded.status='resolvido' then excluded.updated_by else audit_finding_treatments.resolved_by end, resolved_at=case when excluded.status='resolvido' then now() else null end, updated_at=now()`, [input.findingId, input.status, input.priority, input.responsibleName, input.dueDate ?? null, input.note ?? '', actor.id]);
+    await client.query(`insert into public.audit_treatment_events (finding_id, actor_user_id, changes) values ($1,$2,$3::jsonb)`, [input.findingId, actor.id, JSON.stringify({ previous: previous.rows[0] ?? null, next: input })]);
+    await client.query("commit");
+    return { success: true };
+  } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
 }
