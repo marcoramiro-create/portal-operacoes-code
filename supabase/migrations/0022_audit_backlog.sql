@@ -56,11 +56,26 @@ create table if not exists public.audit_treatment_events (
 create index if not exists audit_treatment_events_finding_idx on public.audit_treatment_events(finding_id, changed_at);
 
 
--- O backend usa conexão pg com usuário administrativo e faz autorização no router.
--- As tabelas permanecem protegidas contra acesso direto por roles de aplicação.
+-- O backend usa portal_app, que não ignora RLS.
+-- Conceder somente os privilégios necessários e permitir acesso pelas policies abaixo.
 alter table public.audit_runs enable row level security;
 alter table public.audit_findings enable row level security;
 alter table public.audit_finding_treatments enable row level security;
 alter table public.audit_treatment_events enable row level security;
 
--- Não criar policies públicas: o backend autorizado usa a conexão administrativa.
+grant usage on schema public to portal_app;
+grant select, insert, update on public.audit_runs to portal_app;
+grant select, insert, update on public.audit_findings to portal_app;
+grant select, insert, update on public.audit_finding_treatments to portal_app;
+grant select, insert on public.audit_treatment_events to portal_app;
+
+create policy audit_runs_portal_app on public.audit_runs
+  for all to portal_app using (true) with check (true);
+create policy audit_findings_portal_app on public.audit_findings
+  for all to portal_app using (true) with check (true);
+create policy audit_finding_treatments_portal_app on public.audit_finding_treatments
+  for all to portal_app using (true) with check (true);
+create policy audit_treatment_events_portal_app on public.audit_treatment_events
+  for select to portal_app using (true);
+create policy audit_treatment_events_insert_portal_app on public.audit_treatment_events
+  for insert to portal_app with check (true);
