@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { describe, expect, it } from "vitest";
 import { auditSyncIsReadyForSqlPath, findingFingerprint, findingsFromReport } from "./auditBacklogService";
 
 describe("auditBacklogService", () => {
