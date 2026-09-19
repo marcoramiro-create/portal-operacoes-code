@@ -54,3 +54,13 @@ create table if not exists public.audit_treatment_events (
   changes jsonb not null default '{}'::jsonb
 );
 create index if not exists audit_treatment_events_finding_idx on public.audit_treatment_events(finding_id, changed_at);
+
+
+-- O backend usa conexão pg com usuário administrativo e faz autorização no router.
+-- As tabelas permanecem protegidas contra acesso direto por roles de aplicação.
+alter table public.audit_runs enable row level security;
+alter table public.audit_findings enable row level security;
+alter table public.audit_finding_treatments enable row level security;
+alter table public.audit_treatment_events enable row level security;
+
+-- Não criar policies públicas: o backend autorizado usa a conexão administrativa.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { findingFingerprint, findingsFromReport } from "./auditBacklogService";
+import { describe, expect, it } from "vitest";
+import { auditSyncIsReadyForSqlPath, findingFingerprint, findingsFromReport } from "./auditBacklogService";
 
 describe("auditBacklogService", () => {
   it("mantém fingerprint estável quando apenas o detalhe muda", () => {
@@ -22,5 +23,8 @@ describe("auditBacklogService", () => {
     const first = { category: "DUPLICIDADE" as const, kind: "CHAVE_DUPLICADA", scope: "SB1.Codigo", source: "SB1", sourceKey: "00566", detail: "2 ocorrências" };
     const second = { ...first, detail: "3 ocorrências" };
     expect(findingFingerprint(first)).toBe(findingFingerprint(second));
+  });
+  it("bloqueia o sync enquanto a versão SQL não estiver pronta", () => {
+    expect(auditSyncIsReadyForSqlPath()).toBe(false);
   });
 });

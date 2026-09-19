@@ -20,31 +20,14 @@ export function findingsFromReport(report: { exceptions: AuditException[]; dupli
   ];
 }
 
-export async function syncAuditFindings(actor: PortalIdentity) {
-  const pool = getSupabasePool();
-  const report = await queryOperationalAudit();
-  const findings = findingsFromReport(report);
-  const client = await pool.connect();
-  try {
-    await client.query("begin");
-    const run = await client.query<{ id: string }>(`insert into public.audit_runs (triggered_by, metrics, exception_count, duplicate_count) values ($1, $2::jsonb, $3, $4) returning id`, [actor.id, JSON.stringify(report.metrics), report.exceptions.length, report.duplicates.length]);
-    const runId = run.rows[0].id;
-    let findingsNew = 0;
-    let findingsUpdated = 0;
-    for (const finding of findings) {
-      const key = findingFingerprint(finding);
-      const inserted = await client.query<{ id: string }>(`insert into public.audit_findings (finding_key, category, kind, scope, source, source_key, detail, last_run_id) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict do nothing returning id`, [key, finding.category, finding.kind, finding.scope, finding.source, finding.sourceKey, finding.detail, runId]);
-      if (inserted.rowCount) {
-        findingsNew += 1;
-      } else {
-        await client.query(`update public.audit_findings set detail=$2, last_seen_at=now(), occurrences=occurrences+1, last_run_id=$3 where finding_key=$1`, [key, finding.detail, runId]);
-        findingsUpdated += 1;
-      }
-    }
-    await client.query(`update public.audit_runs set finished_at=now(), findings_new=$2, findings_updated=$3 where id=$1`, [runId, findingsNew, findingsUpdated]);
-    await client.query("commit");
-    return { runId, findingCount: findings.length, findingsNew, findingsUpdated, exceptionCount: report.exceptions.length, duplicateCount: report.duplicates.length };
-  } catch (error) { await client.query("rollback"); throw error; } finally { client.release(); }
+export function auditSyncIsReadyForSqlPath(): false {
+  // REGRA DE SEGURANÇA: a V1 carrega todos os payloads em memória e pode
+  // derrubar a VM Oracle de 1 GB. O sync permanece bloqueado até a versão SQL.
+  return false;
+}
+
+export async function syncAuditFindings(_actor: PortalIdentity) {
+  throw new Error("Sincronização temporariamente bloqueada: a auditoria atual carrega todas as fontes em memória. A versão SQL precisa ser aplicada antes de executar o backlog.");
 }
 
 export async function getBacklogKpis() {
