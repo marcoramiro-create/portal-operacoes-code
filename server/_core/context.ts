@@ -12,12 +12,19 @@ export async function createContext(
   opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
   let user: User | null = null;
+  const authorization = opts.req.headers.authorization;
+  const hasBearer = typeof authorization === "string" && /^Bearer\s+/i.test(authorization);
 
-  try {
-    user = await sdk.authenticateRequest(opts.req);
-  } catch (error) {
-    // Authentication is optional for public procedures.
-    user = null;
+  // Requests authenticated by Supabase are resolved by the portal routers
+  // through getPortalIdentity(). Do not pass their JWT to the legacy OAuth
+  // verifier, which expects the separate Manus HS256 session format.
+  if (!hasBearer) {
+    try {
+      user = await sdk.authenticateRequest(opts.req);
+    } catch (error) {
+      // Authentication is optional for public procedures.
+      user = null;
+    }
   }
 
   return {
