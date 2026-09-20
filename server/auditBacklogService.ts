@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { getSupabasePool, type PortalIdentity } from "./supabasePortal";
-import { queryOperationalAudit } from "./operationalAuditQueryService";
+import { syncIncrementally } from "./auditIncrementalSync";
 import type { AuditDuplicate, AuditException, AuditSourceMetric } from "./operationalAuditService";
 
 export type AuditFindingCategory = "EXCECAO" | "DUPLICIDADE";
@@ -20,14 +19,12 @@ export function findingsFromReport(report: { exceptions: AuditException[]; dupli
   ];
 }
 
-export function auditSyncIsReadyForSqlPath(): false {
-  // REGRA DE SEGURANÇA: a V1 carrega todos os payloads em memória e pode
-  // derrubar a VM Oracle de 1 GB. O sync permanece bloqueado até a versão SQL.
-  return false;
+export function auditSyncIsReadyForSqlPath(): true {
+  return true;
 }
 
-export async function syncAuditFindings(_actor: PortalIdentity) {
-  throw new Error("Sincronização temporariamente bloqueada: a auditoria atual carrega todas as fontes em memória. A versão SQL precisa ser aplicada antes de executar o backlog.");
+export async function syncAuditFindings(actor: PortalIdentity) {
+  return syncIncrementally(actor);
 }
 
 export async function getBacklogKpis() {

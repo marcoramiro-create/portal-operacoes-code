@@ -23,7 +23,7 @@ describe("auditBacklogService", () => {
     const second = { ...first, detail: "3 ocorrências" };
     expect(findingFingerprint(first)).toBe(findingFingerprint(second));
   });
-  it("bloqueia o sync enquanto a versão SQL não estiver pronta", () => {
-    expect(auditSyncIsReadyForSqlPath()).toBe(false);
+  it("libera o sync incremental depois da validação", () => {
+    expect(auditSyncIsReadyForSqlPath()).toBe(true);
   });
 });
