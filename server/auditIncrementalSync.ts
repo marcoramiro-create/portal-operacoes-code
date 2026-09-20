@@ -45,9 +45,16 @@ function findingsForPage(source: OperationalSourceKind, page: SourceRowPage, ind
 }
 
 export async function syncIncrementally(actor: PortalIdentity, options?: { db?: SyncDb; reader?: ReturnType<typeof createOperationalSourceRowReader> }): Promise<IncrementalSyncResult> {
-  const db = options?.db ?? getSupabasePool(); const reader = options?.reader ?? createOperationalSourceRowReader(); const latest = await reader.listLatestProcessedBatchIds(); const missing = SOURCES.filter(source => !latest.has(source)); if (missing.length) throw new Error(`Fontes sem lote processado: ${missing.join(", ")}`);
-  const index = await makeIndexes(reader, latest); const client = await db.connect(); let runId = ""; let rowsRead = 0; let findingCount = 0; let exceptionCount = 0; let duplicateCount = 0; let findingsNew = 0; let findingsUpdated = 0;
+  const db = options?.db ?? getSupabasePool();
+  const client = await db.connect();
+  // REGRA DE SEGURANÇA (pool max baixo): o leitor deve usar a MESMA conexão
+  // retida acima. Consultar o pool durante o sync causaria deadlock: o pool
+  // não teria conexão livre enquanto o sync espera a página.
+  const reader = options?.reader ?? createOperationalSourceRowReader({ query: (sql, params) => client.query(sql, params) });
+  let runId = ""; let rowsRead = 0; let findingCount = 0; let exceptionCount = 0; let duplicateCount = 0; let findingsNew = 0; let findingsUpdated = 0;
   try {
+    const latest = await reader.listLatestProcessedBatchIds(); const missing = SOURCES.filter(source => !latest.has(source)); if (missing.length) throw new Error(`Fontes sem lote processado: ${missing.join(", ")}`);
+    const index = await makeIndexes(reader, latest);
     await client.query("begin");
     await client.query("select pg_advisory_xact_lock(hashtext('portal-audit-backlog-sync'))");
     const run = await client.query<{ id: string }>(`insert into public.audit_runs (triggered_by,metrics) values ($1,'{}'::jsonb) returning id`, [actor.id]); runId = run.rows[0].id;
