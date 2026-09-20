@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getSupabasePool, type PortalIdentity } from "./supabasePortal";
 import { syncIncrementally } from "./auditIncrementalSync";
 import type { AuditDuplicate, AuditException, AuditSourceMetric } from "./operationalAuditService";
 
