@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const service = fs.readFileSync(path.join(process.cwd(), "server/portalAuthService.ts"), "utf8");
-const portal = fs.readFileSync(path.join(process.cwd(), "server/supabasePortal.ts"), "utf8");
+const router = fs.readFileSync(path.join(process.cwd(), "server/routers/portal.ts"), "utf8");
 const access = fs.readFileSync(path.join(process.cwd(), "client/src/pages/PortalAccess.tsx"), "utf8");
 const users = fs.readFileSync(path.join(process.cwd(), "client/src/pages/UserManagement.tsx"), "utf8");
 
@@ -14,9 +14,12 @@ describe("fluxo próprio de ativação e redefinição", () => {
     expect(service).toContain("used_at is null");
     expect(service).toContain("set used_at=now()");
   });
-  it("não chama e-mail legado do Supabase", () => {
-    expect(portal).not.toContain("auth/v1/recover");
-    expect(portal).not.toContain("auth/v1/invite");
+  it("liga a administração ao serviço próprio e não ao e-mail legado", () => {
+    expect(router).toContain("passwordFlowService");
+    expect(router).toContain("resendPortalInvite");
+    expect(router).toContain("resendPortalActivation");
+    expect(router).not.toContain("auth/v1/recover");
+    expect(router).not.toContain("auth/v1/invite");
     expect(access).not.toContain("resetPasswordForEmail");
     expect(users).toContain("copyPasswordLink");
   });
