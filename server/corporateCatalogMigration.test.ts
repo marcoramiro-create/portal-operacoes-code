@@ -9,6 +9,8 @@ describe("migration 0023 — cadastro corporativo e curvas", () => {
     expect(migration).toContain("alter table public.products add column if not exists source_batch_id");
     expect(migration).toContain("source_product_code");
     expect(migration).toContain("source_system");
+    expect(migration).toContain("products.product_type");
+    expect(migration).not.toContain("public.product_types");
   });
 
   it("modela agregado 1:N sem tratar agregado como produto único", () => {
@@ -29,15 +31,13 @@ describe("migration 0023 — cadastro corporativo e curvas", () => {
     expect(migration).toContain("produtos com tipo ERP PV não entram nas camadas derivadas");
     expect(migration).toContain("discarded_row_count integer not null default 0");
     expect(migration).toContain("discarded_reason_counts jsonb not null default '{}'::jsonb");
-    expect(migration).toContain("linhas brutas");
+    expect(migration).toContain("linhas PV permanecem no arquivo e na camada bruta");
   });
 
-  it("habilita RLS e policies para portal_app", () => {
+  it("habilita RLS sem depender de cadastro paralelo de tipos", () => {
     expect(migration).toContain("alter table public.products enable row level security");
-    expect(migration).toContain("products_portal_app");
-    expect(migration).toContain("product_types_portal_app");
-    expect(migration).toContain("enable row level security");
-    expect(migration).toContain("product_aggregates_portal_app");
-    expect(migration).toContain("sbz_product_curves_portal_app");
+    expect(migration).toContain("alter table public.product_aggregates enable row level security");
+    expect(migration).toContain("alter table public.sbz_product_curves enable row level security");
+    expect(migration).not.toContain("product_types_portal_app");
   });
 });
