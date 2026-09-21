@@ -5,6 +5,7 @@ import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { isEmailRateLimitError, recoveryErrorMessage } from "@/lib/supabaseAuthErrors";
 import { supabase } from "@/lib/supabase";
 import { trpc } from "@/lib/trpc";
+import { TRPCClientError } from "@trpc/client";
 import { KeyRound, Loader2, LockKeyhole, Send, ShieldCheck, UserRoundPlus } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { toast } from "sonner";
@@ -13,6 +14,8 @@ type AccessMode = "login" | "request";
 
 export default function PortalAccess() {
   const { session, passwordSetupRequired, clearPasswordSetupRequired } = useSupabaseAuth();
+  const utils = trpc.useUtils();
+  const ownLogin = trpc.auth.login.useMutation({ onSuccess: async () => { await utils.portal.me.invalidate(); toast.success("Acesso autenticado."); }, onError: error => toast.error(error.message) });
   const [mode, setMode] = useState<AccessMode>("login");
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -29,10 +32,15 @@ export default function PortalAccess() {
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setPending(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setPending(false);
-    if (error) return toast.error("Não foi possível entrar. Verifique o e-mail e a senha.");
-    toast.success("Acesso autenticado.");
+    try {
+      await ownLogin.mutateAsync({ email, password });
+      return;
+    } catch (error) {
+      if (!(error instanceof TRPCClientError) || error.data?.code !== "CONFLICT") return toast.error(error instanceof Error ? error.message : "Não foi possível entrar.");
+      const { error: supabaseError } = await supabase.auth.signInWithPassword({ email, password });
+      if (supabaseError) return toast.error("Não foi possível entrar. Verifique o e-mail e a senha.");
+      toast.success("Acesso autenticado.");
+    } finally { setPending(false); }
   };
 
   const definePassword = async (event: FormEvent<HTMLFormElement>) => {

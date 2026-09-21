@@ -85,9 +85,10 @@ function Router() {
 }
 
 function AuthGate() {
-  const { session, loading, passwordSetupRequired } = useSupabaseAuth();
+  const { session, loading, passwordSetupRequired, portalIdentity } = useSupabaseAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#f2f4f5]"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-950" /></div>;
-  if (!session || passwordSetupRequired) return <PortalAccess />;
+  if (!session && !portalIdentity) return <PortalAccess />;
+  if (session && passwordSetupRequired) return <PortalAccess />;
   return <Router />;
 }
 

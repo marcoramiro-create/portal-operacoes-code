@@ -92,6 +92,7 @@ export async function loginWithPortalPassword(email: string, password: string, r
   const result = await database.query<{ id: string; email: string; password_hash: string | null; status: string; locked_until: Date | null }>("select id, email, password_hash, status, locked_until from public.portal_users where lower(email) = lower($1) limit 1", [email]);
   const user = result.rows[0];
   if (!user || user.status !== "active" || (user.locked_until && user.locked_until > new Date())) { await recordPortalAuthEvent("login_failure", user?.id ?? null, { reason: "not_available" }); throw new TRPCError({ code: "UNAUTHORIZED", message: "E-mail ou senha inválidos." }); }
+  if (!user.password_hash) throw new TRPCError({ code: "CONFLICT", message: "Autenticação própria ainda não ativada para este usuário." });
   if (!(await verifyPortalPassword(password, user.password_hash))) {
     await database.query("update public.portal_users set failed_login_count = failed_login_count + 1, locked_until = case when failed_login_count + 1 >= $2 then now() + ($3 * interval '1 millisecond') else locked_until end where id = $1", [user.id, MAX_FAILED_LOGINS, LOCK_DURATION_MS]);
     await recordPortalAuthEvent("login_failure", user.id, { reason: "invalid_password" });

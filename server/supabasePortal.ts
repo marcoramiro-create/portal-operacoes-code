@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { Pool } from "pg";
+import { authenticatePortalSession } from "./portalAuthService";
 
 type ApplicationNodeRow = { id: string; node_key: string; label: string; parent_id: string | null; sort_order: number };
 type PortalUserRow = { id: string; auth_user_id: string | null; employee_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; can_fulfill_inventory_requests: boolean; profile_keys: string[] | null; profile_key?: string | null; email_confirmed_at?: Date | null };
@@ -65,6 +66,12 @@ async function getSupabaseAuthUser(authorizationHeader?: string) {
 }
 
 export async function getPortalIdentity(authorizationHeader?: string): Promise<PortalIdentity> {
+  const ownSession = authorizationHeader?.match(/^PortalSession\s+(.+)$/i);
+  if (ownSession) {
+    const identity = await authenticatePortalSession(ownSession[1]);
+    if (!identity) throw new TRPCError({ code: "UNAUTHORIZED", message: "Sessão do portal inválida ou expirada." });
+    return identity;
+  }
   const authUser = await getSupabaseAuthUser(authorizationHeader);
   const result = await getSupabasePool().query<PortalUserRow>(
     `select u.id, u.email, u.display_name, u.is_development_admin,

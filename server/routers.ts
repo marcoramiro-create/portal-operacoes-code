@@ -16,6 +16,7 @@ import { operationalImportRouter } from "./operationalImportRouter";
 import { operationalAuditRouter } from "./routers/operationalAudit";
 import { auditBacklogRouter } from "./routers/auditBacklog";
 import { loginWithPortalPassword, revokePortalSession } from "./portalAuthService";
+import { z } from "zod";
 
 function requestInfo(ctx: { req: { ip?: string; headers: Record<string, string | string[] | undefined> } }) {
   const userAgent = ctx.req.headers["user-agent"];
@@ -25,7 +26,7 @@ function requestInfo(ctx: { req: { ip?: string; headers: Record<string, string |
 export const appRouter = router({
   system: systemRouter,
   auth: router({
-    login: publicProcedure.input(({ email, password }: { email: string; password: string }) => ({ email, password })).mutation(async ({ ctx, input }) => {
+    login: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(1) })).mutation(async ({ ctx, input }) => {
       const session = await loginWithPortalPassword(input.email, input.password, requestInfo(ctx));
       ctx.res.cookie(COOKIE_NAME, session.token, { ...getSessionCookieOptions(ctx.req), maxAge: session.expiresAt.getTime() - Date.now() });
       return { success: true as const };
