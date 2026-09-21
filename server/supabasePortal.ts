@@ -3,7 +3,7 @@ import { Pool } from "pg";
 import { authenticatePortalSession } from "./portalAuthService";
 
 type ApplicationNodeRow = { id: string; node_key: string; label: string; parent_id: string | null; sort_order: number };
-type PortalUserRow = { id: string; auth_user_id: string | null; employee_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; can_fulfill_inventory_requests: boolean; profile_keys: string[] | null; profile_key?: string | null; email_confirmed_at?: Date | null };
+type PortalUserRow = { id: string; auth_user_id: string | null; employee_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; can_fulfill_inventory_requests: boolean; profile_keys: string[] | null; profile_key?: string | null; own_password_configured?: boolean };
 type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
 type RequestRow = { id: string; requested_email: string; status: "pending" | "approved" | "rejected" | "cancelled"; reason: string | null; created_at: Date; display_name: string | null; active_user_exists?: boolean };
 type Permission = "view" | "manage" | "approve";
@@ -200,16 +200,16 @@ export async function updateUserNodePermission(input: { userId: string; nodeId: 
 
 export async function listPortalUsers() {
   const result = await getSupabasePool().query<PortalUserRow>(
-    `select u.id, u.auth_user_id, u.employee_id, u.email, u.display_name, u.status, u.is_development_admin, u.can_fulfill_inventory_requests, auth.email_confirmed_at,
+    `select u.id, u.auth_user_id, u.employee_id, u.email, u.display_name, u.status, u.is_development_admin, u.can_fulfill_inventory_requests,
+       (u.password_hash is not null) as own_password_configured,
        coalesce(array_agg(p.profile_key) filter (where p.profile_key is not null), '{}') as profile_keys
      from public.portal_users u
-     left join auth.users auth on auth.id = u.auth_user_id
      left join public.user_profile_assignments assignment on assignment.user_id = u.id
      left join public.access_profiles p on p.id = assignment.profile_id
-     group by u.id, auth.email_confirmed_at
+     group by u.id
      order by u.created_at asc`,
   );
-  return result.rows.map(row => ({ id: row.id, authUserId: row.auth_user_id, employeeId: row.employee_id, email: row.email, displayName: row.display_name, status: row.status, isDevelopmentAdmin: row.is_development_admin, canFulfillInventoryRequests: row.can_fulfill_inventory_requests, activation: row.email_confirmed_at ? "confirmed" : "pending", profiles: normalizeProfileKeys(row.profile_keys ?? []) }));
+  return result.rows.map(row => ({ id: row.id, authUserId: row.auth_user_id, employeeId: row.employee_id, email: row.email, displayName: row.display_name, status: row.status, isDevelopmentAdmin: row.is_development_admin, canFulfillInventoryRequests: row.can_fulfill_inventory_requests, activation: row.own_password_configured ? "confirmed" : "pending", profiles: normalizeProfileKeys(row.profile_keys ?? []) }));
 }
 
 export async function listActiveEmployees() {
@@ -217,32 +217,17 @@ export async function listActiveEmployees() {
   return result.rows.map(row => ({ id: row.id, canRequestInventory: row.is_inventory_requester, label: `${row.employee_code ? `${row.employee_code} · ` : ""}${row.full_name}${row.is_inventory_requester ? " · requisitante" : " · não requisitante"}` }));
 }
 
-async function ensureAuthInvitation(email: string, displayName: string) {
-  const database = getSupabasePool();
-  const existing = await database.query<{ id: string }>("select id from auth.users where lower(email) = lower($1) limit 1", [email]);
-  if (existing.rows[0]) return existing.rows[0];
-  const { projectUrl, serviceRoleKey } = serviceConfig();
-  const response = await fetch(`${projectUrl}/auth/v1/invite`, {
-    method: "POST",
-    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, data: { display_name: displayName, portal_environment: "homologacao" } }),
-  });
-  const body = await response.json();
-  if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: body.msg ?? body.message ?? "Não foi possível enviar o convite." });
-  return body.user ?? body as { id: string };
-}
-
 export async function createPortalUser(input: { email: string; displayName: string; profileKey: string }, actor: PortalIdentity) {
-  const authUser = await ensureAuthInvitation(input.email, input.displayName);
   const database = getSupabasePool();
   const portalUser = await database.query<{ id: string }>(
-    `insert into public.portal_users (auth_user_id, email, display_name, status)
-     values ($1, $2, $3, 'active')
-     on conflict (email) do update set auth_user_id = excluded.auth_user_id, display_name = excluded.display_name, status = 'active', updated_at = now()
+    `insert into public.portal_users (email, display_name, status)
+     values ($1, $2, 'active')
+     on conflict (email) do update set display_name = excluded.display_name, status = 'active', updated_at = now()
      returning id`,
-    [authUser.id, input.email, input.displayName],
+    [input.email, input.displayName],
   );
   await assignProfile(portalUser.rows[0].id, input.profileKey, actor);
+  await database.query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, 'portal_user', $2, 'created', jsonb_build_object('email', $3::text))", [actor.id, portalUser.rows[0].id, input.email]);
   return { success: true } as const;
 }
 
@@ -282,27 +267,16 @@ export async function resendInvite(email: string) {
 
 export async function resendActivationInvite(userId: string) {
   const database = getSupabasePool();
-  const result = await database.query<{ email: string; display_name: string | null; auth_user_id: string | null; email_confirmed_at: Date | null }>(
-    `select portal.email, portal.display_name, portal.auth_user_id, auth.email_confirmed_at
-     from public.portal_users portal
-     left join auth.users auth on auth.id = portal.auth_user_id
-     where portal.id = $1`,
+  const result = await database.query<{ email: string; display_name: string | null; password_hash: string | null }>(
+    "select email, display_name, password_hash from public.portal_users where id = $1",
     [userId],
   );
   const user = result.rows[0];
   if (!user) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
-  if (user.email_confirmed_at) throw new TRPCError({ code: "BAD_REQUEST", message: "Este usuário já concluiu a ativação." });
-  const { projectUrl, serviceRoleKey } = serviceConfig();
-  const response = await fetch(`${projectUrl}/auth/v1/invite`, {
-    method: "POST",
-    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email: user.email, data: { display_name: user.display_name, portal_environment: "homologacao" }, redirect_to: "https://portal-operacoes-code-marco-ramiro.vercel.app" }),
-  });
-  const body = await response.json();
-  if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: body.msg ?? body.message ?? "Não foi possível reenviar o convite de ativação." });
-  const authUserId = body.user?.id ?? body.id;
-  if (authUserId && !user.auth_user_id) await database.query("update public.portal_users set auth_user_id = $2, status = 'active', updated_at = now() where id = $1", [userId, authUserId]);
-  return { success: true } as const;
+  // REGRA: a ativação agora é a senha própria, provisionada pelo administrador
+  // por procedimento seguro na VM; o convite por e-mail do Supabase foi descontinuado.
+  if (user.password_hash) throw new TRPCError({ code: "BAD_REQUEST", message: "Este usuário já possui senha própria configurada." });
+  throw new TRPCError({ code: "BAD_REQUEST", message: `Provisione a senha inicial de ${user.email} pelo procedimento seguro na VM; o envio de convite por e-mail foi descontinuado.` });
 }
 
 export async function createAccessRequest(input: { email: string; displayName: string; reason?: string }) {
