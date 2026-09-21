@@ -45,17 +45,15 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     },
     portalIdentity: portalMe.data ?? null,
     signOut: async () => {
-      // O login próprio é a fonte de autenticação ativa. O Supabase pode não
-      // possuir sessão correspondente; esse erro não pode impedir a limpeza.
+      // O login próprio é a fonte ativa. O logout não aguarda o Supabase nem
+      // uma nova consulta: uma sessão legada ausente não pode travar o botão.
       await ownLogout.mutateAsync().catch(() => undefined);
-      await supabase.auth.signOut().catch(() => undefined);
       setSession(null);
       setPasswordSetupRequired(false);
-      await portalMe.refetch().catch(() => undefined);
       window.history.replaceState({}, document.title, "/");
       return { error: null };
     },
-  }), [loading, passwordSetupRequired, session, portalMe.data, portalMe.refetch, ownLogout]);
+  }), [loading, passwordSetupRequired, session, portalMe.data, ownLogout]);
 
   return <SupabaseAuthContext.Provider value={value}>{children}</SupabaseAuthContext.Provider>;
 }
