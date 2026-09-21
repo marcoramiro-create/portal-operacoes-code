@@ -4,6 +4,7 @@
 -- REGRA: um agregado pode reunir N produtos; agregado não é tratado como produto único.
 -- REGRA: produtos com tipo ERP PV não entram nas camadas derivadas nem nas curvas.
 -- REGRA: linhas PV permanecem no arquivo e na camada bruta; o lote registra a quantidade descartada.
+-- REGRA: o tipo do produto é mantido em products.product_type; não criar tabela paralela product_types.
 
 -- Rastreabilidade da normalização: não apagar nem alterar as linhas brutas para reduzir volume.
 alter table public.operational_import_batches
@@ -66,23 +67,6 @@ alter table public.product_aggregates enable row level security;
 alter table public.product_aggregate_members enable row level security;
 alter table public.sbz_product_curves enable row level security;
 alter table public.products enable row level security;
-alter table public.product_types enable row level security;
 
- grant usage on schema public to portal_app;
-grant select, insert, update on public.product_aggregates to portal_app;
-grant select, insert, update on public.product_aggregate_members to portal_app;
-grant select, insert, update on public.sbz_product_curves to portal_app;
-grant select, insert, update on public.products to portal_app;
-grant select, insert, update on public.product_types to portal_app;
-grant update on public.operational_import_batches to portal_app;
-
-drop policy if exists products_portal_app on public.products;
-create policy products_portal_app on public.products for all to portal_app using (true) with check (true);
-drop policy if exists product_types_portal_app on public.product_types;
-create policy product_types_portal_app on public.product_types for all to portal_app using (true) with check (true);
-drop policy if exists product_aggregates_portal_app on public.product_aggregates;
-create policy product_aggregates_portal_app on public.product_aggregates for all to portal_app using (true) with check (true);
-drop policy if exists product_aggregate_members_portal_app on public.product_aggregate_members;
-create policy product_aggregate_members_portal_app on public.product_aggregate_members for all to portal_app using (true) with check (true);
-drop policy if exists sbz_product_curves_portal_app on public.sbz_product_curves;
-create policy sbz_product_curves_portal_app on public.sbz_product_curves for all to portal_app using (true) with check (true);
+-- Grants e policies são finalizados pela migration 0025, que também serve para
+-- instalações onde esta migration tenha sido interrompida antes desta seção.
