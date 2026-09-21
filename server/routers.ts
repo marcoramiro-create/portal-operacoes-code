@@ -15,12 +15,27 @@ import { epiRouter } from "./routers/epi";
 import { operationalImportRouter } from "./operationalImportRouter";
 import { operationalAuditRouter } from "./routers/operationalAudit";
 import { auditBacklogRouter } from "./routers/auditBacklog";
+import { loginWithPortalPassword, revokePortalSession } from "./portalAuthService";
+import { z } from "zod";
+
+function requestInfo(ctx: { req: { ip?: string; headers: Record<string, string | string[] | undefined> } }) {
+  const userAgent = ctx.req.headers["user-agent"];
+  return { ip: ctx.req.ip, userAgent: Array.isArray(userAgent) ? userAgent[0] : userAgent };
+}
 
 export const appRouter = router({
   system: systemRouter,
   auth: router({
+    login: publicProcedure.input(z.object({ email: z.string().email(), password: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+      const session = await loginWithPortalPassword(input.email, input.password, requestInfo(ctx));
+      ctx.res.cookie(COOKIE_NAME, session.token, { ...getSessionCookieOptions(ctx.req), maxAge: session.expiresAt.getTime() - Date.now() });
+      return { success: true as const };
+    }),
     me: publicProcedure.query(opts => opts.ctx.user),
-    logout: publicProcedure.mutation(({ ctx }) => {
+    logout: publicProcedure.mutation(async ({ ctx }) => {
+      const cookieHeader = ctx.req.headers.cookie;
+      const token = cookieHeader?.split(";").map(value => value.trim()).find(value => value.startsWith(`${COOKIE_NAME}=`))?.slice(COOKIE_NAME.length + 1);
+      if (token) await revokePortalSession(token);
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
