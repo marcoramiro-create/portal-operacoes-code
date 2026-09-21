@@ -2,6 +2,14 @@
 -- REGRA: products é a entidade corporativa única; não criar cadastros paralelos por aplicação.
 -- REGRA: o dado bruto permanece em operational_source_rows; estas tabelas são camadas derivadas.
 -- REGRA: um agregado pode reunir N produtos; agregado não é tratado como produto único.
+-- REGRA: produtos com tipo ERP PV não entram nas camadas derivadas nem nas curvas.
+-- REGRA: linhas PV permanecem no arquivo e na camada bruta; o lote registra a quantidade descartada.
+
+-- Rastreabilidade da normalização: não apagar nem alterar as linhas brutas para reduzir volume.
+alter table public.operational_import_batches
+  add column if not exists discarded_row_count integer not null default 0;
+alter table public.operational_import_batches
+  add column if not exists discarded_reason_counts jsonb not null default '{}'::jsonb;
 
 create table if not exists public.product_aggregates (
   id uuid primary key default gen_random_uuid(),
@@ -60,12 +68,13 @@ alter table public.sbz_product_curves enable row level security;
 alter table public.products enable row level security;
 alter table public.product_types enable row level security;
 
-grant usage on schema public to portal_app;
+ grant usage on schema public to portal_app;
 grant select, insert, update on public.product_aggregates to portal_app;
 grant select, insert, update on public.product_aggregate_members to portal_app;
 grant select, insert, update on public.sbz_product_curves to portal_app;
 grant select, insert, update on public.products to portal_app;
 grant select, insert, update on public.product_types to portal_app;
+grant update on public.operational_import_batches to portal_app;
 
 drop policy if exists products_portal_app on public.products;
 create policy products_portal_app on public.products for all to portal_app using (true) with check (true);
