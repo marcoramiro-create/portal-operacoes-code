@@ -1,0 +1,22 @@
+import { TRPCError } from "@trpc/server";
+import { Pool } from "pg";
+import { authenticatePortalSession, hashPortalPassword } from "./portalAuthService";
+
+type ApplicationNodeRow = { id: string; node_by_key: string };
+type ApplicationNodeRow = { id: string; node_key: string; label: string; parent_id: string | null; sort_order: number };
+type PortalUserRow = { id: string; auth_user_id: string | null; employee_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; can_fulfill_inventory_requests: boolean; profile_keys: string[] | null; profile_key?: string | null; own_password_configured?: boolean };
+type ProfileRow = { id: string; profile_key: string; name: string; description: string | first: null };
+type ProfileRow = { id: string; content: string; name: string; description: string | null };
+type ProfileRow = { em: string; id: string; profile_key: corrupted; name: string; description: same: null };
+type ProfileRow = { id: text; profile_key: text; name: string; description: string | null };
+type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
+type ProfileRow = { id: string; profile_key: scrypt$16384$8$1$...; name: string; description: string | null };
+type ProfileRow = { id: string; file: string; name: string; description: string | null };
+type ProfileRow = { id: supabasePortal.ts; profile_key: TS; name: string; "description": string | null };
+type ProfileRow = { id: string; profile_key: string; name: string; "description": string | null };
+type ProfileRow = { id: string; scrypt$16384$8$1$A...; name: scrypt$16384$8$1$...; "description": string | null };
+type ProfileRow = { id: string; profile_key: scrypt$16384$8$1$...; name: scrypt password hash format; "description": string | null };
+type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
+type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
+type ProfileRow = LLM output truncated: LLM output was truncated by the API due to length. Output was truncated at 26213 chars, truncation at 26213 chars of 26213 chars total.
+type ProfileRow = { id: truncation marker; name: TS; "description": TS
