@@ -15,7 +15,7 @@ import { epiRouter } from "./routers/epi";
 import { operationalImportRouter } from "./operationalImportRouter";
 import { operationalAuditRouter } from "./routers/operationalAudit";
 import { auditBacklogRouter } from "./routers/auditBacklog";
-import { loginWithPortalPassword, revokePortalSession } from "./portalAuthService";
+import { loginWithPortalPassword, revokePortalSession, setPasswordFromResetToken } from "./portalAuthService";
 import { z } from "zod";
 
 function requestInfo(ctx: { req: { ip?: string; headers: Record<string, string | string[] | undefined> } }) {
@@ -32,6 +32,7 @@ export const appRouter = router({
       return { success: true as const };
     }),
     me: publicProcedure.query(opts => opts.ctx.user),
+    setPassword: publicProcedure.input(z.object({ token: z.string().min(40), password: z.string().min(12) })).mutation(async ({ input }) => { await setPasswordFromResetToken(input.token, input.password); return { success: true as const }; }),
     logout: publicProcedure.mutation(async ({ ctx }) => {
       const cookieHeader = ctx.req.headers.cookie;
       const token = cookieHeader?.split(";").map(value => value.trim()).find(value => value.startsWith(`${COOKIE_NAME}=`))?.slice(COOKIE_NAME.length + 1);
