@@ -11,7 +11,7 @@ describe("migration 0023 — cadastro corporativo e curvas", () => {
     expect(migration).toContain("source_system");
   });
 
-  it("modela agregado 1:N sem tratar agregado como produto", () => {
+  it("modela agregado 1:N sem tratar agregado como produto único", () => {
     expect(migration).toContain("create table if not exists public.product_aggregates");
     expect(migration).toContain("create table if not exists public.product_aggregate_members");
     expect(migration).toContain("aggregate_id uuid not null references public.product_aggregates");
@@ -23,6 +23,13 @@ describe("migration 0023 — cadastro corporativo e curvas", () => {
     expect(migration).toContain("reference_period date not null");
     expect(migration).toContain("calculation_version text not null");
     expect(migration).toContain("unique(product_id, branch_code, operation, reference_period, calculation_version)");
+  });
+
+  it("registra o descarte de PV sem apagar o bruto", () => {
+    expect(migration).toContain("produtos com tipo ERP PV não entram nas camadas derivadas");
+    expect(migration).toContain("discarded_row_count integer not null default 0");
+    expect(migration).toContain("discarded_reason_counts jsonb not null default '{}'::jsonb");
+    expect(migration).toContain("linhas brutas");
   });
 
   it("habilita RLS e policies para portal_app", () => {
