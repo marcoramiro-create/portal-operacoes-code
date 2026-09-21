@@ -10,10 +10,7 @@ export async function createPortalPasswordLink(email: string, request: { ip?: st
   return { url: `/acesso?reset=${encodeURIComponent(token)}`, activation: !user.password_hash };
 }
 
-export async function resendPortalInvite(email: string, request: { ip?: string }) {
-  return createPortalPasswordLink(email, request);
-}
-
+export async function resendPortalInvite(email: string, request: { ip?: string }) { return createPortalPasswordLink(email, request); }
 export async function resendPortalActivation(userId: string, request: { ip?: string }) {
   const result = await getSupabasePool().query<{ email: string }>("select email from public.portal_users where id=$1 and status='active'", [userId]);
   if (!result.rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
