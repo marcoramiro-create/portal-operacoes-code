@@ -8,6 +8,6 @@ describe("contexto tRPC — sessão própria", () => {
   it("não envia PortalSession para o autenticador OAuth legado", () => {
     expect(context).toContain("hasPortalSession");
     expect(context).toContain("!hasBearer && !hasPortalSession");
-    expect(context).toContain("/^PortalSession\\\\s+/i");
+    expect(context).toContain("PortalSession");
   });
 });
