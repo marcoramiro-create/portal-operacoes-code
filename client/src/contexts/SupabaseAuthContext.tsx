@@ -45,12 +45,13 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     },
     portalIdentity: portalMe.data ?? null,
     signOut: async () => {
-      // O login próprio é a fonte ativa. O logout não aguarda o Supabase nem
-      // uma nova consulta: uma sessão legada ausente não pode travar o botão.
-      await ownLogout.mutateAsync().catch(() => undefined);
+      // A revogação é disparada sem bloquear a interface. O servidor ainda
+      // remove o cookie HttpOnly; o cliente não pode ficar preso esperando
+      // uma resposta para sair da tela protegida.
+      void ownLogout.mutateAsync().catch(() => undefined);
       setSession(null);
       setPasswordSetupRequired(false);
-      window.history.replaceState({}, document.title, "/");
+      window.location.replace("/");
       return { error: null };
     },
   }), [loading, passwordSetupRequired, session, portalMe.data, ownLogout]);
