@@ -1,10 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { createNfBarcodeScannerConfig, normalizeNfBarcodeValue } from "@/lib/nfBarcodeScanner";
-import Quagga, { type QuaggaJSResultCallbackFunction } from "@ericblade/quagga2";
+import { NfBarcodeScanner } from "@/lib/nfBarcodeScanner";
 import { formatNfNumber, formatNfReceiptExportRows } from "../../../shared/nfReceiptExport";
-import { Barcode, Camera, CheckCircle2, Download, Keyboard, LoaderCircle, ScanLine, ShieldCheck, X } from "lucide-react";
+import { Barcode, Camera, CheckCircle2, Download, Flashlight, FlashlightOff, Keyboard, LoaderCircle, ScanLine, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -12,16 +11,23 @@ import * as XLSX from "xlsx";
 type CaptureMethod = "manual" | "camera" | "barcode_reader";
 
 const clean = (value: string) => value.replace(/\D/g, "").slice(0, 44);
+
 const labels: Record<CaptureMethod, string> = {
   manual: "Digitação",
   camera: "Câmera",
   barcode_reader: "Leitor de mesa",
 };
+
 const modeHelp: Record<CaptureMethod, string> = {
   manual: "Digite ou cole os 44 dígitos da chave de acesso.",
   barcode_reader: "Deixe o cursor no campo e faça a leitura; o leitor de mesa funciona como teclado.",
-  camera: "Posicione o código de barras da DANFE na faixa do leitor. No computador, a webcam será usada automaticamente.",
+  camera: "Posicione o código de barras da DANFE na frente da câmera, na horizontal, e aproxime devagar. Se o reconhecimento automático demorar, use o botão Fotografar e ler.",
 };
+
+// REGRA (22/09/2026): se a câmera abrir mas nenhum código for reconhecido
+// em 20s, orientar o usuário em vez de manter silêncio.
+const DETECT_TIMEOUT_MS = 20_000;
+
 export default function NfReceipts() {
   const [accessKey, setAccessKey] = useState("");
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>("manual");
@@ -29,23 +35,38 @@ export default function NfReceipts() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [scannerMode, setScannerMode] = useState<"native" | "zxing" | null>(null);
+  const [torchOn, setTorchOn] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
   const scannerRef = useRef<HTMLDivElement>(null);
-  const detectedHandlerRef = useRef<QuaggaJSResultCallbackFunction | null>(null);
+  const scannerInstanceRef = useRef<NfBarcodeScanner | null>(null);
   const scannerActiveRef = useRef(false);
   const scannerSessionRef = useRef(0);
+  const detectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const recent = trpc.nfReceipts.recent.useQuery(undefined, { retry: false });
   const exportRows = trpc.nfReceipts.exportRows.useQuery(undefined, { enabled: false, retry: false });
   const utils = trpc.useUtils();
 
+  const clearDetectTimeout = useCallback(() => {
+    if (detectTimeoutRef.current) {
+      clearTimeout(detectTimeoutRef.current);
+      detectTimeoutRef.current = null;
+    }
+  }, []);
+
   const stopCamera = useCallback(() => {
     scannerSessionRef.current += 1;
-    if (detectedHandlerRef.current) Quagga.offDetected(detectedHandlerRef.current);
-    detectedHandlerRef.current = null;
-    if (scannerActiveRef.current) void Quagga.stop().catch(() => undefined);
+    clearDetectTimeout();
+    scannerInstanceRef.current?.stop();
+    scannerInstanceRef.current = null;
     scannerActiveRef.current = false;
     setCameraOpen(false);
     setCameraStarting(false);
-  }, []);
+    setScannerMode(null);
+    setTorchOn(false);
+  }, [clearDetectTimeout]);
 
   const capture = trpc.nfReceipts.capture.useMutation({
     onSuccess: data => {
@@ -63,24 +84,30 @@ export default function NfReceipts() {
     scannerSessionRef.current = session;
     setCameraError(null);
     setCameraStarting(true);
+    clearDetectTimeout();
     try {
-      await Quagga.init(createNfBarcodeScannerConfig(scannerRef.current));
+      const instance = new NfBarcodeScanner();
+      scannerInstanceRef.current = instance;
+      await instance.start(
+        scannerRef.current,
+        key => {
+          setAccessKey(key);
+          toast.success("Código de barras identificado. Revise a chave antes de registrar a NF.");
+          stopCamera();
+        },
+        mode => setScannerMode(mode),
+      );
       if (session !== scannerSessionRef.current) {
-        await Quagga.stop().catch(() => undefined);
+        instance.stop();
         return;
       }
-      const onDetected: QuaggaJSResultCallbackFunction = result => {
-        const key = normalizeNfBarcodeValue(result.codeResult?.code);
-        if (!key) return;
-        setAccessKey(key);
-        toast.success("Código de barras identificado. Revise a chave antes de registrar a NF.");
-        stopCamera();
-      };
-      detectedHandlerRef.current = onDetected;
-      Quagga.onDetected(onDetected);
-      Quagga.start();
       scannerActiveRef.current = true;
+      detectTimeoutRef.current = setTimeout(() => {
+        if (!scannerActiveRef.current) return;
+        setCameraError("Ainda não reconhecemos o código automaticamente. Aproxime a câmera, evite reflexo e toque em Fotografar e ler.");
+      }, DETECT_TIMEOUT_MS);
     } catch (error) {
+      clearDetectTimeout();
       if (session !== scannerSessionRef.current) return;
       scannerActiveRef.current = false;
       setCameraOpen(false);
@@ -90,25 +117,61 @@ export default function NfReceipts() {
     } finally {
       setCameraStarting(false);
     }
-  }, []);
+  }, [clearDetectTimeout]);
 
   useEffect(() => {
     if (captureMethod === "camera" && cameraOpen) void startCamera();
   }, [cameraOpen, captureMethod, startCamera]);
 
-  useEffect(() => () => { if (scannerActiveRef.current) void Quagga.stop().catch(() => undefined); }, []);
+  useEffect(() => () => {
+    clearDetectTimeout();
+    scannerInstanceRef.current?.stop();
+  }, [clearDetectTimeout]);
+
+  const handlePhoto = async () => {
+    const instance = scannerInstanceRef.current;
+    if (!instance || photoBusy || !scannerActiveRef.current) return;
+    setPhotoBusy(true);
+    try {
+      const ok = await instance.captureStill();
+      if (!ok) toast.error("Ainda não li o código. Aproxime, evite reflexo e toque em Fotografar e ler de novo.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const toggleTorch = async () => {
+    const instance = scannerInstanceRef.current;
+    if (!instance) return;
+    const next = !torchOn;
+    const ok = await instance.setTorch(next);
+    if (!ok) {
+      toast.info("Seu aparelho não permite acender a lanterna pelo portal.");
+      return;
+    }
+    setTorchOn(next);
+  };
+
+  const changeZoom = async (level: number) => {
+    setZoomLevel(level);
+    const ok = await scannerInstanceRef.current?.setZoom(level);
+    if (ok === false) toast.info("Seu aparelho não permite zoom pelo portal.");
+  };
 
   const submit = () => capture.mutate({ accessKey, captureMethod });
+
   const changeMode = (next: CaptureMethod) => {
     setCaptureMethod(next);
     setCameraError(null);
     if (next === "camera") setCameraOpen(true);
     else stopCamera();
   };
+
   const retryCamera = () => {
     setCameraError(null);
     setCameraOpen(true);
   };
+
   const exportReadings = async () => {
     const response = await exportRows.refetch();
     if (response.error) { toast.error(response.error.message); return; }
@@ -133,9 +196,7 @@ export default function NfReceipts() {
         <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">Recebimento simples de NF</h1>
         <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">Registre a chave de acesso da NF. O portal grava automaticamente o usuário autenticado, a data e a hora da leitura, além de preparar campos para cruzamento futuro com SC7 e NF Legal.</p>
       </header>
-
       <nav aria-label="Seções do recebimento" className="mb-5 grid max-w-md grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1"><button type="button" onClick={() => setActiveView("capture")} className={`rounded-xl px-4 py-2.5 text-xs font-extrabold transition ${activeView === "capture" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}>Capturar chave</button><button type="button" onClick={() => setActiveView("history")} className={`rounded-xl px-4 py-2.5 text-xs font-extrabold transition ${activeView === "history" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}>Histórico e exportação</button></nav>
-
       <div className="grid gap-5 xl:grid-cols-[1.06fr_.94fr]">
         {activeView === "capture" && <section className="sc-surface p-5 sm:p-7">
           <div className="flex items-center gap-3">
@@ -145,7 +206,6 @@ export default function NfReceipts() {
               <p className="mt-0.5 text-xs font-medium text-slate-500">Escolha como preencher o único campo de chave e registre os 44 dígitos.</p>
             </div>
           </div>
-
           <div className="mt-6">
             <label className="text-sm font-extrabold text-slate-800">Modo de coleta</label>
             <div className="mt-2 grid gap-2 sm:grid-cols-3">
@@ -158,7 +218,6 @@ export default function NfReceipts() {
             </div>
             <p className="mt-3 text-xs font-semibold text-slate-500">{modeHelp[captureMethod]}</p>
           </div>
-
           <div className="mt-6">
             <label className="text-sm font-extrabold text-slate-800">Chave de acesso da NF</label>
             <div className="mt-2 flex gap-2">
@@ -170,23 +229,42 @@ export default function NfReceipts() {
             </div>
             <p className="mt-1.5 text-xs font-semibold text-slate-500">{accessKey.length}/44 dígitos</p>
           </div>
-
           {captureMethod === "camera" && (
             <div className="mt-5 border-t border-slate-100 pt-5">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-extrabold text-slate-800">Leitor de código pela câmera</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">O leitor reconhece automaticamente o Code 128 da DANFE. Mantenha o código na horizontal, dentro da faixa, e aproxime devagar até o foco ficar nítido.</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">O leitor tenta reconhecer sozinho. Se não reconhecer em alguns segundos, toque em Fotografar e ler. Mantenha o código na horizontal e sem reflexo.</p>
                 </div>
                 {cameraOpen ? <Button variant="outline" onClick={stopCamera}><X className="mr-2 h-4 w-4" />Encerrar câmera</Button> : <Button variant="outline" onClick={retryCamera}><Camera className="mr-2 h-4 w-4" />Iniciar leitor</Button>}
               </div>
               {cameraOpen && <div ref={scannerRef} className="relative mt-4 aspect-video overflow-hidden rounded-xl bg-slate-950 [&_canvas]:absolute [&_canvas]:inset-0 [&_canvas]:h-full [&_canvas]:w-full [&_canvas]:object-cover [&_video]:h-full [&_video]:w-full [&_video]:object-cover" />}
               {cameraStarting && <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Iniciando leitor de código…</p>}
               {cameraError && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{cameraError}</p>}
+              {scannerMode && (
+                <p className="mt-3 text-xs font-semibold text-slate-500">
+                  {scannerMode === "native" ? "Modo: leitor rápido" : "Modo: leitor compatível"}
+                </p>
+              )}
+              {cameraOpen && !cameraStarting && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <Button onClick={() => void handlePhoto()} disabled={photoBusy}>
+                    {photoBusy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}
+                    {photoBusy ? "Lendo…" : "Fotografar e ler"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => void toggleTorch()}>
+                    {torchOn ? <FlashlightOff className="mr-1.5 h-4 w-4" /> : <Flashlight className="mr-1.5 h-4 w-4" />}
+                    {torchOn ? "Lanterna ligada" : "Lanterna"}
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-500">Zoom</span>
+                    <input type="range" min={1} max={4} step={0.5} value={zoomLevel} onChange={event => void changeZoom(Number(event.target.value))} className="w-28" />
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>}
-
         {activeView === "history" && <section className="sc-surface overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-7">
             <div className="flex items-center gap-3">
