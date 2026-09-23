@@ -1,3 +1,4 @@
+export type ReadingPoint = "descarga" | "recebimento" | "conferencia" | "envio_fiscal";
 export type NfReceiptExportSource = {
   accessKey: string;
   issuerCnpj: string;
@@ -6,6 +7,7 @@ export type NfReceiptExportSource = {
   invoiceNumber: string;
   issuedYearMonth: string;
   captureMethod: "manual" | "camera" | "barcode_reader";
+  readingPoint: ReadingPoint;
   capturedAt: Date;
   capturedBy: string | null;
   protheusSc7Reference: string | null;
@@ -13,17 +15,19 @@ export type NfReceiptExportSource = {
   matchedAt: Date | null;
   supplier: { code: string; store: string | null; legalName: string | null; tradeName: string | null } | null;
 };
-
 const captureMethodLabels: Record<NfReceiptExportSource["captureMethod"], string> = {
   manual: "Digitação",
   camera: "Câmera",
   barcode_reader: "Leitor de mesa",
 };
-
+const readingPointLabels: Record<ReadingPoint, string> = {
+  descarga: "Descarga",
+  recebimento: "Recebimento",
+  conferencia: "Conferência",
+  envio_fiscal: "Envio ao fiscal",
+};
 export const formatNfNumber = (value: string | number | null | undefined) => String(value ?? "").replace(/\D/g, "").padStart(9, "0").slice(-9);
-
 const formatDateTime = (value: Date | null) => value ? value.toLocaleString("pt-BR") : "";
-
 export function formatNfReceiptExportRows(rows: NfReceiptExportSource[]) {
   return rows.map(row => ({
     "Chave de acesso": row.accessKey,
@@ -36,6 +40,7 @@ export function formatNfReceiptExportRows(rows: NfReceiptExportSource[]) {
     "Número NF": formatNfNumber(row.invoiceNumber),
     "Ano/mês emissão": row.issuedYearMonth,
     "Modo de coleta": captureMethodLabels[row.captureMethod],
+    "Ponto de leitura": readingPointLabels[row.readingPoint] ?? row.readingPoint,
     "Usuário da leitura": row.capturedBy ?? "Usuário do portal",
     "Data/hora da leitura": formatDateTime(row.capturedAt),
     "Referência SC7 Protheus": row.protheusSc7Reference ?? "",

@@ -3,27 +3,40 @@ import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { NfBarcodeScanner } from "@/lib/nfBarcodeScanner";
 import { formatNfNumber, formatNfReceiptExportRows } from "../../../shared/nfReceiptExport";
-import { Barcode, Camera, CheckCircle2, Download, Flashlight, FlashlightOff, Keyboard, LoaderCircle, ScanLine, ShieldCheck, X } from "lucide-react";
+import { Barcode, Camera, CheckCircle2, Download, Flashlight, FlashlightOff, Keyboard, LoaderCircle, MapPin, ScanLine, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 
 type CaptureMethod = "manual" | "camera" | "barcode_reader";
 
-const clean = (value: string) => value.replace(/\D/g, "").slice(0, 44);
+// ============================================================
+// RECEBIMENTO CORPORATIVO — PONTO DE LEITURA (23/09/2026)
+// REGRA DE NEGÓCIO: o usuário indica DE ONDE está fazendo a
+// leitura (Descarga / Recebimento / Conferência / Envio ao fiscal).
+// O ponto é registrado em CADA leitura e nunca fica travado no
+// usuário, para suportar rotação de funcionários.
+// ============================================================
+type ReadingPoint = "descarga" | "recebimento" | "conferencia" | "envio_fiscal";
+const readingPoints: ReadingPoint[] = ["descarga", "recebimento", "conferencia", "envio_fiscal"];
+const readingPointLabels: Record<ReadingPoint, string> = {
+  descarga: "Descarga",
+  recebimento: "Recebimento",
+  conferencia: "Conferência",
+  envio_fiscal: "Envio ao fiscal",
+};
 
+const clean = (value: string) => value.replace(/\D/g, "").slice(0, 44);
 const labels: Record<CaptureMethod, string> = {
   manual: "Digitação",
   camera: "Câmera",
   barcode_reader: "Leitor de mesa",
 };
-
 const modeHelp: Record<CaptureMethod, string> = {
   manual: "Digite ou cole os 44 dígitos da chave de acesso.",
   barcode_reader: "Deixe o cursor no campo e faça a leitura; o leitor de mesa funciona como teclado.",
   camera: "Posicione o código de barras da DANFE na frente da câmera, na horizontal, e aproxime devagar. Se o reconhecimento automático demorar, use o botão Fotografar e ler.",
 };
-
 // REGRA (22/09/2026): se a câmera abrir mas nenhum código for reconhecido
 // em 20s, orientar o usuário em vez de manter silêncio.
 const DETECT_TIMEOUT_MS = 20_000;
@@ -31,6 +44,7 @@ const DETECT_TIMEOUT_MS = 20_000;
 export default function NfReceipts() {
   const [accessKey, setAccessKey] = useState("");
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>("manual");
+  const [readingPoint, setReadingPoint] = useState<ReadingPoint>("recebimento");
   const [activeView, setActiveView] = useState<"capture" | "history">("capture");
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStarting, setCameraStarting] = useState(false);
@@ -158,7 +172,8 @@ export default function NfReceipts() {
     if (ok === false) toast.info("Seu aparelho não permite zoom pelo portal.");
   };
 
-  const submit = () => capture.mutate({ accessKey, captureMethod });
+  // 23/09/2026: a captura agora envia o PONTO DE LEITURA escolhido pelo usuário.
+  const submit = () => capture.mutate({ accessKey, captureMethod, readingPoint });
 
   const changeMode = (next: CaptureMethod) => {
     setCaptureMethod(next);
@@ -194,7 +209,7 @@ export default function NfReceipts() {
       <header className="mb-7">
         <p className="eyebrow">Recebimentos · Nota fiscal</p>
         <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">Recebimento simples de NF</h1>
-        <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">Registre a chave de acesso da NF. O portal grava automaticamente o usuário autenticado, a data e a hora da leitura, além de preparar campos para cruzamento futuro com SC7 e NF Legal.</p>
+        <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">Registre a chave de acesso da NF. O portal grava automaticamente o usuário autenticado, o ponto de leitura, a data e a hora, além de preparar campos para cruzamento futuro com SC7 e NF Legal.</p>
       </header>
       <nav aria-label="Seções do recebimento" className="mb-5 grid max-w-md grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1"><button type="button" onClick={() => setActiveView("capture")} className={`rounded-xl px-4 py-2.5 text-xs font-extrabold transition ${activeView === "capture" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}>Capturar chave</button><button type="button" onClick={() => setActiveView("history")} className={`rounded-xl px-4 py-2.5 text-xs font-extrabold transition ${activeView === "history" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-900"}`}>Histórico e exportação</button></nav>
       <div className="grid gap-5 xl:grid-cols-[1.06fr_.94fr]">
@@ -217,6 +232,19 @@ export default function NfReceipts() {
               ))}
             </div>
             <p className="mt-3 text-xs font-semibold text-slate-500">{modeHelp[captureMethod]}</p>
+          </div>
+          {/* PONTO DE LEITURA (23/09/2026): o usuário indica DE ONDE está lendo.
+              Não fica travado no usuário — pode ser trocado a cada leitura. */}
+          <div className="mt-6">
+            <label className="flex items-center gap-1.5 text-sm font-extrabold text-slate-800"><MapPin className="h-4 w-4" /> Ponto de leitura</label>
+            <div className="mt-2 grid gap-2 sm:grid-cols-4">
+              {readingPoints.map(point => (
+                <Button key={point} type="button" variant={readingPoint === point ? "default" : "outline"} onClick={() => setReadingPoint(point)} className={readingPoint === point ? "bg-slate-950 hover:bg-slate-800" : ""}>
+                  {readingPointLabels[point]}
+                </Button>
+              ))}
+            </div>
+            <p className="mt-3 text-xs font-semibold text-slate-500">Indique de onde está realizando a leitura. O ponto fica registrado em cada leitura e pode ser alterado a qualquer momento (inclusive em caso de rotação de funcionários).</p>
           </div>
           <div className="mt-6">
             <label className="text-sm font-extrabold text-slate-800">Chave de acesso da NF</label>
@@ -271,12 +299,12 @@ export default function NfReceipts() {
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#d8ebfa] text-slate-950"><ShieldCheck className="h-5 w-5" /></span>
             <div>
               <h2 className="text-lg font-extrabold tracking-tight text-slate-950">Últimas leituras</h2>
-              <p className="mt-0.5 text-xs font-medium text-slate-500">Registro auditável com usuário, data e hora.</p>
+              <p className="mt-0.5 text-xs font-medium text-slate-500">Registro auditável com usuário, ponto, data e hora.</p>
             </div>
             </div>
             <Button size="sm" variant="outline" onClick={() => void exportReadings()} disabled={exportRows.isFetching}><Download className="mr-2 h-4 w-4" />{exportRows.isFetching ? "Preparando…" : "Exportar Excel"}</Button>
           </div>
-          {recent.isLoading ? <div className="flex items-center gap-2 p-7 text-sm font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando leituras…</div> : recent.data?.length ? <div className="divide-y divide-slate-100">{recent.data.map(item => <div className="px-5 py-4 sm:px-7" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-bold tracking-[0.08em] text-slate-800">{item.accessKey}</p><p className="mt-1 text-xs font-semibold text-slate-500">NF {formatNfNumber(item.invoiceNumber)} · Série {item.invoiceSeries} · CNPJ {item.issuerCnpj}</p>{item.supplier ? <p className="mt-1 text-xs font-bold text-slate-700">Fornecedor: {item.supplier.tradeName || item.supplier.legalName} · Código {item.supplier.code} · Loja {item.supplier.store}</p> : <p className="mt-1 text-xs font-semibold text-amber-700">Fornecedor não identificado no cadastro ativo.</p>}</div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-600">{labels[item.captureMethod]}</span></div><p className="mt-2 text-xs font-semibold text-slate-500">{new Date(item.capturedAt).toLocaleString("pt-BR")} · {item.capturedBy ?? "Usuário do portal"}</p></div>)}</div> : <div className="p-7 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-500">Nenhuma chave foi registrada ainda.</p></div>}
+          {recent.isLoading ? <div className="flex items-center gap-2 p-7 text-sm font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando leituras…</div> : recent.data?.length ? <div className="divide-y divide-slate-100">{recent.data.map(item => <div className="px-5 py-4 sm:px-7" key={item.id}><div className="flex items-start justify-between gap-3"><div><p className="font-mono text-xs font-bold tracking-[0.08em] text-slate-800">{item.accessKey}</p><p className="mt-1 text-xs font-semibold text-slate-500">NF {formatNfNumber(item.invoiceNumber)} · Série {item.invoiceSeries} · CNPJ {item.issuerCnpj}</p>{item.supplier ? <p className="mt-1 text-xs font-bold text-slate-700">Fornecedor: {item.supplier.tradeName || item.supplier.legalName} · Código {item.supplier.code} · Loja {item.supplier.store}</p> : <p className="mt-1 text-xs font-semibold text-amber-700">Fornecedor não identificado no cadastro ativo.</p>}</div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-slate-600">{labels[item.captureMethod]}</span></div><div className="mt-2 flex flex-wrap items-center gap-2"><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-indigo-700">Ponto: {readingPointLabels[item.readingPoint] ?? "—"}</span><span className="text-xs font-semibold text-slate-500">{new Date(item.capturedAt).toLocaleString("pt-BR")} · {item.capturedBy ?? "Usuário do portal"}</span></div></div>)}</div> : <div className="p-7 text-center"><CheckCircle2 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-500">Nenhuma chave foi registrada ainda.</p></div>}
         </section>}
       </div>
     </div>
