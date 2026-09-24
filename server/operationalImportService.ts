@@ -21,17 +21,21 @@ function mapRow(source: CatalogSourceKind, row: CatalogRow) {
 // Sobrescreve (upsert) ou mantém histórico (active_from/active_to); sempre vale a mais recente.
 // A materialização do SB1 ocorre na MESMA transação do lote/source_rows: se qualquer passo
 // falhar, nada fica gravado — "consta importado" somente quando tudo gravou de fato.
+// Campos usados (fonte: protheusCatalogParsers.ts — Sb1Row): productCode, aggregateProductCode,
+// description, type, family, subfamily, ncm, inclusionDate.
 async function materializeSb1(client: PoolClient, batchId: string, rows: CatalogRow[]) {
   for (let i = 0; i < rows.length; i += 1) {
     const x = rows[i] as Sb1Row;
     if (!x.productCode) continue; // linha sem código não vira produto
 
-    // Extração resiliente: os rótulos reais do parser podem variar (description | name | descricao),
-    // aceitamos os nomes conhecidos e o registro completo fica no normalized_payload para conferência.
-    const name = (x as any).description ?? (x as any).name ?? (x as any).descricao ?? `Produto ${x.productCode}`;
-    const productType = (x as any).type ?? (x as any).tipo ?? null;
-    const familia = (x as any).family ?? (x as any).familia ?? null;
-    const subFamilia = (x as any).subFamily ?? (x as any).subFamilia ?? null;
+    const name = x.description || `Produto ${x.productCode}`;
+    const productType = x.type || null;
+    const metadata = {
+      familia: x.family || null,
+      subfamilia: x.subfamily || null,
+      ncm: x.ncm || "",
+      inclusionDate: x.inclusionDate || "",
+    };
 
     // 1) Produto — upsert pela chave única product_code (nunca apaga)
     const product = await client.query<{ id: string }>(
@@ -46,7 +50,7 @@ async function materializeSb1(client: PoolClient, batchId: string, rows: Catalog
          active = true,
          updated_at = now()
        returning id`,
-      [x.productCode, name, productType, asJson({ familia, subFamilia }), batchId]
+      [x.productCode, name, productType, asJson(metadata), batchId]
     );
     const productId = product.rows[0].id;
 
