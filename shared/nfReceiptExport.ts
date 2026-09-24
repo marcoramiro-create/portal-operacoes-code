@@ -1,50 +1,39 @@
-export type ReadingPoint = "descarga" | "recebimento" | "conferencia" | "envio_fiscal";
-export type NfReceiptExportSource = {
-  accessKey: string;
-  issuerCnpj: string;
-  invoiceModel: string;
-  invoiceSeries: string;
-  invoiceNumber: string;
-  issuedYearMonth: string;
-  captureMethod: "manual" | "camera" | "barcode_reader";
-  readingPoint: ReadingPoint;
-  capturedAt: Date;
-  capturedBy: string | null;
-  protheusSc7Reference: string | null;
-  nfLegalReference: string | null;
-  matchedAt: Date | null;
-  supplier: { code: string; store: string | null; legalName: string | null; tradeName: string | null } | null;
+// ============================================================
+// Exportação do Recebimento de NF — inclui Ponto de leitura,
+// Transportadora e Placa (23/09/2026).
+// ============================================================
+export function formatNfNumber(value?: string | null) {
+  return (value || "").padStart(9, "0");
+}
+
+const readingPointLabels: Record<string, string> = {
+  descarga: "Descarga", recebimento: "Recebimento", conferencia: "Conferência", envio_fiscal: "Envio ao fiscal",
 };
-const captureMethodLabels: Record<NfReceiptExportSource["captureMethod"], string> = {
-  manual: "Digitação",
-  camera: "Câmera",
-  barcode_reader: "Leitor de mesa",
+const captureMethodLabels: Record<string, string> = {
+  manual: "Digitação", camera: "Câmera", barcode_reader: "Leitor de mesa",
 };
-const readingPointLabels: Record<ReadingPoint, string> = {
-  descarga: "Descarga",
-  recebimento: "Recebimento",
-  conferencia: "Conferência",
-  envio_fiscal: "Envio ao fiscal",
+
+type ExportRow = {
+  accessKey: string; invoiceNumber: string; invoiceSeries: string; issuerCnpj: string;
+  readingPoint: string; captureMethod: string; capturedAt: Date | string; capturedBy?: string | null;
+  carrierName?: string | null; vehiclePlate?: string | null;
+  supplier?: { code: string; store: string; legalName?: string | null; tradeName?: string | null } | null;
 };
-export const formatNfNumber = (value: string | number | null | undefined) => String(value ?? "").replace(/\D/g, "").padStart(9, "0").slice(-9);
-const formatDateTime = (value: Date | null) => value ? value.toLocaleString("pt-BR") : "";
-export function formatNfReceiptExportRows(rows: NfReceiptExportSource[]) {
+
+export function formatNfReceiptExportRows(rows: ExportRow[]) {
   return rows.map(row => ({
     "Chave de acesso": row.accessKey,
-    "CNPJ emitente": row.issuerCnpj,
-    "Fornecedor": row.supplier?.tradeName || row.supplier?.legalName || "Não identificado",
-    "Código fornecedor": row.supplier?.code ?? "",
-    "Loja fornecedor": row.supplier?.store ?? "",
-    "Modelo NF": row.invoiceModel,
-    "Série NF": row.invoiceSeries,
-    "Número NF": formatNfNumber(row.invoiceNumber),
-    "Ano/mês emissão": row.issuedYearMonth,
-    "Modo de coleta": captureMethodLabels[row.captureMethod],
+    "NF": formatNfNumber(row.invoiceNumber),
+    "Série": row.invoiceSeries || "",
+    "CNPJ Emitente": row.issuerCnpj,
+    "Fornecedor": row.supplier ? (row.supplier.tradeName || row.supplier.legalName || "") : "",
+    "Código": row.supplier ? row.supplier.code : "",
+    "Loja": row.supplier ? row.supplier.store : "",
     "Ponto de leitura": readingPointLabels[row.readingPoint] ?? row.readingPoint,
-    "Usuário da leitura": row.capturedBy ?? "Usuário do portal",
-    "Data/hora da leitura": formatDateTime(row.capturedAt),
-    "Referência SC7 Protheus": row.protheusSc7Reference ?? "",
-    "Referência NF Legal": row.nfLegalReference ?? "",
-    "Data/hora do cruzamento": formatDateTime(row.matchedAt),
+    "Forma de captura": captureMethodLabels[row.captureMethod] ?? row.captureMethod,
+    "Usuário": row.capturedBy ?? "",
+    "Data e hora": new Date(row.capturedAt).toLocaleString("pt-BR"),
+    "Transportadora": row.carrierName ?? "",
+    "Placa do veículo": row.vehiclePlate ?? "",
   }));
 }

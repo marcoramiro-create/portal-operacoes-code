@@ -6,6 +6,7 @@ import { analyticsRouter } from "./routers/analytics";
 import { cadastrosRouter } from "./routers/cadastros";
 import { portalRouter } from "./routers/portal";
 import { nfReceiptsRouter } from "./routers/nfReceipts";
+import { carriersRouter } from "./routers/carriers";
 import { inventoryCatalogRouter } from "./routers/inventoryCatalog";
 import { inventoryOperationsRouter } from "./routers/inventoryOperations";
 import { inventoryToolsRouter } from "./routers/inventoryTools";
@@ -17,12 +18,10 @@ import { operationalAuditRouter } from "./routers/operationalAudit";
 import { auditBacklogRouter } from "./routers/auditBacklog";
 import { loginWithPortalPassword, revokePortalSession, setPasswordFromResetToken } from "./portalAuthService";
 import { z } from "zod";
-
 function requestInfo(ctx: { req: { ip?: string; headers: Record<string, string | string[] | undefined> } }) {
   const userAgent = ctx.req.headers["user-agent"];
   return { ip: ctx.req.ip, userAgent: Array.isArray(userAgent) ? userAgent[0] : userAgent };
 }
-
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -46,6 +45,7 @@ export const appRouter = router({
   portal: portalRouter,
   cadastros: cadastrosRouter,
   nfReceipts: nfReceiptsRouter,
+  carriers: carriersRouter,
   inventoryCatalog: inventoryCatalogRouter,
   inventoryOperations: inventoryOperationsRouter,
   inventoryTools: inventoryToolsRouter,
@@ -56,5 +56,4 @@ export const appRouter = router({
   operationalAudit: operationalAuditRouter,
   auditBacklog: auditBacklogRouter,
 });
-
 export type AppRouter = typeof appRouter;
