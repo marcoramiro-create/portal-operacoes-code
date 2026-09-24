@@ -1,6 +1,6 @@
 /**
  * protheusCatalogParsers.ts
- * Parsers dos cadastros Protheus (SB1, SBZ, SB5, SA2) para a prévia de importação.
+ * Parsers dos cadastros Protheus (SB1, SBZ, SB5, SA2) para a prévia e a importação.
  * Módulo: server (API tRPC)
  *
  * // REGRA DE NEGÓCIO — EXPORTAÇÃO DOS ARQUIVOS (lembrete permanente — 24/09/2026):
@@ -12,7 +12,19 @@
  * //   - Colunas obrigatórias: SB1 = Código, Cod Agregado, Descrição;
  * //     SBZ = Filial, Código, Entra MRP; SB5 = Produto, Marca Peça; SA2 = Código, Loja, Razão Social.
  * //   - Decodificação automática UTF-8 e Windows-1252 (escolhe a que encontrar o cabeçalho).
+ * // REGRA DE NEGÓCIO — NORMALIZAÇÃO (vale para TODO o portal, todas as sessões):
+ * //   - Campos de código/filial são capturados COMO TEXTO, preservando zeros à esquerda
+ * //     e o valor original (nada de 0101 virar 101 ou 0001 virar 1 na captura).
+ * //   - A normalização para cruzamento é aplicada SOMENTE depois, por funções únicas:
+ * //     código sem zero à esquerda preservando sufixo (0000000001 → 1) e filial com 4
+ * //     dígitos (0101-MEGATEC ARACATUBA → 0101). O mesmo padrão vale no Compras × SB1/SBZ,
+ * //     no re-enriquecimento, no Recebimento e em qualquer módulo futuro.
+ * // MUDANÇA (24/09/2026): a leitura agora DETECTA arquivos .xlsx (assinatura interna do
+ * //   Excel) e lê as células de verdade com o leitor XLSX já usado na Compras. O usuário
+ * //   exporta do Protheus e importa direto, sem converter para CSV. Arquivos CSV/texto
+ * //   continuam funcionando (fallback automático).
  */
+import * as XLSX from "xlsx";
 import { cleanSourceText, normalizeBranchCode, normalizeProductCode, normalizeSupplierKey } from "./operationalNormalization";
 
 export type RegistrationIssue = { row: number; field: string; message: string };
@@ -53,6 +65,47 @@ function parseCsv(content: string) {
   return rows;
 }
 
+/** Detecta se o Buffer é um arquivo .xlsx (ZIP com assinatura "PK"). */
+function ehBufferXlsx(content: Buffer): boolean {
+  return (
+    content.length >= 4 &&
+    content[0] === 0x50 &&
+    content[1] === 0x4b &&
+    (content[2] === 0x03 || content[2] === 0x05 || content[2] === 0x07) &&
+    content[3] === 0x04
+  );
+}
+
+/**
+ * Lê as linhas brutas de um arquivo, aceitando .xlsx E texto/CSV.
+ * - .xlsx: lê a primeira aba com o leitor de Excel, preservando cada célula como texto
+ *   (zeros à esquerda intactos; a normalização acontece depois, nas funções de negócio).
+ * - texto/CSV: mantém o fluxo original (parseCsv + decodificação UTF-8/Windows-1252).
+ */
+function lerLinhasBrutas(content: Buffer | string): CsvRow[] {
+  if (!(content instanceof Buffer)) return parseCsv(content);
+  if (ehBufferXlsx(content)) {
+    try {
+      const workbook = XLSX.read(content, { type: "buffer", cellText: false });
+      const sheetName = workbook.SheetNames[0];
+      if (sheetName) {
+        const linhas = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
+          header: 1,
+          raw: false,
+          defval: "",
+        });
+        return linhas
+          .filter((linha): linha is unknown[] => Array.isArray(linha))
+          .map((linha) => linha.map((celula) => String(celula ?? "").trim()))
+          .filter((linha) => linha.some((c) => c !== ""));
+      }
+    } catch {
+      // Arquivo .xlsx corrompido/inválido: cai no fallback de texto abaixo.
+    }
+  }
+  return parseCsv(new TextDecoder("utf-8").decode(content).replace(/^\uFEFF/, ""));
+}
+
 // Apelidos aceitos por tipo de cabeçalho (cada item = variações do mesmo rótulo).
 const SB1_HEADER = [["codigo", "cod"], ["codagregado", "codagreg", "codigodoagregado"], ["descricao", "desc", "descricaodoproduto"]];
 const SBZ_HEADER = [["filial", "codigofilial", "fil"], ["codigo", "cod", "produto"], ["entramrp", "mrp", "entranomrp"]];
@@ -68,10 +121,15 @@ function headerIndex(rows: CsvRow[], requiredGroups: string[][]): number {
   );
 }
 
-// Lê o arquivo e localiza o cabeçalho, tentando UTF-8 e Windows-1252.
+// Lê o arquivo e localiza o cabeçalho (linhas 1 a 4 e além), tentando rótulos.
+// Para texto, tenta também UTF-8 e Windows-1252 (usa a que encontrar o cabeçalho).
 function readRowsWithHeader(content: Buffer | string, requiredGroups: string[][]): { rows: CsvRow[]; header: number } {
   if (typeof content === "string") {
-    const rows = parseCsv(content);
+    const rows = lerLinhasBrutas(content);
+    return { rows, header: headerIndex(rows, requiredGroups) };
+  }
+  if (ehBufferXlsx(content)) {
+    const rows = lerLinhasBrutas(content);
     return { rows, header: headerIndex(rows, requiredGroups) };
   }
   const candidates = [
@@ -106,10 +164,6 @@ function emptyResult<T>(): RegistrationResult<T> {
 
 function invalidScientific(value: string) {
   return /^[-+]?\d+(?:[,.]\d+)?e[-+]?\d+$/i.test(value) || /^[-+]?\d+[,.]?\d*e[+]?\d+$/i.test(value);
-}
-
-function decodeContent(content: Buffer | string) {
-  return typeof content === "string" ? content : new TextDecoder("windows-1252").decode(content);
 }
 
 export type Sb1Row = {
