@@ -1,6 +1,5 @@
 ﻿import { TRPCError } from "@trpc/server";
 import { assertApplicationPermission, getSupabasePool, type PortalIdentity } from "./supabasePortal";
-
 // ============================================================
 // Recebimento corporativo — PONTO DE LEITURA + DESCARGA + CONTROLE (23/09/2026)
 // REGRA: o usuário indica DE ONDE está lendo a cada captura.
@@ -15,7 +14,6 @@ export type ReadingPoint = (typeof READING_POINTS)[number];
 export function isReadingPoint(value: unknown): value is ReadingPoint {
   return typeof value === "string" && (READING_POINTS as readonly string[]).includes(value);
 }
-
 export type CaptureMethod = "manual" | "camera" | "barcode_reader";
 export function normalizeNfAccessKey(value: string) { return value.replace(/\D/g, ""); }
 export function parseNfAccessKey(value: string) {
@@ -23,7 +21,6 @@ export function parseNfAccessKey(value: string) {
   if (!/^\d{44}$/.test(accessKey)) throw new TRPCError({ code: "BAD_REQUEST", message: "A chave de acesso da NF deve possuir exatamente 44 dígitos numéricos." });
   return { accessKey, issuedYearMonth: accessKey.slice(2, 6), issuerCnpj: accessKey.slice(6, 20), invoiceModel: accessKey.slice(20, 22), invoiceSeries: accessKey.slice(22, 25), invoiceNumber: accessKey.slice(25, 34) };
 }
-
 type NfReceiptRow = {
   id: string; access_key: string; issuer_cnpj: string; invoice_model: string; invoice_series: string; invoice_number: string;
   issued_year_month: string; capture_method: CaptureMethod; reading_point: ReadingPoint; captured_at: Date; captured_by: string | null;
@@ -44,7 +41,6 @@ function mapNfReceiptRow(row: NfReceiptRow) {
 const NF_RECEIPT_SELECT = `select receipt.id, receipt.access_key, receipt.issuer_cnpj, receipt.invoice_model, receipt.invoice_series, receipt.invoice_number, receipt.issued_year_month, receipt.capture_method, receipt.reading_point, receipt.captured_at, user_record.display_name as captured_by, receipt.protheus_sc7_reference, receipt.nf_legal_reference, receipt.matched_at, supplier_match.supplier_code, supplier_match.store_code as supplier_store, supplier_match.legal_name as supplier_legal_name, supplier_match.trade_name as supplier_trade_name, receipt.carrier_id, carrier.name as carrier_display_name, receipt.carrier_name, receipt.vehicle_plate
      from public.nf_receipts receipt join public.portal_users user_record on user_record.id = receipt.captured_by_user_id left join lateral (select supplier.supplier_code, supplier.store_code, supplier.legal_name, supplier.trade_name from public.suppliers supplier where supplier.active = true and regexp_replace(coalesce(supplier.document_number, ''), '[^0-9]', '', 'g') = receipt.issuer_cnpj order by supplier.supplier_code, supplier.store_code limit 1) supplier_match on true left join public.transportadoras carrier on carrier.id = receipt.carrier_id
      where receipt.deleted_at is null`;
-
 export async function listRecentNfReceipts(identity: PortalIdentity) {
   await assertApplicationPermission(identity, "chaves-nf", "view");
   const result = await getSupabasePool().query<NfReceiptRow>(`${NF_RECEIPT_SELECT} order by receipt.captured_at desc limit 50`);
@@ -55,7 +51,6 @@ export async function listNfReceiptsForExport(identity: PortalIdentity) {
   const result = await getSupabasePool().query<NfReceiptRow>(`${NF_RECEIPT_SELECT} order by receipt.captured_at desc limit 10000`);
   return result.rows.map(mapNfReceiptRow);
 }
-
 export async function createNfReceipt(input: { accessKey: string; captureMethod: CaptureMethod; readingPoint: ReadingPoint; carrierId?: string | null; carrierName?: string | null; vehiclePlate?: string | null }, identity: PortalIdentity) {
   await assertApplicationPermission(identity, "chaves-nf", "manage");
   if (!isReadingPoint(input.readingPoint)) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o ponto de leitura: Descarga, Recebimento, Conferência ou Envio ao fiscal." });
@@ -79,13 +74,20 @@ export async function createNfReceipt(input: { accessKey: string; captureMethod:
     throw error;
   }
 }
-
 // ============================================================
 // CONTROLE (23/09/2026) — edição do ponto + exclusão controlada.
-// Permissão: perfis com "admin" no módulo chaves-nf (Administração).
 // ============================================================
+// BLOCO 2 (25/09/2026): correção da permissão de edição/exclusão.
+// O portal só conhece os níveis view/manage/approve — o nível "admin" não existe,
+// por isso ninguém (nem o administrador técnico) conseguia corrigir ponto ou remover leitura.
+// Agora: administrador técnico (is_development_admin) OU quem tem permissão "manage"
+// no módulo chaves-nf pode editar/excluir, sempre com motivo obrigatório e auditoria.
+async function assertNfReceiptAdmin(identity: PortalIdentity) {
+  if (identity.isDevelopmentAdmin) return;
+  await assertApplicationPermission(identity, "chaves-nf", "manage");
+}
 export async function updateNfReceiptReadingPoint(input: { id: string; readingPoint: ReadingPoint; reason: string }, identity: PortalIdentity) {
-  await assertApplicationPermission(identity, "chaves-nf", "admin");
+  await assertNfReceiptAdmin(identity);
   if (!isReadingPoint(input.readingPoint)) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o ponto de leitura." });
   const reason = input.reason.trim();
   if (!reason) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o motivo da alteração." });
@@ -98,7 +100,7 @@ export async function updateNfReceiptReadingPoint(input: { id: string; readingPo
   return { id: input.id, previous, readingPoint: input.readingPoint };
 }
 export async function softDeleteNfReceipt(input: { id: string; reason: string }, identity: PortalIdentity) {
-  await assertApplicationPermission(identity, "chaves-nf", "admin");
+  await assertNfReceiptAdmin(identity);
   const reason = input.reason.trim();
   if (!reason) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o motivo da exclusão." });
   const current = await getSupabasePool().query<{ access_key: string }>("select access_key from public.nf_receipts where id = $1 and deleted_at is null", [input.id]);
