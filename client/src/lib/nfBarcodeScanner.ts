@@ -1,6 +1,6 @@
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-
+import { nfScannerFastConstraints, nfScannerFastDelayMs } from "./nfScannerConfig";
 /*
  * Leitor da DANFE (chave de acesso de 44 dígitos) — híbrido de alta confiabilidade.
  * HISTÓRICO (para nunca se perder):
@@ -8,30 +8,28 @@ import { BarcodeFormat, DecodeHintType } from "@zxing/library";
  * - 22/09/2026 (manhã): BarcodeDetector nativo + fallback Quagga — seguiu sem ler.
  * - 22/09/2026 (tarde): ZXing — câmera abre, mas ainda não leu no aparelho, embora
  *   o app de câmera e o leitor de QR do celular leiam o mesmo código.
- * - 22/09/2026 (V4): decisão registrada — o problema não é simbologia nem impressão;
- *   é a qualidade/foco do VÍDEO AO VIVO no navegador. Solução: (1) motor nativo do
- *   navegador quando existir (mais rápido) e ZXing como contínuo quando não; (2)
- *   botão "Fotografar e ler": congela um quadro em alta resolução e lê nele, como
- *   um app de câmera; (3) lanterna e zoom quando o aparelho suportar; (4) indicador
- *   de modo na tela para diagnóstico remoto.
+ * - 22/09/2026 (V4): o problema é a qualidade/foco do VÍDEO AO VIVO no navegador.
+ *   Solução: motor nativo quando existir (mais rápido) + ZXing como contínuo quando
+ *   não; botão "Fotografar e ler" (congela quadro em alta resolução e lê); lanterna
+ *   e zoom quando o aparelho suportar; indicador de modo na tela.
+ * - 25/09/2026 (BLOCO 3 — ACELERAÇÃO): câmera abre em 1280x720 (muito menos
+ *   trabalho por tentativa); foco automático contínuo quando suportado; leitor
+ *   compatível com 90ms entre tentativas e SEM "tentativa reforçada" no modo
+ *   contínuo (a reforçada fica só no botão Fotografar e ler).
  * REGRAS:
- * - Só vale chave com exatamente 44 dígitos (normalizeNfBarcodeValue). Leitura
- *   contínua em modo filmagem é o comportamento normal de leitor.
+ * - Só vale chave com exatamente 44 dígitos (normalizeNfBarcodeValue).
+ * - Leitura contínua em modo filmagem é o comportamento normal de leitor.
  */
 export const nfBarcodeFormats = [BarcodeFormat.CODE_128, BarcodeFormat.ITF, BarcodeFormat.CODE_39];
-
 /** Deixa apenas os dígitos e garante a chave de 44 posições. Retorna null se inválida. */
 export function normalizeNfBarcodeValue(value: string | null | undefined) {
   const accessKey = (value ?? "").replace(/\D/g, "").slice(0, 44);
   return accessKey.length === 44 ? accessKey : null;
 }
-
 type NativeDetector = {
   detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>>;
 };
-
 type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => NativeDetector;
-
 async function createNativeDetector(): Promise<NativeDetector | null> {
   try {
     const w = window as unknown as {
@@ -47,7 +45,15 @@ async function createNativeDetector(): Promise<NativeDetector | null> {
     return null;
   }
 }
-
+/** Tenta ativar o foco automático contínuo (melhora muito a leitura no celular). */
+async function tryEnableContinuousFocus(track: MediaStreamTrack | null | undefined) {
+  if (!track || typeof track.applyConstraints !== "function") return;
+  try {
+    await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] } as MediaTrackConstraints);
+  } catch {
+    /* aparelho sem suporte — segue sem foco contínuo */
+  }
+}
 export class NfBarcodeScanner {
   private target: HTMLElement | null = null;
   private video: HTMLVideoElement | null = null;
@@ -60,7 +66,6 @@ export class NfBarcodeScanner {
   private active = false;
   private onDetected: ((key: string) => void) | null = null;
   private onModeChange: ((mode: "native" | "zxing") => void) | null = null;
-
   async start(
     target: HTMLElement,
     onDetected: (key: string) => void,
@@ -71,25 +76,19 @@ export class NfBarcodeScanner {
     this.onDetected = onDetected;
     this.onModeChange = onModeChange ?? null;
     this.active = true;
-
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("camera-unavailable");
     }
-
     this.detector = await createNativeDetector();
-
+    // BLOCO 3: câmera abre em 1280x720 (mais rápido) em vez de 1920x1080
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-      },
+      video: nfScannerFastConstraints,
       audio: false,
     });
     this.stream = stream;
     const track = stream.getVideoTracks()[0];
     this.videoTrack = track ?? null;
-
+    await tryEnableContinuousFocus(track);
     target.innerHTML = "";
     const video = document.createElement("video");
     video.setAttribute("playsinline", "");
@@ -107,18 +106,16 @@ export class NfBarcodeScanner {
     } catch {
       /* segue; o loop espera o readyState */
     }
-
     if (this.detector) {
       this.onModeChange?.("native");
       this.loopNative();
       return;
     }
-
     this.onModeChange?.("zxing");
+    // BLOCO 3: no modo contínuo compatível, SEM "tentativa reforçada" (é caro).
     const hints = new Map<DecodeHintType, unknown>();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
-    hints.set(DecodeHintType.TRY_HARDER, true);
-    this.reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 250 });
+    this.reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: nfScannerFastDelayMs });
     const controls = await this.reader.decodeFromVideoElement(video, result => {
       if (!this.active || !result) return;
       const key = normalizeNfBarcodeValue(result.getText());
@@ -130,7 +127,6 @@ export class NfBarcodeScanner {
     }
     this.controls = controls;
   }
-
   private loopNative = () => {
     if (!this.active || !this.video || !this.detector) return;
     if (this.video.readyState >= 2) {
@@ -154,20 +150,24 @@ export class NfBarcodeScanner {
       this.rafId = requestAnimationFrame(this.loopNative);
     }
   };
-
-  /** Congela um quadro em alta resolução e tenta ler nele. Retorna true se leu. */
+  /** Congela um quadro e tenta ler nele. Retorna true se leu. */
   async captureStill(): Promise<boolean> {
-    const { video, detector, reader } = this;
+    const { video, detector } = this;
     if (!this.active || !video || video.readyState < 2) return false;
-    const width = video.videoWidth || 1280;
-    const height = video.videoHeight || 720;
+    let width = video.videoWidth || 1280;
+    let height = video.videoHeight || 720;
+    // BLOCO 3: limita o quadro a 1280px para acelerar a leitura da foto
+    const MAX_WIDTH = 1280;
+    if (width > MAX_WIDTH) {
+      height = Math.round((height * MAX_WIDTH) / width);
+      width = MAX_WIDTH;
+    }
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return false;
     ctx.drawImage(video, 0, 0, width, height);
-
     if (detector) {
       try {
         const codes = await detector.detect(canvas);
@@ -182,24 +182,25 @@ export class NfBarcodeScanner {
         /* tenta o ZXing abaixo */
       }
     }
-
-    if (reader) {
-      try {
-        const result = await reader.decodeFromCanvas(canvas);
-        if (result) {
-          const key = normalizeNfBarcodeValue(result.getText());
-          if (key) {
-            this.onDetected?.(key);
-            return true;
-          }
+    // Na foto, vale usar "tentativa reforçada" (quadro congelado de alta qualidade)
+    const stillHints = new Map<DecodeHintType, unknown>();
+    stillHints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
+    stillHints.set(DecodeHintType.TRY_HARDER, true);
+    const stillReader = new BrowserMultiFormatReader(stillHints, { delayBetweenScanAttempts: nfScannerFastDelayMs });
+    try {
+      const result = await stillReader.decodeFromCanvas(canvas);
+      if (result) {
+        const key = normalizeNfBarcodeValue(result.getText());
+        if (key) {
+          this.onDetected?.(key);
+          return true;
         }
-      } catch {
-        /* nada lido */
       }
+    } catch {
+      /* nada lido */
     }
     return false;
   }
-
   /** Liga/desliga a lanterna quando o aparelho suporta. Retorna false se não suporta. */
   async setTorch(on: boolean): Promise<boolean> {
     const track = this.videoTrack;
@@ -211,7 +212,6 @@ export class NfBarcodeScanner {
       return false;
     }
   }
-
   /** Aplica zoom (1 = padrão; 2 = 2x) quando o aparelho suporta. Retorna false se não suporta. */
   async setZoom(level: number): Promise<boolean> {
     const track = this.videoTrack;
@@ -223,7 +223,6 @@ export class NfBarcodeScanner {
       return false;
     }
   }
-
   stop(): void {
     this.active = false;
     if (this.rafId) cancelAnimationFrame(this.rafId);
