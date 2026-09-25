@@ -177,7 +177,7 @@ export default function Dashboard() {
   const recommendedItems = useMemo(() => itemRows.filter(item => recommendationByCode.has(item.code)), [itemRows, recommendationByCode]);
   const aiSort = useTableSort<ItemRow>(recommendedItems, null, "desc");
   const evoRows = evolution as EvolutionRow[];
-  const evoSort = useTableSort<EvolutionRow>(evoRows, null, "desc");
+  const evoSort = useTableSort<EvolutionRow>(evoRows, "importedAt", "desc");
 
   const currentImportId = data?.currentImport?.id;
   const approvedImports = imports.filter(imp => imp.status === "approved");
