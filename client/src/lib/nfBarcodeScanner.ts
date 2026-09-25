@@ -16,15 +16,32 @@ import { nfScannerFastConstraints, nfScannerFastDelayMs } from "./nfScannerConfi
  *   trabalho por tentativa); foco automático contínuo quando suportado; leitor
  *   compatível com 90ms entre tentativas e SEM "tentativa reforçada" no modo
  *   contínuo (a reforçada fica só no botão Fotografar e ler).
+ * - 25/09/2026 (BLOCO 4 — CHAVE ERRADA): validação do DÍGITO VERIFICADOR (DV,
+ *   módulo 11) da chave de acesso. Se a leitura vier com dígito errado, o leitor
+ *   DESCARTÁ e continua escaneando — evita gravar uma NF diferente da escaneada.
  * REGRAS:
- * - Só vale chave com exatamente 44 dígitos (normalizeNfBarcodeValue).
+ * - Só vale chave com exatamente 44 dígitos E dígito verificador correto.
  * - Leitura contínua em modo filmagem é o comportamento normal de leitor.
  */
 export const nfBarcodeFormats = [BarcodeFormat.CODE_128, BarcodeFormat.ITF, BarcodeFormat.CODE_39];
-/** Deixa apenas os dígitos e garante a chave de 44 posições. Retorna null se inválida. */
+/** Valida o dígito verificador (DV) da chave de acesso da NF-e (módulo 11). */
+export function isValidNfAccessKey(accessKey: string) {
+  if (!/^\d{44}$/.test(accessKey)) return false;
+  let sum = 0;
+  let weight = 2;
+  for (let i = 42; i >= 0; i--) {
+    sum += Number(accessKey[i]) * weight;
+    weight = weight === 9 ? 2 : weight + 1;
+  }
+  const rest = sum % 11;
+  const dv = rest === 0 || rest === 1 ? 0 : 11 - rest;
+  return dv === Number(accessKey[43]);
+}
+/** Deixa apenas os dígitos e garante a chave de 44 posições com DV válido. Retorna null se inválida. */
 export function normalizeNfBarcodeValue(value: string | null | undefined) {
   const accessKey = (value ?? "").replace(/\D/g, "").slice(0, 44);
-  return accessKey.length === 44 ? accessKey : null;
+  // BLOCO 4: só aceita chave com dígito verificador correto (evita leitura errada)
+  return accessKey.length === 44 && isValidNfAccessKey(accessKey) ? accessKey : null;
 }
 type NativeDetector = {
   detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>>;
