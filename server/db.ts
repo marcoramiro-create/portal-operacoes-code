@@ -17,6 +17,9 @@
 //   branches: string[] (várias filiais). Se branches vier preenchido, ele
 //   vence sobre branch (filial única), mantido por compatibilidade com a
 //   interface atual até a nova tela entrar.
+// MUDANÇA (25/09/2026): parsePurchaseHistoryDate passa a interpretar a hora
+//   do nome do arquivo como horário de SÃO PAULO (UTC-3). Antes era tratada
+//   como UTC e o portal exibia 3 horas a menos.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -456,14 +459,21 @@ export function formatPurchaseVersionName(date: Date) {
   return `Compras - ${date.getUTCFullYear()}${pad(date.getUTCMonth() + 1)}${pad(date.getUTCDate())}${pad(date.getUTCHours())}${pad(date.getUTCMinutes())}`;
 }
 const PURCHASE_FILE_NAME_PATTERN = /^Compras - (\d{4})(\d{2})(\d{2})(\d{2})(\d{2}).xlsx$/i;
+// MUDANÇA (25/09/2026): a hora do nome do arquivo é SEMPRE o horário de SÃO
+// PAULO (UTC-3). Antes era interpretada como UTC e o portal exibia 3h a menos.
 export function parsePurchaseHistoryDate(fileName: string) {
   const match = fileName.match(PURCHASE_FILE_NAME_PATTERN);
   if (!match) throw new Error("O nome deve seguir o padrão Compras - aaaaMMddHHmm.xlsx.");
   const [, year, month, day, hour, minute] = match;
-  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute)));
-  if (date.getUTCFullYear() !== Number(year) || date.getUTCMonth() !== Number(month) - 1 || date.getUTCDate() !== Number(day) || date.getUTCHours() !== Number(hour) || date.getUTCMinutes() !== Number(minute)) {
+  const ano = Number(year), mes = Number(month), dia = Number(day), hora = Number(hour), minuto = Number(minute);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31 || hora > 23 || minuto > 59) {
     throw new Error("A data/hora no nome da planilha não é válida.");
   }
+  const pad = (valor: number) => String(valor).padStart(2, "0");
+  // Monta o instante como horário de São Paulo (fuso -03:00); o sistema converte
+  // internamente e o portal exibe exatamente o horário da extração.
+  const date = new Date(`${ano}-${pad(mes)}-${pad(dia)}T${pad(hora)}:${pad(minuto)}:00-03:00`);
+  if (isNaN(date.getTime())) throw new Error("A data/hora no nome da planilha não é válida.");
   return date;
 }
 function historicalImportDate(fileName: string, _versionName: string, _importedAt: Date) {
@@ -712,7 +722,6 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
 }
 export type AnalyticsCardMetric = "lowCoverage" | "stockValue" | "excess" | "withoutSales";
 export type AnalyticsCardSort = "code" | "branch" | "turnover" | "curve" | "stock" | "stockValue" | "pedidos" | "coverageDays" | "consumoMensal" | "productType";
-
 export async function getAnalyticsCardItems(filters: AnalyticsFilter, metric: AnalyticsCardMetric, page = 1, pageSize = 200, sort: AnalyticsCardSort = "stockValue", dir: "asc" | "desc" = "desc") {
   const db = await getDb();
   const importId = await getLatestImportId(filters.importId);

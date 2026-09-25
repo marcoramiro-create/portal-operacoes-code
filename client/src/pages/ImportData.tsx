@@ -1,22 +1,22 @@
 // ============================================================
 // client/src/pages/ImportData.tsx
-// Tela de importação de planilhas do Protheus.
+// Tela de importação de planilhas do Protheus e cadastros de referência.
 // Módulo: Compras e análise Protheus.
 // MUDANÇA (07/09/2026): histórico de importações e exclusão direto na tela,
 // sem depender de SQL, para as cinco importações (Compras, SB1, SBZ, Famílias, SubFamílias).
 // MUDANÇA (08/09/2026): corrige o botão "Excluir" do histórico de cadastros,
 // que chamava a rota errada (deleteImport) e por isso não fazia nada.
 // MUDANÇA (25/09/2026): Compras envia o arquivo direto (base64) pela rota
-// importWorkbook, sem depender de armazenamento. Removidos os cards de
-// cadastros de referência (SB1, SBZ, Famílias, SubFamílias) — eles são
-// importados pela ferramenta de importações (preview panel).
+// importWorkbook, sem depender de armazenamento. Removidos os cards de upload
+// dos cadastros (SB1, SBZ, Famílias, SubFamílias) — eles são importados pela
+// ferramenta de importações. MANTIDO o histórico de importações dos cadastros.
 // ============================================================
 import { Button } from "@/components/ui/button";
 import OneDriveImportSource from "@/components/OneDriveImportSource";
 import OperationalImportPreviewPanel from "@/components/OperationalImportPreviewPanel";
 import { formatDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
-import { Archive, CheckCircle2, FileSpreadsheet, FileUp, Loader2, ShieldCheck, Trash2, Upload } from "lucide-react";
+import { Archive, CheckCircle2, FileSpreadsheet, FileUp, History, Loader2, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { ChangeEvent, FormEvent, useState } from "react";
 import { toast } from "sonner";
 
@@ -37,6 +37,7 @@ export default function ImportData() {
   const utils = trpc.useUtils();
   const { data: imports = [] } = trpc.analytics.imports.useQuery();
   const { data: canAdminister = false } = trpc.analytics.canAdminister.useQuery();
+  const { data: refHistory = [] } = trpc.analytics.referenceImportHistory.useQuery();
   const [file, setFile] = useState<File | null>(null);
 
   const setImportStatus = trpc.analytics.setImportStatus.useMutation({
@@ -46,6 +47,12 @@ export default function ImportData() {
 
   const deleteImport = trpc.analytics.deleteImport.useMutation({
     onSuccess: async () => { await Promise.all([utils.analytics.imports.invalidate(), utils.analytics.dashboard.invalidate(), utils.analytics.filterOptions.invalidate()]); toast.success("Carga excluída."); },
+    onError: error => toast.error(error.message),
+  });
+
+  // MUDANÇA (08/09/2026): exclusão de cadastro a partir do histórico (usa a rota correta).
+  const deleteReference = trpc.analytics.deleteReference.useMutation({
+    onSuccess: async () => { await Promise.all([utils.analytics.referenceCounts.invalidate(), utils.analytics.referenceImportHistory.invalidate()]); toast.success("Cadastro e histórico excluídos."); },
     onError: error => toast.error(error.message),
   });
 
@@ -80,6 +87,9 @@ export default function ImportData() {
     }
   };
 
+  const kindLabel = (kind: string) => ({ sb1: "SB1", sbz: "SBZ", familias: "Famílias", subfamilias: "SubFamílias" } as Record<string, string>)[kind] ?? kind;
+  const deleteKind = (kind: string) => deleteReference.mutate({ kind: kind as "sb1" | "sbz" | "familias" | "subfamilias" });
+
   return (
     <div className="page-wrap max-w-5xl">
       <header className="mb-7">
@@ -112,6 +122,26 @@ export default function ImportData() {
           {file && <p className="mt-4 flex items-center gap-2 text-sm font-semibold text-slate-700"><CheckCircle2 className="h-4 w-4 text-emerald-700" />Arquivo selecionado e pronto para importação.</p>}
         </form>
       </section>
+      {canAdminister && (
+        <section className="sc-surface mt-5 overflow-hidden">
+          <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-7">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f1f2f4] text-slate-950"><History className="h-4 w-4" /></span>
+            <div><h2 className="text-base font-extrabold tracking-tight text-slate-950">Histórico de importações dos cadastros</h2><p className="text-xs font-medium text-slate-500">Registros de cada carga de SB1, SBZ, Famílias e SubFamílias. Excluir remove os dados do cadastro e seu histórico.</p></div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {refHistory.length === 0 && <p className="px-5 py-8 text-center text-sm font-medium text-slate-500">Nenhuma importação de cadastro registrada ainda.</p>}
+            {refHistory.map(item => (
+              <div className="flex flex-col gap-2 px-5 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-7" key={item.id}>
+                <div>
+                  <p className="font-bold text-slate-950">{kindLabel(item.kind)}</p>
+                  <p className="mt-0.5 text-xs font-medium text-slate-500">{item.fileName} · {item.rowCount.toLocaleString("pt-BR")} registros · {formatDate(item.importedAt)}</p>
+                </div>
+                <Button variant="outline" size="sm" disabled={deleteReference.isPending} onClick={() => deleteKind(item.kind)} className="text-red-700 hover:bg-red-50"><Trash2 className="mr-2 h-3.5 w-3.5" />Excluir</Button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <section className="sc-surface mt-5 overflow-hidden">
         <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-5 sm:px-7">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f1ccd7] text-slate-950"><FileUp className="h-4 w-4" /></span>
