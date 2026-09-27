@@ -13,9 +13,11 @@ import { nfScannerFastDelayMs } from "./nfScannerConfig";
  * - 25/09/2026 (BLOCO 4): validação do dígito verificador (módulo 11).
  * - 27/09/2026 (BLOCO 5): detecta o SO e adapta a câmera.
  * - 27/09/2026 (BLOCO 6 — REVERTIDO): leitura por foto automática e contínua com
- *   máximo esforço TRAVOU o celular. REVERTIDO para leitura contínua LEVE.
- * - 27/09/2026 (CORREÇÃO): leitura contínua leve com intervalo controlado (não
- *   processa todo quadro) + foto com máximo esforço APENAS no botão "Fotografar e ler".
+ *   máximo esforço TRAVOU o celular. Revertido para leitura contínua leve.
+ * - 27/09/2026 (CORREÇÃO FINAL — HÍBRIDO): o Android não lia porque o modo contínuo
+ *   usava APENAS o leitor nativo (BarcodeDetector), que falha em códigos longos de
+ *   44 dígitos. O iOS lia porque usava o ZXing. Agora o Android tenta o NATIVO e,
+ *   se não achar, o ZXing no MESMO quadro, em 1280x720 (mesma receita rápida do iOS).
  * REGRAS:
  * - Só vale chave com 44 dígitos E dígito verificador correto.
  * - Leitura contínua em modo filmagem é o comportamento normal de leitor.
@@ -88,13 +90,12 @@ export class NfBarcodeScanner {
   private rafId = 0;
   private active = false;
   private onDetected: ((key: string) => void) | null = null;
-  private onModeChange: ((mode: "native" | "zxing") => void) | null = null;
-  // CORREÇÃO: intervalo entre tentativas de leitura contínua (não processa todo quadro).
+  private onModeChange: ((mode: "native" | "zxing" | "hybrid") => void) | null = null;
   private lastAttempt = 0;
   async start(
     target: HTMLElement,
     onDetected: (key: string) => void,
-    onModeChange?: (mode: "native" | "zxing") => void,
+    onModeChange?: (mode: "native" | "zxing" | "hybrid") => void,
   ): Promise<void> {
     this.stop();
     this.target = target;
@@ -106,12 +107,14 @@ export class NfBarcodeScanner {
     }
     const platform = detectPlatform();
     this.detector = await createNativeDetector();
-    // Android: resolução maior (leitor nativo processa rápido e lê melhor códigos longos).
-    // iOS/outros: resolução menor (leitor de software mais leve).
-    const isAndroid = platform === "android";
-    const videoConstraints: MediaTrackConstraints = isAndroid
-      ? { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, min: 15 } }
-      : { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, min: 15 } };
+    // CORREÇÃO FINAL: TODOS os sistemas usam 1280x720 (a receita rápida do iOS).
+    // Resolução maior pesa e não ajuda o ZXing em código longo.
+    const videoConstraints: MediaTrackConstraints = {
+      facingMode: { ideal: "environment" },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      frameRate: { ideal: 30, min: 15 },
+    };
     const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
     this.stream = stream;
     const track = stream.getVideoTracks()[0];
@@ -134,38 +137,47 @@ export class NfBarcodeScanner {
     } catch {
       /* segue; o loop espera o readyState */
     }
-    this.onModeChange?.(this.detector ? "native" : "zxing");
-    // CORREÇÃO: leitura contínua LEVE (nativo ou ZXing), com intervalo controlado.
-    if (this.detector) {
-      this.loopNative();
-    } else {
-      const hints = new Map<DecodeHintType, unknown>();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
-      this.reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: nfScannerFastDelayMs });
-      const controls = await this.reader.decodeFromVideoElement(video, result => {
-        if (!this.active || !result) return;
-        const key = normalizeNfBarcodeValue(result.getText());
-        if (key) this.onDetected?.(key);
-      });
-      if (!this.active) {
-        controls.stop();
-        return;
-      }
-      this.controls = controls;
-    }
+    // CORREÇÃO FINAL: modo HÍBRIDO — tenta nativo e, se não achar, ZXing no mesmo quadro.
+    // No Android isso resolve o "não lê"; no iOS mantém o ZXing que já é rápido.
+    this.onModeChange?.(this.detector ? "hybrid" : "zxing");
+    this.loopHybrid();
   }
-  // CORREÇÃO: leitura nativa com intervalo controlado (~10 tentativas por segundo),
-  // SEM máximo esforço — leve o suficiente para não travar o celular.
-  private loopNative = () => {
-    if (!this.active || !this.video || !this.detector) {
-      if (this.active) this.rafId = requestAnimationFrame(this.loopNative);
+  // CORREÇÃO FINAL: leitura contínua leve e híbrida. A cada quadro (com intervalo
+  // ~100ms), tenta o nativo; se não achar, tenta o ZXing no MESMO quadro. Sem
+  // máximo esforço no contínuo (leve, não trava). Valida o dígito verificador.
+  private loopHybrid = () => {
+    if (!this.active || !this.video || this.video.readyState < 2) {
+      if (this.active) this.rafId = requestAnimationFrame(this.loopHybrid);
       return;
     }
     const now = performance.now();
-    if (now - this.lastAttempt >= 100 && this.video.readyState >= 2) {
+    if (now - this.lastAttempt >= 100) {
       this.lastAttempt = now;
-      this.detector
-        .detect(this.video)
+      this.detectCurrentFrame();
+    }
+    this.rafId = requestAnimationFrame(this.loopHybrid);
+  };
+  /** Detecta no quadro atual: tenta nativo, depois ZXing. Não bloqueia o ciclo. */
+  private detectCurrentFrame() {
+    const { video, detector } = this;
+    if (!video || video.readyState < 2) return;
+    let width = video.videoWidth || 1280;
+    let height = video.videoHeight || 720;
+    const MAX_WIDTH = 1280;
+    if (width > MAX_WIDTH) {
+      height = Math.round((height * MAX_WIDTH) / width);
+      width = MAX_WIDTH;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, width, height);
+    // 1) Leitor nativo (rápido quando funciona)
+    if (detector) {
+      detector
+        .detect(canvas)
         .then(codes => {
           if (!this.active) return;
           for (const code of codes) {
@@ -175,11 +187,29 @@ export class NfBarcodeScanner {
               return;
             }
           }
+          // Não achou no nativo — tenta o ZXing no mesmo quadro.
+          this.tryZxingOnCanvas(canvas);
         })
-        .catch(() => undefined);
+        .catch(() => this.tryZxingOnCanvas(canvas));
+    } else {
+      this.tryZxingOnCanvas(canvas);
     }
-    this.rafId = requestAnimationFrame(this.loopNative);
-  };
+  }
+  /** Tenta ler com o ZXing no quadro atual (sem máximo esforço no contínuo). */
+  private tryZxingOnCanvas(canvas: HTMLCanvasElement) {
+    if (!this.active) return;
+    const hints = new Map<DecodeHintType, unknown>();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
+    const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: nfScannerFastDelayMs });
+    reader
+      .decodeFromCanvas(canvas)
+      .then(result => {
+        if (!this.active || !result) return;
+        const key = normalizeNfBarcodeValue(result.getText());
+        if (key) this.onDetected?.(key);
+      })
+      .catch(() => undefined);
+  }
   /** Congela um quadro e tenta ler nele — usado APENAS no botão "Fotografar e ler". */
   async captureStill(): Promise<boolean> {
     const { video, detector } = this;
