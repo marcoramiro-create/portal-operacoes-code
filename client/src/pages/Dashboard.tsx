@@ -265,15 +265,18 @@ export default function Dashboard() {
                      <button type="button" onClick={() => setStickyCollapsed(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Expandir"><ChevronDown className="h-4 w-4" /></button>
                    </div>
                  ) : (
-                   <div className="flex items-center gap-4 overflow-x-auto">
-                     {compactMetrics.map(m => (
-                       <div key={m.label} className="shrink-0">
-                         <p className="text-[9px] font-extrabold uppercase tracking-[0.08em] text-slate-400">{m.label}</p>
-                         <p className="whitespace-nowrap text-sm font-extrabold text-slate-950">{m.value}{m.unit ? <span className="ml-1 text-[10px] font-bold text-slate-400">{m.unit}</span> : null}</p>
-                       </div>
-                     ))}
-                     <button type="button" onClick={() => setStickyCollapsed(true)} className="ml-auto shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Recolher"><ChevronUp className="h-4 w-4" /></button>
-                   </div>
+                               <div className="grid w-full grid-flow-col auto-cols-fr divide-x divide-slate-200">
+		                 {compactMetrics.map(m => (
+		                   <div key={m.label} className="flex min-w-0 flex-col items-center justify-center px-2 py-0.5 text-center">
+		                     <p className="truncate text-[9px] font-extrabold uppercase tracking-[0.06em] text-slate-400">{m.label}</p>
+		                     <p className="whitespace-nowrap text-sm font-extrabold text-slate-950">
+		                       {m.value}
+		                       {m.unit ? <span className="ml-1 text-[10px] font-bold text-slate-400">{m.unit}</span> : null}
+		                     </p>
+		                   </div>
+		                 ))}
+		                 <button type="button" onClick={() => setStickyCollapsed(true)} className="flex shrink-0 items-center justify-center rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Recolher"><ChevronUp className="h-4 w-4" /></button>
+              </div>
                  )}
                </div>
              </div>
