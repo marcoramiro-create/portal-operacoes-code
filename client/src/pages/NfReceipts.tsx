@@ -1,25 +1,30 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
-import { NfBarcodeScanner } from "@/lib/nfBarcodeScanner";
+import { NfBarcodeScanner, detectPlatform } from "@/lib/nfBarcodeScanner";
 import { formatNfNumber, formatNfReceiptExportRows } from "../../../shared/nfReceiptExport";
 import { Barcode, Camera, CheckCircle2, Download, FileUp, Keyboard, LoaderCircle, MapPin, Pencil, ScanLine, ShieldCheck, Trash2, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+
 type CaptureMethod = "manual" | "camera" | "barcode_reader";
 type ReadingPoint = "descarga" | "recebimento" | "conferencia" | "envio_fiscal";
-// BLOCO 1: ordem do fluxo — Recebimento (1º) → Descarga → Conferência → Envio ao fiscal.
 const readingPoints: ReadingPoint[] = ["recebimento", "descarga", "conferencia", "envio_fiscal"];
 const readingPointLabels: Record<ReadingPoint, string> = { descarga: "Descarga", recebimento: "Recebimento", conferencia: "Conferência", envio_fiscal: "Envio ao fiscal" };
 const clean = (value: string) => value.replace(/\D/g, "").slice(0, 44);
 const labels: Record<CaptureMethod, string> = { manual: "Digitação", camera: "Câmera", barcode_reader: "Leitor de mesa" };
+// BLOCO 7: o modo Câmera se adapta ao SO — Android usa foto, iOS usa leitura ao vivo.
+const isAndroid = detectPlatform() === "android";
 const modeHelp: Record<CaptureMethod, string> = {
   manual: "Digite ou cole os 44 dígitos da chave de acesso.",
   barcode_reader: "Deixe o cursor no campo e faça a leitura; o leitor de mesa funciona como teclado.",
-  camera: "Toque em Fotografar e ler. A câmera do aparelho abre, você fotografa o código e a aplicação lê a foto.",
+  camera: isAndroid
+    ? "Toque em Fotografar e ler. A câmera do aparelho abre, você fotografa o código e a aplicação lê a foto."
+    : "Aponte a câmera para o código de barras da DANFE. A leitura é feita automaticamente ao vivo.",
 };
 const cell = (value: unknown) => String(value ?? "").trim();
+
 export default function NfReceipts() {
   const [accessKey, setAccessKey] = useState("");
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>("manual");
@@ -27,7 +32,9 @@ export default function NfReceipts() {
   const [activeView, setActiveView] = useState<"capture" | "history" | "carriers">("capture");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [liveBusy, setLiveBusy] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const liveContainerRef = useRef<HTMLDivElement>(null);
   const scanner = useMemo(() => new NfBarcodeScanner(), []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingPoint, setEditingPoint] = useState<ReadingPoint>("recebimento");
@@ -65,6 +72,23 @@ export default function NfReceipts() {
     },
     onError: error => toast.error(error.message),
   });
+
+  // BLOCO 7: inicia/para a leitura ao vivo (iOS) quando o modo Câmera fica ativo.
+  useEffect(() => {
+    if (captureMethod !== "camera" || isAndroid || !liveContainerRef.current) return;
+    setLiveBusy(true);
+    setCameraError(null);
+    scanner.start(liveContainerRef.current, key => {
+      setAccessKey(key);
+      setLiveBusy(false);
+      toast.success("Código identificado. Revise a chave antes de registrar a NF.");
+    }).catch(() => {
+      setLiveBusy(false);
+      setCameraError("Não foi possível abrir a câmera. Verifique a permissão e tente de novo.");
+    });
+    return () => { scanner.stop(); setLiveBusy(false); };
+  }, [captureMethod, scanner]);
+
   const handlePhotoFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.currentTarget.value = "";
@@ -83,6 +107,7 @@ export default function NfReceipts() {
       setPhotoBusy(false);
     }
   };
+
   const submit = () => {
     capture.mutate({
       accessKey,
@@ -128,6 +153,7 @@ export default function NfReceipts() {
       toast.error("Não foi possível ler o arquivo. Use uma planilha .xlsx ou .csv gerada pela SA4.");
     }
   };
+
   return (
     <div className="page-wrap">
       <header className="mb-7">
@@ -146,9 +172,18 @@ export default function NfReceipts() {
         {activeView === "capture" && <section className="sc-surface p-5 sm:p-7">
           <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f1ccd7] text-slate-950"><ScanLine className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold tracking-tight text-slate-950">Capturar chave de acesso</h2><p className="mt-0.5 text-xs font-medium text-slate-500">Escolha como preencher o único campo de chave e registre os 44 dígitos.</p></div></div>
           {captureMethod === "camera" && (<div className="mt-5">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-slate-800">Leitor de código pela câmera</p><p className="mt-1 text-xs font-semibold text-slate-500">Toque em Fotografar e ler. A câmera do aparelho abre, você fotografa o código de barras da DANFE e a aplicação lê a foto. Mantenha o código na horizontal, sem reflexo e bem iluminado.</p></div></div>
-            <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoFile} />
-            <div className="mt-4 flex flex-wrap items-center gap-3"><Button onClick={() => photoInputRef.current?.click()} disabled={photoBusy}>{photoBusy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}{photoBusy ? "Lendo foto…" : "Fotografar e ler"}</Button></div>
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-slate-800">Leitor de código pela câmera</p><p className="mt-1 text-xs font-semibold text-slate-500">{modeHelp.camera}</p></div></div>
+            {isAndroid ? (
+              <>
+                <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoFile} />
+                <div className="mt-4 flex flex-wrap items-center gap-3"><Button onClick={() => photoInputRef.current?.click()} disabled={photoBusy}>{photoBusy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}{photoBusy ? "Lendo foto…" : "Fotografar e ler"}</Button></div>
+              </>
+            ) : (
+              <div className="mt-4">
+                <div ref={liveContainerRef} className="relative aspect-video w-full overflow-hidden rounded-2xl bg-black" />
+                {liveBusy && <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Aguardando o código…</p>}
+              </div>
+            )}
             {cameraError && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{cameraError}</p>}
           </div>)}
           <div className="mt-6"><label className="text-sm font-extrabold text-slate-800">Modo de coleta</label><div className="mt-2 grid gap-2 sm:grid-cols-3">{(["manual", "barcode_reader", "camera"] as CaptureMethod[]).map(mode => (<Button key={mode} type="button" variant={captureMethod === mode ? "default" : "outline"} onClick={() => changeMode(mode)} className={captureMethod === mode ? "bg-slate-950 hover:bg-slate-800" : ""}>{mode === "manual" ? <Keyboard className="mr-2 h-4 w-4" /> : mode === "barcode_reader" ? <Barcode className="mr-2 h-4 w-4" /> : <Camera className="mr-2 h-4 w-4" />}{labels[mode]}</Button>))}</div><p className="mt-3 text-xs font-semibold text-slate-500">{modeHelp[captureMethod]}</p></div>

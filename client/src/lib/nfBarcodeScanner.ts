@@ -1,18 +1,18 @@
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+import { nfScannerFastDelayMs } from "./nfScannerConfig";
 /*
- * Leitor da DANFE (chave de 44 dígitos) — LEITURA POR FOTO (CORRIGIDO).
- * O usuário fotografa o código com a CÂMERA NATIVA (via <input capture>) e a
- * aplicação lê a foto. CORREÇÃO (27/09/2026): a versão anterior decodificava a
- * foto GIGANTE do celular (4000x3000) direto no ZXing — inconsistente e falha.
- * Agora: 1) reduz a foto para no máximo 1280px; 2) tenta o leitor NATIVO do
- * Android na imagem estática (onde ele é excelente); 3) se falhar, tenta o ZXing
- * no canvas reduzido com máximo esforço (cobre iOS e fallback).
+ * Leitor da DANFE (chave de 44 dígitos) — ADAPTATIVO POR SO (27/09/2026).
+ * Confirmado na prática:
+ * - ANDROID: a leitura por FOTO funciona (câmera nativa + decode da imagem).
+ * - iOS: a leitura AO VIVO funciona (ZXing decodeFromVideoElement).
+ * SOLUÇÃO: detecta o SO e usa o fluxo certo em cada um.
+ * - Android -> decodeFromFile (foto)
+ * - iOS/outros -> start (leitura ao vivo com ZXing)
  * REGRA: só vale chave com 44 dígitos E dígito verificador correto.
  */
 export const nfBarcodeFormats = [BarcodeFormat.CODE_128, BarcodeFormat.ITF, BarcodeFormat.CODE_39];
 
-/** Valida o dígito verificador (DV) da chave de acesso da NF-e (módulo 11). */
 export function isValidNfAccessKey(accessKey: string) {
   if (!/^\d{44}$/.test(accessKey)) return false;
   let sum = 0;
@@ -26,18 +26,74 @@ export function isValidNfAccessKey(accessKey: string) {
   return dv === Number(accessKey[43]);
 }
 
-/** Deixa apenas os dígitos e garante a chave de 44 posições com DV válido. Retorna null se inválida. */
 export function normalizeNfBarcodeValue(value: string | null | undefined) {
   const accessKey = (value ?? "").replace(/\D/g, "").slice(0, 44);
   return accessKey.length === 44 && isValidNfAccessKey(accessKey) ? accessKey : null;
 }
 
-type NativeDetector = {
-  detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>>;
-};
+/** Detecta o sistema operacional do aparelho. */
+export function detectPlatform(): "android" | "ios" | "other" {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  if (/android/i.test(ua)) return "android";
+  if (/iPad|iPhone|iPod/i.test(ua)) return "ios";
+  return "other";
+}
 
 export class NfBarcodeScanner {
-  /** Lê a chave de acesso a partir de uma FOTO (arquivo de imagem). Retorna a chave ou null. */
+  private target: HTMLElement | null = null;
+  private video: HTMLVideoElement | null = null;
+  private stream: MediaStream | null = null;
+  private videoTrack: MediaStreamTrack | null = null;
+  private reader: BrowserMultiFormatReader | null = null;
+  private controls: { stop: () => void } | null = null;
+  private active = false;
+  private onDetected: ((key: string) => void) | null = null;
+
+  /** FLUXO iOS/outros: leitura AO VIVO (ZXing direto no vídeo). */
+  async start(target: HTMLElement, onDetected: (key: string) => void): Promise<void> {
+    this.stop();
+    this.target = target;
+    this.onDetected = onDetected;
+    this.active = true;
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("camera-unavailable");
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    this.stream = stream;
+    const track = stream.getVideoTracks()[0];
+    this.videoTrack = track ?? null;
+    if (track && typeof track.applyConstraints === "function") {
+      try {
+        await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] } as MediaTrackConstraints);
+      } catch { /* sem suporte */ }
+    }
+    target.innerHTML = "";
+    const video = document.createElement("video");
+    video.setAttribute("playsinline", "");
+    video.muted = true;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.style.width = "100%";
+    video.style.height = "100%";
+    video.style.objectFit = "cover";
+    video.srcObject = stream;
+    target.appendChild(video);
+    this.video = video;
+    try { await video.play(); } catch { /* segue */ }
+    const hints = new Map<DecodeHintType, unknown>();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
+    this.reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: nfScannerFastDelayMs });
+    const controls = await this.reader.decodeFromVideoElement(video, result => {
+      if (!this.active || !result) return;
+      const key = normalizeNfBarcodeValue(result.getText());
+      if (key) this.onDetected?.(key);
+    });
+    if (!this.active) { controls.stop(); return; }
+    this.controls = controls;
+  }
+
+  /** FLUXO Android: leitura por FOTO (câmera nativa + decode da imagem). */
   async decodeFromFile(file: File): Promise<string | null> {
     let url: string | null = null;
     try {
@@ -45,10 +101,8 @@ export class NfBarcodeScanner {
       const img = await this.loadImage(url);
       const canvas = this.drawResized(img, 1280);
       if (!canvas) return null;
-      // 1) Leitor NATIVO na imagem estática (excelente no Android).
       const nativeKey = await this.tryNativeDetect(canvas);
       if (nativeKey) return nativeKey;
-      // 2) ZXing no canvas reduzido com máximo esforço (iOS e fallback).
       return await this.tryZxingCanvas(canvas);
     } catch {
       return null;
@@ -57,7 +111,6 @@ export class NfBarcodeScanner {
     }
   }
 
-  /** Carrega uma imagem a partir de um object URL. */
   private loadImage(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -67,7 +120,6 @@ export class NfBarcodeScanner {
     });
   }
 
-  /** Desenha a imagem num canvas com no máximo `maxWidth` de largura (mantém proporção). */
   private drawResized(img: HTMLImageElement, maxWidth: number): HTMLCanvasElement | null {
     let width = img.naturalWidth || img.width || 1280;
     let height = img.naturalHeight || img.height || 720;
@@ -84,11 +136,8 @@ export class NfBarcodeScanner {
     return canvas;
   }
 
-  /** Tenta o leitor nativo (BarcodeDetector) na imagem estática. */
   private async tryNativeDetect(canvas: HTMLCanvasElement): Promise<string | null> {
-    const w = window as unknown as {
-      BarcodeDetector?: new (options?: { formats?: string[] }) => NativeDetector;
-    };
+    const w = window as unknown as { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect: (s: CanvasImageSource) => Promise<Array<{ rawValue: string }>> } };
     const BD = w.BarcodeDetector;
     if (!BD) return null;
     try {
@@ -98,9 +147,7 @@ export class NfBarcodeScanner {
         const key = normalizeNfBarcodeValue(code.rawValue);
         if (key) return key;
       }
-    } catch {
-      /* tenta sem formatos abaixo */
-    }
+    } catch { /* tenta sem formatos */ }
     try {
       const detector = new BD();
       const codes = await detector.detect(canvas);
@@ -108,13 +155,10 @@ export class NfBarcodeScanner {
         const key = normalizeNfBarcodeValue(code.rawValue);
         if (key) return key;
       }
-    } catch {
-      /* sem suporte — segue para o ZXing */
-    }
+    } catch { /* segue */ }
     return null;
   }
 
-  /** Tenta o ZXing no canvas reduzido com máximo esforço. */
   private async tryZxingCanvas(canvas: HTMLCanvasElement): Promise<string | null> {
     const hints = new Map<DecodeHintType, unknown>();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
@@ -126,5 +170,17 @@ export class NfBarcodeScanner {
     } catch {
       return null;
     }
+  }
+
+  stop(): void {
+    this.active = false;
+    if (this.video) { this.video.srcObject = null; this.video.remove(); this.video = null; }
+    try { this.controls?.stop(); } catch { /* já encerrado */ }
+    this.controls = null;
+    this.reader = null;
+    if (this.stream) { this.stream.getTracks().forEach(t => t.stop()); this.stream = null; }
+    this.videoTrack = null;
+    if (this.target) { this.target.innerHTML = ""; this.target = null; }
+    this.onDetected = null;
   }
 }
