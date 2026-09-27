@@ -20,6 +20,10 @@
 // MUDANÇA (25/09/2026): parsePurchaseHistoryDate passa a interpretar a hora
 //   do nome do arquivo como horário de SÃO PAULO (UTC-3). Antes era tratada
 //   como UTC e o portal exibia 3 horas a menos.
+// MUDANÇA (27/09/2026): ZEROS À ESQUERDA — código é TEXTO e preserva zeros
+//   (ex.: "03545-mgt"). A importação grava "codeOriginal" (código exato da
+//   planilha) na coluna nova; "code" (normalizada) continua sendo a CHAVE dos
+//   cruzamentos e da recomendação de IA. Consultas de itens devolvem codeOriginal.
 // ============================================================
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -311,6 +315,9 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
         registros.slice(start, start + 500).map((r) => ({
           importId,
           code: r.codigo,
+          // REGRA (27/09/2026): grava o código EXATO da planilha (com zeros) em
+          // codeOriginal, para exibição/exportação. "code" segue normalizada (chave).
+          codeOriginal: r.codigoOriginal || r.codigo,
           description: r.descricao || "",
           ultimaCompra: r.ultimaCompra || null,
           pedidos: r.pedidos,
@@ -391,6 +398,7 @@ export type AnalyticsFilter = {
 export type AnalyticsItem = {
   id: number;
   code: string;
+  codeOriginal: string; // (27/09/2026): código exato da planilha, com zeros preservados.
   description: string;
   ultimaCompra: string | null;
   pedidos: number;
@@ -678,6 +686,7 @@ export async function getAnalyticsItems(filters: AnalyticsFilter, page = 1, page
       .select({
         id: inventoryAnalytics.id,
         code: inventoryAnalytics.code,
+        codeOriginal: inventoryAnalytics.codeOriginal, // (27/09/2026): código exato com zeros.
         description: inventoryAnalytics.description,
         ultimaCompra: inventoryAnalytics.ultimaCompra,
         pedidos: inventoryAnalytics.pedidos,
@@ -742,7 +751,7 @@ export async function getAnalyticsCardItems(filters: AnalyticsFilter, metric: An
   const orderExpr = sort === "turnover" ? sql`${inventoryAnalytics.salesValue13M} / nullif(${inventoryAnalytics.stockValue}, 0)` : sort === "consumoMensal" ? sql`${inventoryAnalytics.sales13M} / 13` : orderMap[sort as keyof typeof orderMap] ?? inventoryAnalytics.stockValue;
   const [countRow, rows] = await Promise.all([
     db.select({ total: sql<number>`count(*)` }).from(inventoryAnalytics).where(and(...conditions)),
-    db.select({ id: inventoryAnalytics.id, code: inventoryAnalytics.code, description: inventoryAnalytics.description, ultimaCompra: inventoryAnalytics.ultimaCompra, pedidos: inventoryAnalytics.pedidos, branch: inventoryAnalytics.branch, productType: inventoryAnalytics.productType, mrp: inventoryAnalytics.mrp, family: inventoryAnalytics.family, subfamily: inventoryAnalytics.subfamily, curve: inventoryAnalytics.curve, sales13M: inventoryAnalytics.sales13M, salesValue13M: inventoryAnalytics.salesValue13M, stock: inventoryAnalytics.stock, stockValue: inventoryAnalytics.stockValue, coverageDays: inventoryAnalytics.coverageDays, excessValue: inventoryAnalytics.excessValue }).from(inventoryAnalytics).where(and(...conditions)).orderBy(dir === "asc" ? asc(orderExpr) : desc(orderExpr)).limit(pageSize).offset((page - 1) * pageSize),
+    db.select({ id: inventoryAnalytics.id, code: inventoryAnalytics.code, codeOriginal: inventoryAnalytics.codeOriginal, description: inventoryAnalytics.description, ultimaCompra: inventoryAnalytics.ultimaCompra, pedidos: inventoryAnalytics.pedidos, branch: inventoryAnalytics.branch, productType: inventoryAnalytics.productType, mrp: inventoryAnalytics.mrp, family: inventoryAnalytics.family, subfamily: inventoryAnalytics.subfamily, curve: inventoryAnalytics.curve, sales13M: inventoryAnalytics.sales13M, salesValue13M: inventoryAnalytics.salesValue13M, stock: inventoryAnalytics.stock, stockValue: inventoryAnalytics.stockValue, coverageDays: inventoryAnalytics.coverageDays, excessValue: inventoryAnalytics.excessValue }).from(inventoryAnalytics).where(and(...conditions)).orderBy(dir === "asc" ? asc(orderExpr) : desc(orderExpr)).limit(pageSize).offset((page - 1) * pageSize),
   ]);
   return { importId, page, pageSize, total: Number(countRow[0]?.total ?? 0), items: rows.map(row => ({ ...row, ultimaCompra: row.ultimaCompra ? String(row.ultimaCompra) : null, pedidos: asNumber(row.pedidos), consumoMensal: asNumber(row.sales13M) / 13, sales13M: asNumber(row.sales13M), salesValue13M: asNumber(row.salesValue13M), stock: asNumber(row.stock), stockValue: asNumber(row.stockValue), coverageDays: asNumber(row.coverageDays), excessValue: asNumber(row.excessValue), turnover: calculateTurnover(asNumber(row.salesValue13M), asNumber(row.stockValue)) })) };
 }

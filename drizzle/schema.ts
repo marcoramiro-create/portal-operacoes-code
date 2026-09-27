@@ -78,6 +78,12 @@ export const inventoryAnalytics = pgTable(
     id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
     importId: integer("importId").notNull().references(() => protheusImports.id),
     code: varchar("code", { length: 120 }).notNull(),
+    // REGRA DE NEGÓCIO (27/09/2026): código de produto/agregado é TEXTO e PRESERVA
+    // zeros à esquerda e todos os caracteres (ex.: "03545-mgt").
+    // "code" (normalizada) continua sendo a CHAVE usada nos cruzamentos e na
+    // recomendação de IA. "codeOriginal" guarda o código EXATAMENTE como veio da
+    // planilha, para exibição, exportação e telas.
+    codeOriginal: varchar("codeOriginal", { length: 120 }).notNull().default(""),
     description: varchar("description", { length: 1000 }).notNull(),
     ultimaCompra: date("ultimaCompra"),
     pedidos: decimal("pedidos", { precision: 20, scale: 3 }).notNull().default("0"),
