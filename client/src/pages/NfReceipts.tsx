@@ -3,14 +3,13 @@ import { Input } from "@/components/ui/input";
 import { trpc } from "@/lib/trpc";
 import { NfBarcodeScanner } from "@/lib/nfBarcodeScanner";
 import { formatNfNumber, formatNfReceiptExportRows } from "../../../shared/nfReceiptExport";
-import { Barcode, Camera, CheckCircle2, Download, FileUp, Flashlight, FlashlightOff, Keyboard, LoaderCircle, MapPin, Pencil, ScanLine, ShieldCheck, Trash2, Truck, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Barcode, Camera, CheckCircle2, Download, FileUp, Keyboard, LoaderCircle, MapPin, Pencil, ScanLine, ShieldCheck, Trash2, Truck } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 type CaptureMethod = "manual" | "camera" | "barcode_reader";
 type ReadingPoint = "descarga" | "recebimento" | "conferencia" | "envio_fiscal";
-// BLOCO 1 (25/09/2026): nova ordem do fluxo — Recebimento (1º) → Descarga → Conferência → Envio ao fiscal.
-// O transporte (transportadora + placa) agora pertence ao Recebimento, que é o primeiro passo.
+// BLOCO 1: ordem do fluxo — Recebimento (1º) → Descarga → Conferência → Envio ao fiscal.
 const readingPoints: ReadingPoint[] = ["recebimento", "descarga", "conferencia", "envio_fiscal"];
 const readingPointLabels: Record<ReadingPoint, string> = { descarga: "Descarga", recebimento: "Recebimento", conferencia: "Conferência", envio_fiscal: "Envio ao fiscal" };
 const clean = (value: string) => value.replace(/\D/g, "").slice(0, 44);
@@ -18,57 +17,34 @@ const labels: Record<CaptureMethod, string> = { manual: "Digitação", camera: "
 const modeHelp: Record<CaptureMethod, string> = {
   manual: "Digite ou cole os 44 dígitos da chave de acesso.",
   barcode_reader: "Deixe o cursor no campo e faça a leitura; o leitor de mesa funciona como teclado.",
-  camera: "Posicione o código de barras da DANFE na frente da câmera, na horizontal, e aproxime devagar.",
+  camera: "Toque em Fotografar e ler. A câmera do aparelho abre, você fotografa o código e a aplicação lê a foto.",
 };
-const DETECT_TIMEOUT_MS = 20_000;
 const cell = (value: unknown) => String(value ?? "").trim();
 export default function NfReceipts() {
   const [accessKey, setAccessKey] = useState("");
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>("manual");
   const [readingPoint, setReadingPoint] = useState<ReadingPoint>("recebimento");
   const [activeView, setActiveView] = useState<"capture" | "history" | "carriers">("capture");
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraStarting, setCameraStarting] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [scannerMode, setScannerMode] = useState<"native" | "zxing" | null>(null);
-  const [torchOn, setTorchOn] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const scannerRef = useRef<HTMLDivElement>(null);
-  const scannerInstanceRef = useRef<NfBarcodeScanner | null>(null);
-  const scannerActiveRef = useRef(false);
-  const scannerSessionRef = useRef(0);
-  const detectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Controle
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const scanner = useMemo(() => new NfBarcodeScanner(), []);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingPoint, setEditingPoint] = useState<ReadingPoint>("recebimento");
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [reason, setReason] = useState("");
-  // Recebimento (transporte) — BLOCO 1: campos de transportadora + placa agora pertencem ao Recebimento
   const [carrierId, setCarrierId] = useState("");
   const [useManualCarrier, setUseManualCarrier] = useState(false);
   const [carrierManualName, setCarrierManualName] = useState("");
   const [vehiclePlate, setVehiclePlate] = useState("");
-  // Transportadoras (SA4)
   const [carrierRows, setCarrierRows] = useState<{ code: string; name: string; cnpj: string; city: string; uf: string }[] | null>(null);
   const [carrierSourceFile, setCarrierSourceFile] = useState("");
   const recent = trpc.nfReceipts.recent.useQuery(undefined, { retry: false });
   const exportRows = trpc.nfReceipts.exportRows.useQuery(undefined, { enabled: false, retry: false });
   const carriers = trpc.carriers.list.useQuery(undefined, { retry: false });
   const utils = trpc.useUtils();
-  const clearDetectTimeout = useCallback(() => {
-    if (detectTimeoutRef.current) { clearTimeout(detectTimeoutRef.current); detectTimeoutRef.current = null; }
-  }, []);
-  const stopCamera = useCallback(() => {
-    scannerSessionRef.current += 1;
-    clearDetectTimeout();
-    scannerInstanceRef.current?.stop();
-    scannerInstanceRef.current = null;
-    scannerActiveRef.current = false;
-    setCameraOpen(false); setCameraStarting(false); setScannerMode(null); setTorchOn(false);
-  }, [clearDetectTimeout]);
   const capture = trpc.nfReceipts.capture.useMutation({
-    onSuccess: data => { toast.success(`NF ${formatNfNumber(data.invoiceNumber)} registrada às ${new Date(data.capturedAt).toLocaleTimeString("pt-BR")}.`); utils.nfReceipts.recent.invalidate(); setAccessKey(""); setCarrierId(""); setUseManualCarrier(false); setCarrierManualName(""); setVehiclePlate(""); stopCamera(); },
+    onSuccess: data => { toast.success(`NF ${formatNfNumber(data.invoiceNumber)} registrada às ${new Date(data.capturedAt).toLocaleTimeString("pt-BR")}.`); utils.nfReceipts.recent.invalidate(); setAccessKey(""); setCarrierId(""); setUseManualCarrier(false); setCarrierManualName(""); setVehiclePlate(""); },
     onError: error => toast.error(error.message),
   });
   const updatePoint = trpc.nfReceipts.updateReadingPoint.useMutation({
@@ -89,42 +65,24 @@ export default function NfReceipts() {
     },
     onError: error => toast.error(error.message),
   });
-  const startCamera = useCallback(async () => {
-    if (!scannerRef.current || scannerActiveRef.current) return;
-    const session = scannerSessionRef.current + 1;
-    scannerSessionRef.current = session;
-    setCameraError(null); setCameraStarting(true); clearDetectTimeout();
-    try {
-      const instance = new NfBarcodeScanner();
-      scannerInstanceRef.current = instance;
-      await instance.start(scannerRef.current, key => { setAccessKey(key); toast.success("Código de barras identificado. Revise a chave antes de registrar a NF."); stopCamera(); }, mode => setScannerMode(mode));
-      if (session !== scannerSessionRef.current) { instance.stop(); return; }
-      scannerActiveRef.current = true;
-      detectTimeoutRef.current = setTimeout(() => { if (!scannerActiveRef.current) return; setCameraError("Ainda não reconhecemos o código automaticamente. Aproxime a câmera, evite reflexo e toque em Fotografar e ler."); }, DETECT_TIMEOUT_MS);
-    } catch (error) {
-      clearDetectTimeout();
-      if (session !== scannerSessionRef.current) return;
-      scannerActiveRef.current = false; setCameraOpen(false);
-      setCameraError(error instanceof DOMException && error.name === "NotAllowedError" ? "O uso da câmera não foi autorizado. Libere a permissão de câmera do navegador e tente novamente." : "Não foi possível iniciar o leitor automático. Feche qualquer outro aplicativo que esteja usando a câmera e tente novamente.");
-    } finally { setCameraStarting(false); }
-  }, [clearDetectTimeout]);
-  useEffect(() => { if (captureMethod === "camera" && cameraOpen) void startCamera(); }, [cameraOpen, captureMethod, startCamera]);
-  useEffect(() => () => { clearDetectTimeout(); scannerInstanceRef.current?.stop(); }, [clearDetectTimeout]);
-  const handlePhoto = async () => {
-    const instance = scannerInstanceRef.current;
-    if (!instance || photoBusy || !scannerActiveRef.current) return;
+  const handlePhotoFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.currentTarget.value = "";
+    if (!file || photoBusy) return;
     setPhotoBusy(true);
-    try { const ok = await instance.captureStill(); if (!ok) toast.error("Ainda não li o código. Aproxime, evite reflexo e toque em Fotografar e ler de novo."); } finally { setPhotoBusy(false); }
+    setCameraError(null);
+    try {
+      const key = await scanner.decodeFromFile(file);
+      if (key) {
+        setAccessKey(key);
+        toast.success("Código de barras identificado. Revise a chave antes de registrar a NF.");
+      } else {
+        setCameraError("Não consegui ler o código na foto. Fotografe de novo, mais perto, sem reflexo e com boa iluminação.");
+      }
+    } finally {
+      setPhotoBusy(false);
+    }
   };
-  const toggleTorch = async () => {
-    const instance = scannerInstanceRef.current;
-    if (!instance) return;
-    const next = !torchOn;
-    const ok = await instance.setTorch(next);
-    if (!ok) { toast.info("Seu aparelho não permite acender a lanterna pelo portal."); return; }
-    setTorchOn(next);
-  };
-  const changeZoom = async (level: number) => { setZoomLevel(level); const ok = await scannerInstanceRef.current?.setZoom(level); if (ok === false) toast.info("Seu aparelho não permite zoom pelo portal."); };
   const submit = () => {
     capture.mutate({
       accessKey,
@@ -135,8 +93,7 @@ export default function NfReceipts() {
       vehiclePlate: vehiclePlate || null,
     });
   };
-  const changeMode = (next: CaptureMethod) => { setCaptureMethod(next); setCameraError(null); if (next === "camera") setCameraOpen(true); else stopCamera(); };
-  const retryCamera = () => { setCameraError(null); setCameraOpen(true); };
+  const changeMode = (next: CaptureMethod) => { setCaptureMethod(next); setCameraError(null); };
   const exportReadings = async () => {
     const response = await exportRows.refetch();
     if (response.error) { toast.error(response.error.message); return; }
@@ -176,7 +133,6 @@ export default function NfReceipts() {
       <header className="mb-7">
         <p className="eyebrow">Recebimentos · Nota fiscal</p>
         <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">Recebimento simples de NF</h1>
-        {/* BLOCO 1: texto de apoio — o Recebimento é o primeiro passo e nele se informam transportadora e placa */}
         <p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">Registre a chave de acesso da NF. A mesma NF pode passar por vários pontos de leitura. No Recebimento (primeiro passo), informe transportadora e placa (opcionais — nunca bloqueiam). Usuários com permissão de administrador podem corrigir o ponto ou remover leituras, sempre com motivo e registro de auditoria.</p>
       </header>
       <nav aria-label="Seções do recebimento" className="mb-5 grid max-w-xl grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1">
@@ -189,18 +145,14 @@ export default function NfReceipts() {
       <div className="grid gap-5 xl:grid-cols-[1.06fr_.94fr]">
         {activeView === "capture" && <section className="sc-surface p-5 sm:p-7">
           <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f1ccd7] text-slate-950"><ScanLine className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold tracking-tight text-slate-950">Capturar chave de acesso</h2><p className="mt-0.5 text-xs font-medium text-slate-500">Escolha como preencher o único campo de chave e registre os 44 dígitos.</p></div></div>
-          {/* LEITOR NO TOPO */}
           {captureMethod === "camera" && (<div className="mt-5">
-            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-slate-800">Leitor de código pela câmera</p><p className="mt-1 text-xs font-semibold text-slate-500">O leitor tenta reconhecer sozinho. Se não reconhecer em alguns segundos, toque em Fotografar e ler. Mantenha o código na horizontal e sem reflexo.</p></div>{cameraOpen ? <Button variant="outline" onClick={stopCamera}><X className="mr-2 h-4 w-4" />Encerrar câmera</Button> : <Button variant="outline" onClick={retryCamera}><Camera className="mr-2 h-4 w-4" />Iniciar leitor</Button>}</div>
-            {cameraOpen && <div ref={scannerRef} className="relative mt-4 aspect-video overflow-hidden rounded-xl bg-slate-950 [&_canvas]:absolute [&_canvas]:inset-0 [&_canvas]:h-full [&_canvas]:w-full [&_canvas]:object-cover [&_video]:h-full [&_video]:w-full [&_video]:object-cover" />}
-            {cameraStarting && <p className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Iniciando leitor de código…</p>}
+            <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-slate-800">Leitor de código pela câmera</p><p className="mt-1 text-xs font-semibold text-slate-500">Toque em Fotografar e ler. A câmera do aparelho abre, você fotografa o código de barras da DANFE e a aplicação lê a foto. Mantenha o código na horizontal, sem reflexo e bem iluminado.</p></div></div>
+            <input ref={photoInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoFile} />
+            <div className="mt-4 flex flex-wrap items-center gap-3"><Button onClick={() => photoInputRef.current?.click()} disabled={photoBusy}>{photoBusy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}{photoBusy ? "Lendo foto…" : "Fotografar e ler"}</Button></div>
             {cameraError && <p className="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">{cameraError}</p>}
-            {scannerMode && <p className="mt-3 text-xs font-semibold text-slate-500">{scannerMode === "native" ? "Modo: leitor rápido" : "Modo: leitor compatível"}</p>}
-            {cameraOpen && !cameraStarting && (<div className="mt-3 flex flex-wrap items-center gap-3"><Button onClick={() => void handlePhoto()} disabled={photoBusy}>{photoBusy ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Camera className="mr-2 h-4 w-4" />}{photoBusy ? "Lendo…" : "Fotografar e ler"}</Button><Button variant="outline" size="sm" onClick={() => void toggleTorch()}>{torchOn ? <FlashlightOff className="mr-1.5 h-4 w-4" /> : <Flashlight className="mr-1.5 h-4 w-4" />}{torchOn ? "Lanterna ligada" : "Lanterna"}</Button><div className="flex items-center gap-2"><span className="text-xs font-semibold text-slate-500">Zoom</span><input type="range" min={1} max={4} step={0.5} value={zoomLevel} onChange={event => void changeZoom(Number(event.target.value))} className="w-28" /></div></div>)}
           </div>)}
           <div className="mt-6"><label className="text-sm font-extrabold text-slate-800">Modo de coleta</label><div className="mt-2 grid gap-2 sm:grid-cols-3">{(["manual", "barcode_reader", "camera"] as CaptureMethod[]).map(mode => (<Button key={mode} type="button" variant={captureMethod === mode ? "default" : "outline"} onClick={() => changeMode(mode)} className={captureMethod === mode ? "bg-slate-950 hover:bg-slate-800" : ""}>{mode === "manual" ? <Keyboard className="mr-2 h-4 w-4" /> : mode === "barcode_reader" ? <Barcode className="mr-2 h-4 w-4" /> : <Camera className="mr-2 h-4 w-4" />}{labels[mode]}</Button>))}</div><p className="mt-3 text-xs font-semibold text-slate-500">{modeHelp[captureMethod]}</p></div>
           <div className="mt-6"><label className="flex items-center gap-1.5 text-sm font-extrabold text-slate-800"><MapPin className="h-4 w-4" /> Ponto de leitura</label><div className="mt-2 grid gap-2 sm:grid-cols-4">{readingPoints.map(point => (<Button key={point} type="button" variant={readingPoint === point ? "default" : "outline"} onClick={() => setReadingPoint(point)} className={readingPoint === point ? "bg-slate-950 hover:bg-slate-800" : ""}>{readingPointLabels[point]}</Button>))}</div><p className="mt-3 text-xs font-semibold text-slate-500">A mesma NF pode ser lida em vários pontos (Recebimento, Descarga, Conferência, Envio ao fiscal).</p></div>
-          {/* BLOCO 1: CAMPOS DE TRANSPORTE — agora aparecem no ponto Recebimento (primeiro passo) */}
           {readingPoint === "recebimento" && (
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="flex items-center gap-1.5 text-sm font-extrabold text-slate-800"><Truck className="h-4 w-4" /> Dados do recebimento</p>
