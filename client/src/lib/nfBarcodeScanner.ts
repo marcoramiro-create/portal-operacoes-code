@@ -11,12 +11,11 @@ import { nfScannerFastDelayMs } from "./nfScannerConfig";
  *   botão "Fotografar e ler"; lanterna e zoom; indicador de modo.
  * - 25/09/2026 (BLOCO 3): câmera em 1280x720; foco contínuo; 90ms.
  * - 25/09/2026 (BLOCO 4): validação do dígito verificador (módulo 11).
- * - 27/09/2026 (BLOCO 5): detecta o SO e adapta a câmera (Android nativo + resolução
- *   maior; iOS mantém o caminho rápido).
- * - 27/09/2026 (BLOCO 6 — LEITURA POR FOTO AUTOMÁTICA): em vez de processar o vídeo
- *   inteiro a cada quadro (lento em chave longa), o leitor CONGELA um quadro e lê
- *   AQUELE quadro parado com o máximo de esforço (TRY_HARDER). O operador continua
- *   só apontando — sem apertar botão. Leitura determinística e assertiva.
+ * - 27/09/2026 (BLOCO 5): detecta o SO e adapta a câmera.
+ * - 27/09/2026 (BLOCO 6 — REVERTIDO): leitura por foto automática e contínua com
+ *   máximo esforço TRAVOU o celular. REVERTIDO para leitura contínua LEVE.
+ * - 27/09/2026 (CORREÇÃO): leitura contínua leve com intervalo controlado (não
+ *   processa todo quadro) + foto com máximo esforço APENAS no botão "Fotografar e ler".
  * REGRAS:
  * - Só vale chave com 44 dígitos E dígito verificador correto.
  * - Leitura contínua em modo filmagem é o comportamento normal de leitor.
@@ -90,6 +89,8 @@ export class NfBarcodeScanner {
   private active = false;
   private onDetected: ((key: string) => void) | null = null;
   private onModeChange: ((mode: "native" | "zxing") => void) | null = null;
+  // CORREÇÃO: intervalo entre tentativas de leitura contínua (não processa todo quadro).
+  private lastAttempt = 0;
   async start(
     target: HTMLElement,
     onDetected: (key: string) => void,
@@ -109,7 +110,7 @@ export class NfBarcodeScanner {
     // iOS/outros: resolução menor (leitor de software mais leve).
     const isAndroid = platform === "android";
     const videoConstraints: MediaTrackConstraints = isAndroid
-      ? { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 15 } }
+      ? { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, min: 15 } }
       : { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, min: 15 } };
     const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
     this.stream = stream;
@@ -134,32 +135,53 @@ export class NfBarcodeScanner {
       /* segue; o loop espera o readyState */
     }
     this.onModeChange?.(this.detector ? "native" : "zxing");
-    // BLOCO 6: leitura por foto automática — congela quadros e lê com máximo esforço.
-    this.loopPhoto();
+    // CORREÇÃO: leitura contínua LEVE (nativo ou ZXing), com intervalo controlado.
+    if (this.detector) {
+      this.loopNative();
+    } else {
+      const hints = new Map<DecodeHintType, unknown>();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
+      this.reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: nfScannerFastDelayMs });
+      const controls = await this.reader.decodeFromVideoElement(video, result => {
+        if (!this.active || !result) return;
+        const key = normalizeNfBarcodeValue(result.getText());
+        if (key) this.onDetected?.(key);
+      });
+      if (!this.active) {
+        controls.stop();
+        return;
+      }
+      this.controls = controls;
+    }
   }
-  // BLOCO 6: em vez de processar o vídeo inteiro a cada quadro, congela um quadro
-  // (foto) e lê AQUELE quadro parado. Se a chave for válida, encerra; senão,
-  // congela o próximo quadro. Intervalo curto para continuar responsivo.
-  private loopPhoto = () => {
-    if (!this.active || !this.video || this.video.readyState < 2) {
-      if (this.active) this.rafId = requestAnimationFrame(this.loopPhoto);
+  // CORREÇÃO: leitura nativa com intervalo controlado (~10 tentativas por segundo),
+  // SEM máximo esforço — leve o suficiente para não travar o celular.
+  private loopNative = () => {
+    if (!this.active || !this.video || !this.detector) {
+      if (this.active) this.rafId = requestAnimationFrame(this.loopNative);
       return;
     }
-    // Congela um quadro de alta qualidade e lê nele (máximo esforço).
-    this.readFrozenFrame()
-      .then(found => {
-        if (!this.active) return;
-        if (!found) {
-          // Não leu uma chave válida neste quadro — tenta o próximo.
-          this.rafId = requestAnimationFrame(this.loopPhoto);
-        }
-      })
-      .catch(() => {
-        if (this.active) this.rafId = requestAnimationFrame(this.loopPhoto);
-      });
+    const now = performance.now();
+    if (now - this.lastAttempt >= 100 && this.video.readyState >= 2) {
+      this.lastAttempt = now;
+      this.detector
+        .detect(this.video)
+        .then(codes => {
+          if (!this.active) return;
+          for (const code of codes) {
+            const key = normalizeNfBarcodeValue(code.rawValue);
+            if (key) {
+              this.onDetected?.(key);
+              return;
+            }
+          }
+        })
+        .catch(() => undefined);
+    }
+    this.rafId = requestAnimationFrame(this.loopNative);
   };
-  /** Congela o quadro atual e tenta ler a chave nele. Retorna true se leu uma chave válida. */
-  private async readFrozenFrame(): Promise<boolean> {
+  /** Congela um quadro e tenta ler nele — usado APENAS no botão "Fotografar e ler". */
+  async captureStill(): Promise<boolean> {
     const { video, detector } = this;
     if (!this.active || !video || video.readyState < 2) return false;
     let width = video.videoWidth || 1280;
@@ -175,7 +197,6 @@ export class NfBarcodeScanner {
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return false;
     ctx.drawImage(video, 0, 0, width, height);
-    // 1) Tenta o leitor nativo (rápido) no quadro congelado.
     if (detector) {
       try {
         const codes = await detector.detect(canvas);
@@ -190,7 +211,7 @@ export class NfBarcodeScanner {
         /* tenta o ZXing abaixo */
       }
     }
-    // 2) Tenta o ZXing com máximo esforço (TRY_HARDER) no quadro congelado.
+    // Na foto (sob demanda), vale usar o máximo esforço — é um único quadro, não trava.
     const stillHints = new Map<DecodeHintType, unknown>();
     stillHints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
     stillHints.set(DecodeHintType.TRY_HARDER, true);
@@ -205,7 +226,7 @@ export class NfBarcodeScanner {
         }
       }
     } catch {
-      /* nada lido neste quadro */
+      /* nada lido */
     }
     return false;
   }
