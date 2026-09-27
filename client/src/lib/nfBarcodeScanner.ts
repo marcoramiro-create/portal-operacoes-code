@@ -1,26 +1,21 @@
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-import { nfScannerFastConstraints, nfScannerFastDelayMs } from "./nfScannerConfig";
+import { nfScannerFastDelayMs } from "./nfScannerConfig";
 /*
  * Leitor da DANFE (chave de acesso de 44 dígitos) — híbrido de alta confiabilidade.
  * HISTÓRICO (para nunca se perder):
  * - 21/09/2026: Quagga2 (JS puro) — Android abria a câmera mas nunca lia.
  * - 22/09/2026 (manhã): BarcodeDetector nativo + fallback Quagga — seguiu sem ler.
- * - 22/09/2026 (tarde): ZXing — câmera abre, mas ainda não leu no aparelho, embora
- *   o app de câmera e o leitor de QR do celular leiam o mesmo código.
- * - 22/09/2026 (V4): o problema é a qualidade/foco do VÍDEO AO VIVO no navegador.
- *   Solução: motor nativo quando existir (mais rápido) + ZXing como contínuo quando
- *   não; botão "Fotografar e ler" (congela quadro em alta resolução e lê); lanterna
- *   e zoom quando o aparelho suportar; indicador de modo na tela.
- * - 25/09/2026 (BLOCO 3 — ACELERAÇÃO): câmera abre em 1280x720 (muito menos
- *   trabalho por tentativa); foco automático contínuo quando suportado; leitor
- *   compatível com 90ms entre tentativas e SEM "tentativa reforçada" no modo
- *   contínuo (a reforçada fica só no botão Fotografar e ler).
- * - 25/09/2026 (BLOCO 4 — CHAVE ERRADA): validação do DÍGITO VERIFICADOR (DV,
- *   módulo 11) da chave de acesso. Se a leitura vier com dígito errado, o leitor
- *   DESCARTÁ e continua escaneando — evita gravar uma NF diferente da escaneada.
+ * - 22/09/2026 (tarde): ZXing — câmera abre, mas ainda não leu no aparelho.
+ * - 22/09/2026 (V4): motor nativo quando existir + ZXing como contínuo quando não;
+ *   botão "Fotografar e ler"; lanterna e zoom; indicador de modo.
+ * - 25/09/2026 (BLOCO 3 — ACELERAÇÃO): câmera em 1280x720; foco contínuo; 90ms.
+ * - 25/09/2026 (BLOCO 4 — CHAVE ERRADA): validação do dígito verificador (módulo 11).
+ * - 27/09/2026 (BLOCO 5 — CONSCIENTE DO SISTEMA): detecta o SO e adapta a câmera.
+ *   Android (maioria da operação): leitor nativo garantido + resolução maior +
+ *   ciclo de leitura mais responsivo. iOS: mantém o caminho que já era rápido.
  * REGRAS:
- * - Só vale chave com exatamente 44 dígitos E dígito verificador correto.
+ * - Só vale chave com 44 dígitos E dígito verificador correto.
  * - Leitura contínua em modo filmagem é o comportamento normal de leitor.
  */
 export const nfBarcodeFormats = [BarcodeFormat.CODE_128, BarcodeFormat.ITF, BarcodeFormat.CODE_39];
@@ -40,13 +35,20 @@ export function isValidNfAccessKey(accessKey: string) {
 /** Deixa apenas os dígitos e garante a chave de 44 posições com DV válido. Retorna null se inválida. */
 export function normalizeNfBarcodeValue(value: string | null | undefined) {
   const accessKey = (value ?? "").replace(/\D/g, "").slice(0, 44);
-  // BLOCO 4: só aceita chave com dígito verificador correto (evita leitura errada)
   return accessKey.length === 44 && isValidNfAccessKey(accessKey) ? accessKey : null;
+}
+/** Detecta o sistema operacional do aparelho (BLOCO 5). */
+export function detectPlatform(): "android" | "ios" | "other" {
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  if (/android/i.test(ua)) return "android";
+  if (/iPad|iPhone|iPod/i.test(ua)) return "ios";
+  return "other";
 }
 type NativeDetector = {
   detect: (source: CanvasImageSource) => Promise<Array<{ rawValue: string }>>;
 };
 type BarcodeDetectorCtor = new (options?: { formats?: string[] }) => NativeDetector;
+/** Cria o leitor nativo de forma robusta (BLOCO 5): tenta mesmo sem a lista de formatos. */
 async function createNativeDetector(): Promise<NativeDetector | null> {
   try {
     const w = window as unknown as {
@@ -54,10 +56,13 @@ async function createNativeDetector(): Promise<NativeDetector | null> {
     };
     const BD = w.BarcodeDetector;
     if (!BD) return null;
-    const formats = BD.getSupportedFormats ? await BD.getSupportedFormats() : [];
-    const list = Array.isArray(formats) ? formats : [];
-    if (!list.includes("code_128")) return null;
-    return new BD({ formats: ["code_128"] });
+    // Tenta criar direto com code_128 (mais robusto que exigir a lista de formatos)
+    try {
+      return new BD({ formats: ["code_128"] });
+    } catch {
+      /* se falhar, tenta sem formatos */
+    }
+    return new BD();
   } catch {
     return null;
   }
@@ -96,12 +101,16 @@ export class NfBarcodeScanner {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error("camera-unavailable");
     }
+    const platform = detectPlatform();
     this.detector = await createNativeDetector();
-    // BLOCO 3: câmera abre em 1280x720 (mais rápido) em vez de 1920x1080
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: nfScannerFastConstraints,
-      audio: false,
-    });
+    // BLOCO 5: câmera adaptada ao sistema.
+    // Android: resolução maior (o leitor nativo processa rápido e lê melhor códigos longos).
+    // iOS/outros: resolução menor (leitor de software mais leve).
+    const isAndroid = platform === "android";
+    const videoConstraints: MediaTrackConstraints = isAndroid
+      ? { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, min: 15 } }
+      : { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, min: 15 } };
+    const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
     this.stream = stream;
     const track = stream.getVideoTracks()[0];
     this.videoTrack = track ?? null;
@@ -123,13 +132,13 @@ export class NfBarcodeScanner {
     } catch {
       /* segue; o loop espera o readyState */
     }
+    // BLOCO 5: no Android, prioriza o leitor nativo (rápido). Se não houver, usa ZXing.
     if (this.detector) {
       this.onModeChange?.("native");
       this.loopNative();
       return;
     }
     this.onModeChange?.("zxing");
-    // BLOCO 3: no modo contínuo compatível, SEM "tentativa reforçada" (é caro).
     const hints = new Map<DecodeHintType, unknown>();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
     this.reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: nfScannerFastDelayMs });
@@ -147,6 +156,8 @@ export class NfBarcodeScanner {
   private loopNative = () => {
     if (!this.active || !this.video || !this.detector) return;
     if (this.video.readyState >= 2) {
+      // BLOCO 5: dispara a detecção sem travar o ciclo — agenda a próxima tentativa
+      // imediatamente em vez de esperar o processamento terminar (mais responsivo).
       this.detector
         .detect(this.video)
         .then(codes => {
@@ -159,10 +170,9 @@ export class NfBarcodeScanner {
             }
           }
         })
-        .catch(() => undefined)
-        .finally(() => {
-          if (this.active) this.rafId = requestAnimationFrame(this.loopNative);
-        });
+        .catch(() => undefined);
+      // Agenda a próxima tentativa no próximo quadro (não espera o detect terminar)
+      if (this.active) this.rafId = requestAnimationFrame(this.loopNative);
     } else {
       this.rafId = requestAnimationFrame(this.loopNative);
     }
@@ -173,7 +183,6 @@ export class NfBarcodeScanner {
     if (!this.active || !video || video.readyState < 2) return false;
     let width = video.videoWidth || 1280;
     let height = video.videoHeight || 720;
-    // BLOCO 3: limita o quadro a 1280px para acelerar a leitura da foto
     const MAX_WIDTH = 1280;
     if (width > MAX_WIDTH) {
       height = Math.round((height * MAX_WIDTH) / width);
@@ -199,7 +208,6 @@ export class NfBarcodeScanner {
         /* tenta o ZXing abaixo */
       }
     }
-    // Na foto, vale usar "tentativa reforçada" (quadro congelado de alta qualidade)
     const stillHints = new Map<DecodeHintType, unknown>();
     stillHints.set(DecodeHintType.POSSIBLE_FORMATS, nfBarcodeFormats);
     stillHints.set(DecodeHintType.TRY_HARDER, true);
