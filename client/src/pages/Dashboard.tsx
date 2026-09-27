@@ -250,27 +250,34 @@ export default function Dashboard() {
       </section>
     ) : <>
       {dashboardView === "overview" && <>
-        {/* P3 (10/09/2026): barra compacta fixa no topo quando os cards saem da tela */}
-        {stickyMetrics && hasImport && (
-          <div className="sticky top-0 z-30 mt-3 rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:px-4">
-            {stickyCollapsed ? (
-              <div className="flex items-center justify-between">
-                <p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-400">Indicadores principais</p>
-                <button type="button" onClick={() => setStickyCollapsed(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Expandir"><ChevronDown className="h-4 w-4" /></button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-4 overflow-x-auto">
-                {compactMetrics.map(m => (
-                  <div key={m.label} className="shrink-0">
-                    <p className="text-[9px] font-extrabold uppercase tracking-[0.08em] text-slate-400">{m.label}</p>
-                    <p className="whitespace-nowrap text-sm font-extrabold text-slate-950">{m.value}{m.unit ? <span className="ml-1 text-[10px] font-bold text-slate-400">{m.unit}</span> : null}</p>
-                  </div>
-                ))}
-                <button type="button" onClick={() => setStickyCollapsed(true)} className="ml-auto shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Recolher"><ChevronUp className="h-4 w-4" /></button>
-              </div>
-            )}
-          </div>
-        )}
+           {/* P3 (10/09/2026): barra compacta fixa quando os cards saem da tela.
+               CORREÇÃO 27/09/2026: barra fora do fluxo (fixed) com transição suave;
+               não empurra nem comprime os cards originais (sem pulo de layout). */}
+           <div
+             aria-hidden={!(stickyMetrics && hasImport)}
+             className={`pointer-events-none fixed inset-x-0 top-0 z-30 transition-all duration-300 ease-out ${stickyMetrics && hasImport ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0"}`}
+           >
+             <div className="pointer-events-auto mx-auto max-w-[1440px] px-3 pt-3 sm:px-4">
+               <div className="rounded-xl border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur sm:px-4">
+                 {stickyCollapsed ? (
+                   <div className="flex items-center justify-between">
+                     <p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-400">Indicadores principais</p>
+                     <button type="button" onClick={() => setStickyCollapsed(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Expandir"><ChevronDown className="h-4 w-4" /></button>
+                   </div>
+                 ) : (
+                   <div className="flex items-center gap-4 overflow-x-auto">
+                     {compactMetrics.map(m => (
+                       <div key={m.label} className="shrink-0">
+                         <p className="text-[9px] font-extrabold uppercase tracking-[0.08em] text-slate-400">{m.label}</p>
+                         <p className="whitespace-nowrap text-sm font-extrabold text-slate-950">{m.value}{m.unit ? <span className="ml-1 text-[10px] font-bold text-slate-400">{m.unit}</span> : null}</p>
+                       </div>
+                     ))}
+                     <button type="button" onClick={() => setStickyCollapsed(true)} className="ml-auto shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" title="Recolher"><ChevronUp className="h-4 w-4" /></button>
+                   </div>
+                 )}
+               </div>
+             </div>
+        </div>
         {/* P3 (10/09/2026): 7 KPIs unificados num único bloco responsivo */}
         <section id="metrics-anchor" className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-8">
           <MetricCard label="Cobertura consolidada" value={formatNumber(kpis.coverage, 1)} unit="dias" hint="Σ estoque ÷ Σ consumo diário" />
