@@ -24,14 +24,17 @@ const MAX_WIDTH = 390;
 // REGRA DE PERMISSÃO DO MENU (definida com o usuário em 27/09/2026):
 // - Administrador técnico (isDevelopmentAdmin) vê TODOS os itens (com e sem nó).
 // - Demais usuários veem APENAS os itens que têm nó na application_nodes
-//   (campo nodeLabel) E com permissão de consulta (view) no módulo.
+//   (campo nodeLabel) E cujo nó esteja liberado para o usuário logado.
 // - Itens sem nó (Início, Importações, Almoxarifado, Empresas/Filiais/etc.)
 //   aparecem SOMENTE para administrador técnico.
 // - Seção do menu: mostra só os itens permitidos; se não sobrar nenhum,
 //   a seção inteira é escondida.
-// nodeLabel = label EXATO do nó em application_nodes (migration 0001_portal_core.sql).
+// - CORREÇÃO 28/09/2026: consulta trocada de userNodePermissions (exigia
+//   admin e deixava o menu vazio para usuários comuns) para applicationTree
+//   (endpoint do próprio usuário logado, sem exigir admin).
 type MenuItem = { label: string; path: string; icon: any; nodeLabel?: string };
 type MenuSection = { title: string; items: MenuItem[] };
+type TreeNode = { label: string; children?: TreeNode[] };
 const MENU: MenuSection[] = [
   {
     title: "Principal",
@@ -131,28 +134,29 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const { signOut, portalIdentity, loading: authLoading } = useSupabaseAuth();
-  // ----- FILTRO DO MENU POR PERMISSÃO (27/09/2026) -----
+  // ----- FILTRO DO MENU POR PERMISSÃO (corrigido em 28/09/2026) -----
   const isDevAdmin = Boolean(portalIdentity?.isDevelopmentAdmin);
-  const canLoadPermissions = Boolean(portalIdentity?.id) && !isDevAdmin;
-  const permissionsQuery = trpc.portal.userNodePermissions.useQuery(
-    { userId: portalIdentity?.id ?? "" },
-    { enabled: canLoadPermissions, retry: false }
-  );
-  // label dos nós em que o usuário tem permissão de consulta (view)
+  // applicationTree = os nós liberados para o PRÓPRIO usuário logado (não exige admin)
+  const treeQuery = trpc.portal.applicationTree.useQuery(undefined, {
+    enabled: Boolean(portalIdentity) && !isDevAdmin,
+    retry: false,
+  });
+  // labels de todos os nós liberados (pais e filhos)
   const allowedNodeLabels = useMemo(() => {
     if (isDevAdmin) return null; // admin técnico: acesso integral (null = vê tudo)
-    return new Set((permissionsQuery.data ?? []).filter(node => node.view).map(node => node.label));
-  }, [isDevAdmin, permissionsQuery.data]);
+    const collect = (nodes: TreeNode[]): string[] => nodes.flatMap((node) => [node.label, ...collect(node.children ?? [])]);
+    return new Set(collect(treeQuery.data ?? []));
+  }, [isDevAdmin, treeQuery.data]);
   // seções visíveis: admin vê o MENU inteiro; demais veem só os itens permitidos
   const visibleSections = useMemo(() => {
     if (isDevAdmin) return MENU;
     if (!allowedNodeLabels) return []; // permissões ainda carregando: não expõe itens antes da hora
     return MENU
-      .map(section => ({
+      .map((section) => ({
         ...section,
-        items: section.items.filter(item => Boolean(item.nodeLabel) && allowedNodeLabels.has(item.nodeLabel!)),
+        items: section.items.filter((item) => Boolean(item.nodeLabel) && allowedNodeLabels.has(item.nodeLabel!)),
       }))
-      .filter(section => section.items.length > 0);
+      .filter((section) => section.items.length > 0);
   }, [isDevAdmin, allowedNodeLabels]);
   // ----- FIM DO FILTRO -----
   useEffect(() => {
