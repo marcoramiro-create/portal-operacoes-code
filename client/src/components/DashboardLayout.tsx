@@ -21,42 +21,46 @@ const SIDEBAR_WIDTH_KEY = "portal-sidebar-width";
 const DEFAULT_WIDTH = 270;
 const MIN_WIDTH = 224;
 const MAX_WIDTH = 390;
-// REGRA DE PERMISSÃO DO MENU (definida com o usuário em 27/09/2026):
+// REGRA DE PERMISSÃO DO MENU (atualizada em 28/09/2026):
 // - Administrador técnico (isDevelopmentAdmin) vê TODOS os itens (com e sem nó).
-// - Demais usuários veem APENAS os itens que têm nó na application_nodes
-//   (campo nodeLabel) E cujo nó esteja liberado para o usuário logado.
-// - Itens sem nó (Início, Importações, Almoxarifado, Empresas/Filiais/etc.)
-//   aparecem SOMENTE para administrador técnico.
+// - O item "Início" (alwaysVisible) aparece para TODOS os usuários logados,
+//   sem depender de liberação — decisão do usuário em 28/09/2026.
+// - Demais usuários veem APENAS os itens que têm nó de referência (nodeLabels)
+//   E cujo nó (ou um nó PAI dele) esteja liberado para o usuário logado.
+//   Regra "pai libera filho": liberar um nó pai mostra os itens dos filhos.
+// - Itens sem nó (Almoxarifado, Empresas/Filiais/etc.) aparecem SOMENTE
+//   para administrador técnico (exceto Início, sempre visível).
+// - "Compras (Protheus)" aceita os DOIS nós: o de análise (Compras e análise
+//   Protheus) e o de importação (Importar · Análise de compras Protheus).
 // - Seção do menu: mostra só os itens permitidos; se não sobrar nenhum,
 //   a seção inteira é escondida.
-// - CORREÇÃO 28/09/2026: consulta trocada de userNodePermissions (exigia
-//   admin e deixava o menu vazio para usuários comuns) para applicationTree
-//   (endpoint do próprio usuário logado, sem exigir admin).
-type MenuItem = { label: string; path: string; icon: any; nodeLabel?: string };
+// - Consulta: applicationTree (endpoint do próprio usuário logado, sem exigir
+//   admin) — devolve os nós liberados e os pais intermediários.
+type MenuItem = { label: string; path: string; icon: any; nodeLabels?: string[]; alwaysVisible?: boolean };
 type MenuSection = { title: string; items: MenuItem[] };
 type TreeNode = { label: string; children?: TreeNode[] };
 const MENU: MenuSection[] = [
   {
     title: "Principal",
     items: [
-      { label: "Início", path: "/", icon: Home },
-      { label: "Compras (Protheus)", path: "/compras/protheus", icon: ShoppingCart, nodeLabel: "Compras e análise Protheus" },
-      { label: "Recebimentos NF", path: "/recebimentos/nf", icon: FileText, nodeLabel: "Leitura de chave de acesso de NF" },
+      { label: "Início", path: "/", icon: Home, alwaysVisible: true },
+      { label: "Compras (Protheus)", path: "/compras/protheus", icon: ShoppingCart, nodeLabels: ["Compras e análise Protheus", "Importar · Análise de compras Protheus"] },
+      { label: "Recebimentos NF", path: "/recebimentos/nf", icon: FileText, nodeLabels: ["Leitura de chave de acesso de NF", "Recebimentos"] },
     ],
   },
   {
     title: "Custos",
     items: [
-      { label: "Custos Auto Peças", path: "/custos/autopecas", icon: TrendingUp, nodeLabel: "Evolução de custos de autopeças" },
-      { label: "Custos Indústria", path: "/custos/industria", icon: TrendingUp, nodeLabel: "Evolução de custos da indústria" },
+      { label: "Custos Auto Peças", path: "/custos/autopecas", icon: TrendingUp, nodeLabels: ["Evolução de custos de autopeças", "Suprimentos e estoques"] },
+      { label: "Custos Indústria", path: "/custos/industria", icon: TrendingUp, nodeLabels: ["Evolução de custos da indústria", "Suprimentos e estoques"] },
     ],
   },
   {
     title: "Importações",
     items: [
-      { label: "Custos Auto Peças", path: "/importacoes/custos-autopecas", icon: UploadCloud },
-      { label: "Custos Indústria", path: "/importacoes/custos-industria", icon: UploadCloud },
-      { label: "Compras (Protheus)", path: "/importacoes/compras-protheus", icon: UploadCloud },
+      { label: "Custos Auto Peças", path: "/importacoes/custos-autopecas", icon: UploadCloud, nodeLabels: ["Importar · Evolução de custos de autopeças", "Importações"] },
+      { label: "Custos Indústria", path: "/importacoes/custos-industria", icon: UploadCloud, nodeLabels: ["Importar · Evolução de custos da indústria", "Importações"] },
+      { label: "Compras (Protheus)", path: "/importacoes/compras-protheus", icon: UploadCloud, nodeLabels: ["Importar · Análise de compras Protheus", "Importações"] },
       { label: "Funcionários", path: "/importacoes/funcionarios", icon: UploadCloud },
       { label: "Fornecedores", path: "/importacoes/fornecedores", icon: UploadCloud },
       { label: "Produtos", path: "/importacoes/produtos", icon: UploadCloud },
@@ -87,17 +91,17 @@ const MENU: MenuSection[] = [
   {
     title: "Ativos",
     items: [
-      { label: "Empilhadeiras", path: "/ativos/empilhadeiras", icon: Wrench, nodeLabel: "Empilhadeiras" },
-      { label: "Equipamentos Indústria", path: "/ativos/equipamentos-industria", icon: Wrench, nodeLabel: "Equipamentos da indústria" },
-      { label: "Ferramentas", path: "/ativos/ferramentas", icon: Wrench, nodeLabel: "Ferramentas de oficinas e indústria" },
+      { label: "Empilhadeiras", path: "/ativos/empilhadeiras", icon: Wrench, nodeLabels: ["Empilhadeiras", "Ativos e manutenção"] },
+      { label: "Equipamentos Indústria", path: "/ativos/equipamentos-industria", icon: Wrench, nodeLabels: ["Equipamentos da indústria", "Ativos e manutenção"] },
+      { label: "Ferramentas", path: "/ativos/ferramentas", icon: Wrench, nodeLabels: ["Ferramentas de oficinas e indústria", "Ativos e manutenção"] },
     ],
   },
   {
     title: "Cadastros",
     items: [
-      { label: "Funcionários", path: "/cadastros/funcionarios", icon: Users, nodeLabel: "Funcionários" },
-      { label: "Fornecedores", path: "/cadastros/fornecedores", icon: Truck, nodeLabel: "Fornecedores" },
-      { label: "Produtos", path: "/cadastros/produtos", icon: Package, nodeLabel: "Produtos" },
+      { label: "Funcionários", path: "/cadastros/funcionarios", icon: Users, nodeLabels: ["Funcionários", "Cadastros"] },
+      { label: "Fornecedores", path: "/cadastros/fornecedores", icon: Truck, nodeLabels: ["Fornecedores", "Cadastros"] },
+      { label: "Produtos", path: "/cadastros/produtos", icon: Package, nodeLabels: ["Produtos", "Cadastros"] },
       { label: "Empresas", path: "/cadastros/empresas", icon: Building2 },
       { label: "Filiais", path: "/cadastros/filiais", icon: Building2 },
       { label: "Armazéns", path: "/cadastros/armazens", icon: Warehouse },
@@ -113,8 +117,8 @@ const MENU: MenuSection[] = [
   {
     title: "Administração",
     items: [
-      { label: "Usuários", path: "/usuarios", icon: Users, nodeLabel: "Usuários e solicitações" },
-      { label: "Perfis de Acesso", path: "/perfis-acesso", icon: ShieldCheck, nodeLabel: "Perfis de acesso" },
+      { label: "Usuários", path: "/usuarios", icon: Users, nodeLabels: ["Usuários e solicitações", "Administração"] },
+      { label: "Perfis de Acesso", path: "/perfis-acesso", icon: ShieldCheck, nodeLabels: ["Perfis de acesso", "Administração"] },
       { label: "Auditoria de Cruzamentos", path: "/administracao/auditoria-cruzamentos", icon: ShieldCheck },
       { label: "Backlog da Auditoria", path: "/administracao/auditoria-backlog", icon: ShieldCheck },
     ],
@@ -134,14 +138,14 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
   const sidebarRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
   const { signOut, portalIdentity, loading: authLoading } = useSupabaseAuth();
-  // ----- FILTRO DO MENU POR PERMISSÃO (corrigido em 28/09/2026) -----
+  // ----- FILTRO DO MENU POR PERMISSÃO (regra "pai libera filho", 28/09/2026) -----
   const isDevAdmin = Boolean(portalIdentity?.isDevelopmentAdmin);
   // applicationTree = os nós liberados para o PRÓPRIO usuário logado (não exige admin)
   const treeQuery = trpc.portal.applicationTree.useQuery(undefined, {
     enabled: Boolean(portalIdentity) && !isDevAdmin,
     retry: false,
   });
-  // labels de todos os nós liberados (pais e filhos)
+  // labels de todos os nós liberados (pais e filhos) presentes na árvore
   const allowedNodeLabels = useMemo(() => {
     if (isDevAdmin) return null; // admin técnico: acesso integral (null = vê tudo)
     const collect = (nodes: TreeNode[]): string[] => nodes.flatMap((node) => [node.label, ...collect(node.children ?? [])]);
@@ -154,7 +158,11 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
     return MENU
       .map((section) => ({
         ...section,
-        items: section.items.filter((item) => Boolean(item.nodeLabel) && allowedNodeLabels.has(item.nodeLabel!)),
+        items: section.items.filter((item) => {
+          if (item.alwaysVisible) return true; // Início: sempre visível para todos
+          if (!item.nodeLabels || item.nodeLabels.length === 0) return false; // sem nó = só admin
+          return item.nodeLabels.some((label) => allowedNodeLabels.has(label)); // nó OU pai liberado
+        }),
       }))
       .filter((section) => section.items.length > 0);
   }, [isDevAdmin, allowedNodeLabels]);
