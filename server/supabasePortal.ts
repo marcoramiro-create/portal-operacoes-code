@@ -99,6 +99,9 @@ export function assertPortalAdministrator(identity: PortalIdentity) {
 }
 
 export async function applicationPermissionsForUser(identity: PortalIdentity, nodeKey: string) {
+  if (identity.isDevelopmentAdmin) {
+    return { view: true, manage: true, approve: true };
+  }
   const result = await getSupabasePool().query<{ permission: Permission; allowed: boolean }>(
     `select operation.permission, coalesce(
        (select user_permission.allowed from public.user_node_permissions user_permission join public.application_nodes node on node.id = user_permission.node_id where user_permission.user_id = $1 and node.node_key = $2 and user_permission.permission = operation.permission),
