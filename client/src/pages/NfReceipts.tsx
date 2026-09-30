@@ -18,12 +18,12 @@ const readingPointMeta: Record<ReadingPoint, { label: string; icon: LucideIcon; 
   envio_fiscal: { label: "Envio ao fiscal", icon: Send, selected: "border-violet-600 bg-violet-600 text-white shadow-sm", unselected: "border-slate-200 bg-white text-violet-600 hover:bg-violet-50 hover:border-violet-300", chip: "bg-violet-50 text-violet-700" },
 };
 // 28/09/2026 — filiais do Mapa de Operações (planilha Mapa_de_Operacoes_Megatec).
-// Valor gravado = "código + nome" (preserva as duas unidades 0307). Se preferir só o código, é 1 linha.
+// Valor gravado = "código + nome". Se preferir só o código, é 1 linha.
 const FILIAIS = [
-  "0101 Araçatuba", "0102 P Prudente", "0103 Agroterenas", "0104 Linhares",
-  "0106 Marilia", "0107 Osvaldo Cruz", "0108 Andradina",
+  "0101 Araçatuba", "0102 P Prudente", "0103 Agroterenas",
+  "0106 Marilia", "0108 Andradina",
   "0301 Uberlandia", "0303 Rio Verde", "0304 Santa Vitória", "0305 Atvos Caçú",
-  "0306 Itumbiara", "0307 Cristalina", "0307 Cerradinho",
+  "0306 Itumbiara", "0307 Cerradinho",
 ];
 const clean = (value: string) => value.replace(/\D/g, "").slice(0, 44);
 const labels: Record<CaptureMethod, string> = { manual: "Digitação", camera: "Câmera", barcode_reader: "Leitor de mesa" };
