@@ -47,4 +47,73 @@ export function parseNfLegal(input: Buffer | string, origin: NfLegalSourceRow["o
 export type StockEvolutionSourceRow = { company: string; branch: string; productCode: string; aggregateProductCode: string; description: string; unit: string; year: number | null; month: number | null; quantity: number | null; totalValue: number | null; };
 export function parseStockEvolution(input: Buffer | string): ParsedSource<StockEvolutionSourceRow> { const rows=readRows(input); const pos=headerPosition(rows,["Empresa","Codigo Item","Ano","Mês"]); if(pos<0)throw new Error("Estoque: cabeçalho não encontrado."); const map=indexMap(rows[pos]); const result=baseResult<StockEvolutionSourceRow>(); rows.slice(pos+1).forEach((row,offset)=>{ if(!row.some(v=>cleanSourceText(v)!==""))return; result.sourceRows+=1; const company=cleanSourceText(val(row,map,["Empresa"])); const product=normalizeProductCode(val(row,map,["Codigo Item"])); if(!company||!product||company.toLowerCase().startsWith("total")){result.skippedRows+=1;return;} const branch=normalizeBranchCode(company); result.rows.push({company,branch,productCode:product,aggregateProductCode:normalizeProductCode(val(row,map,["Codigo Agregado"])),description:cleanSourceText(val(row,map,["Desc.Item"])),unit:cleanSourceText(val(row,map,["Unid.Med."]),),year:parseSourceNumber(val(row,map,["Ano"])),month:parseSourceNumber(val(row,map,["Mês"])),quantity:parseSourceNumber(val(row,map,["Quantidade"])),totalValue:parseSourceNumber(val(row,map,["Valor Total"]))});}); return result; }
 
+// ============================================================
+// ENTRADA DE MATERIAIS (cubo RM BIS) — Curva ABC Indústria 0105
+// Cabeçalho: EMPRESA - FILIAL | NOTA/SERIE | FORNECEDOR | LOJA |
+// PRODUTO | COD. AGREG. | DESCRIÇÃO PRODU | NUMERO PED COMP |
+// ITEM SEQ. | EMISSAO PED COMP | VALOR ITEM | QUANTIDADE |
+// DATA ENTRADA | VALOR TOTAL
+// ============================================================
+export type MaterialEntrySourceRow = {
+  company: string;
+  branch: string | null;
+  invoiceSeries: string;
+  supplier: string;
+  supplierStore: string;
+  productCode: string;
+  aggregateProductCode: string;
+  description: string;
+  purchaseOrderNumber: string;
+  orderItem: string;
+  orderIssuedAt: string | null;
+  itemValue: number | null;
+  quantity: number | null;
+  entryDate: string | null;
+  totalValue: number | null;
+  key: string;
+};
+
+export function parseMaterialEntries(input: Buffer | string): ParsedSource<MaterialEntrySourceRow> {
+  const required = ["EMPRESA - FILIAL", "NOTA/SERIE", "PRODUTO", "QUANTIDADE", "DATA ENTRADA"];
+  const rows = readRows(input, required);
+  const pos = headerPosition(rows, required);
+  if (pos < 0) throw new Error("Entrada de Materiais: cabeçalho não encontrado.");
+  const map = indexMap(rows[pos]);
+  const result = baseResult<MaterialEntrySourceRow>();
+  rows.slice(pos + 1).forEach((row, offset) => {
+    if (!row.some(v => cleanSourceText(v) !== "")) return;
+    result.sourceRows += 1;
+    const company = cleanSourceText(val(row, map, ["EMPRESA - FILIAL", "EMPRESA FILIAL", "EMPRESA"]));
+    const product = normalizeProductCode(val(row, map, ["PRODUTO"]));
+    if (!company || !product || company.toLowerCase().startsWith("total")) {
+      result.skippedRows += 1;
+      return;
+    }
+    const branch = normalizeBranchCode(company);
+    const invoice = cleanSourceText(val(row, map, ["NOTA/SERIE", "NOTA SERIE", "NOTA"]));
+    const quantity = parseSourceNumber(val(row, map, ["QUANTIDADE"]));
+    const entryDate = dateText(val(row, map, ["DATA ENTRADA"]));
+    const key = [branch ?? "", invoice, product, quantity ?? "", entryDate ?? ""].filter(Boolean).join("|");
+    result.rows.push({
+      company,
+      branch,
+      invoiceSeries: invoice,
+      supplier: cleanSourceText(val(row, map, ["FORNECEDOR"])),
+      supplierStore: cleanSourceText(val(row, map, ["LOJA"])),
+      productCode: product,
+      aggregateProductCode: normalizeProductCode(val(row, map, ["COD. AGREG.", "COD AGREG", "CODIGO AGREGADO"])),
+      description: cleanSourceText(val(row, map, ["DESCRIÇÃO PRODU", "DESCRIÇÃO PRODUTO", "DESCRIÇÃO"])),
+      purchaseOrderNumber: cleanSourceText(val(row, map, ["NUMERO PED COMP", "NUMERO PEDIDO COMPRA"])),
+      orderItem: cleanSourceText(val(row, map, ["ITEM SEQ.", "ITEM"])),
+      orderIssuedAt: dateText(val(row, map, ["EMISSAO PED COMP", "EMISSÃO PED COMP"])),
+      itemValue: parseSourceNumber(val(row, map, ["VALOR ITEM"])),
+      quantity,
+      entryDate,
+      totalValue: parseSourceNumber(val(row, map, ["VALOR TOTAL"])),
+      key,
+    });
+  });
+  return result;
+}
+
 export { normalizeSupplierKey };
