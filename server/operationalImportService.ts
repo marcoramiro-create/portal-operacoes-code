@@ -114,7 +114,7 @@ async function insertSourceRow(client: PoolClient, batchId: string, rowNumber: n
   await client.query(`insert into public.operational_source_rows (id,batch_id,source_row_number,company_code,branch_code,product_code,aggregate_product_code,supplier_code,supplier_store,raw_payload,normalized_payload,issue_messages) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,'[]'::jsonb)`, [randomUUID(), batchId, rowNumber, null, "branchCode" in mapped ? mapped.branchCode : null, "productCode" in mapped ? mapped.productCode : null, "aggregateProductCode" in mapped ? mapped.aggregateProductCode : null, "supplierCode" in mapped ? mapped.supplierCode : null, "supplierStore" in mapped ? mapped.supplierStore : null, asJson(raw), asJson(mapped.normalizedPayload)]);
 }
 
-export type OperationalSourceKind = "PEDIDO_COMPRA" | "NF_LEGAL" | "NF_NATIVA" | "FECHAMENTO_ESTOQUE" | "ENTRADA_MATERIAL";
+export type OperationalSourceKind = "PEDIDO_COMPRA" | "NF_LEGAL" | "NF_NATIVA" | "FECHAMENTO_ESTOQUE" | "ENTRADA_NF";
 type OperationalMappedRow = {
   companyCode: string | null;
   branchCode: string | null;
@@ -129,7 +129,7 @@ function mapOperationalRow(source: OperationalSourceKind, row: unknown): Operati
     const x = row as StockEvolutionSourceRow;
     return { companyCode: x.company, branchCode: x.branch, productCode: x.productCode, aggregateProductCode: x.aggregateProductCode, supplierCode: null, supplierStore: null, normalizedPayload: x };
   }
-  if (source === "ENTRADA_MATERIAL") {
+  if (source === "ENTRADA_NF") {
     const x = row as MaterialEntrySourceRow;
     return { companyCode: x.company, branchCode: x.branch, productCode: x.productCode, aggregateProductCode: x.aggregateProductCode, supplierCode: x.supplier || null, supplierStore: x.supplierStore || null, normalizedPayload: x };
   }
