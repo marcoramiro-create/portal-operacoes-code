@@ -24,6 +24,7 @@ import InventoryReturns from "./pages/InventoryReturns";
 import AssetManagement from "./pages/AssetManagement";
 import AssetImport from "./pages/AssetImport";
 import { CostEvolutionDashboard, CostEvolutionImport } from "./pages/CostEvolution";
+import MaterialEntryImport from "./pages/MaterialEntryImport";
 import { Route, Switch } from "wouter";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
@@ -49,6 +50,7 @@ function Router() {
     <Route path="/importacoes/ativos-ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-ferramentas" level="manage"><AssetImport type="tool" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/custos-autopecas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-autopecas" level="manage"><CostEvolutionImport segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/custos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-industria" level="manage"><CostEvolutionImport segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/entrada-materiais"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-entrada-materiais" level="manage"><MaterialEntryImport /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/administracao/auditoria-backlog"><WithLayout><ApplicationRouteGuard nodeKey="administracao"><AuditBacklog /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/administracao/auditoria-cruzamentos"><WithLayout><ApplicationRouteGuard nodeKey="administracao"><OperationalAudit /></ApplicationRouteGuard></WithLayout></Route>

@@ -60,6 +60,7 @@ const MENU: MenuSection[] = [
     items: [
       { label: "Custos Auto Peças", path: "/importacoes/custos-autopecas", icon: UploadCloud, nodeLabels: ["Importar · Evolução de custos de autopeças", "Importações"] },
       { label: "Custos Indústria", path: "/importacoes/custos-industria", icon: UploadCloud, nodeLabels: ["Importar · Evolução de custos da indústria", "Importações"] },
+      { label: "Entrada de Materiais", path: "/importacoes/entrada-materiais", icon: UploadCloud, nodeLabels: ["Importar · Entrada de materiais", "Importações"] },
       { label: "Compras (Protheus)", path: "/importacoes/compras-protheus", icon: UploadCloud, nodeLabels: ["Importar · Análise de compras Protheus", "Importações"] },
       { label: "Funcionários", path: "/importacoes/funcionarios", icon: UploadCloud },
       { label: "Fornecedores", path: "/importacoes/fornecedores", icon: UploadCloud },
