@@ -23,8 +23,7 @@
  *     da janela; A (acumulado <= 80%), B (<= 95%), C (resto); consumo 0 -> C.
  *  7. Classe do agregado replicada para cada produto SBZ 0105 do agregado.
  *  8. Produto com saldo/entrada mas SEM agregado no universo = ÓRFÃO:
- *     não entra na curva nem no ranking; é contado e amostrado no resumo
- *     (validação entrada x SB1/SBZ).
+ *     não entra na curva nem no ranking; é contado e amostrado no resumo.
  *  9. Normalização SEMPRE normalizeProductCode/normalizeBranchCode.
  * 10. Unidade: dominante do FECHAMENTO por produto; misturas sinalizadas.
  * 11. calculation_version = 'v2' (a v1 fica como histórico no banco).
@@ -299,17 +298,17 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     let totalQtd = 0;
     for (const mes of meses) {
       const { ano, mes: mesNum } = anoMesDe(mes);
-      const saldoPrev = saldoPorMes.get(`${prod}@${mesAnterior(ano, mesNum)`)?.valor ?? 0;
+      const mesPrev = mesAnterior(ano, mesNum);
+      const saldoPrev = saldoPorMes.get(`${prod}@${mesPrev}`)?.valor ?? 0;
       const saldoAtual = saldoPorMes.get(`${prod}@${mes}`)?.valor ?? 0;
       const entradas = entradasPorMes.get(`${prod}@${mes}`)?.valor ?? 0;
       const consumoMes = saldoPrev + entradas - saldoAtual;
       if (consumoMes < 0) {
         divergenciasConsumoNegativo += 1;
-        totalValor += 0;
       } else {
         totalValor += consumoMes;
       }
-      const qtyPrev = saldoPorMes.get(`${prod}@${mesAnterior(ano, mesNum)`)?.qty ?? 0;
+      const qtyPrev = saldoPorMes.get(`${prod}@${mesPrev}`)?.qty ?? 0;
       const qtyAtual = saldoPorMes.get(`${prod}@${mes}`)?.qty ?? 0;
       const entradasQtd = entradasPorMes.get(`${prod}@${mes}`)?.qty ?? 0;
       const consumoQtdMes = qtyPrev + entradasQtd - qtyAtual;
@@ -441,9 +440,9 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
   let contB = 0;
   let contC = 0;
   let semConsumo = 0;
-  for (const [, a] of agregadoConsumo) {
+  for (const [agg, a] of agregadoConsumo) {
     if (a.valor > 0) {
-      const classe = classeDoAgregado.get(Array.from(agregadoConsumo.keys()).find((k) => agregadoConsumo.get(k) === a)!) ?? "C";
+      const classe = classeDoAgregado.get(agg) ?? "C";
       if (classe === "A") contA += 1;
       else if (classe === "B") contB += 1;
       else contC += 1;
