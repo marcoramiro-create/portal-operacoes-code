@@ -279,8 +279,8 @@ export async function obterCurvaIndustriaAtual(pool?: Pool): Promise<IndustryCur
             (c.metadata->>'quantidadeConsumo') as quantidade,
             (c.metadata->>'unidade') as unidade,
             c.calculation_version,
-            c.reference_period,
-            c.calculated_at
+            to_char(c.reference_period, 'YYYY-MM') as reference_period,
+            to_char(c.calculated_at, 'YYYY-MM-DD HH24:MI') as calculated_at
        from public.sbz_product_curves c
       where c.operation = $1 and c.is_current = true
       order by (c.metadata->>'aggregateCode'), (c.metadata->>'valorConsumo')::numeric desc nulls last`,
@@ -299,7 +299,7 @@ export async function obterCurvaIndustriaAtual(pool?: Pool): Promise<IndustryCur
   const porClasse = { A: 0, B: 0, C: 0 };
   for (const reg of registros) porClasse[reg.classe] += 1;
   return {
-    referencePeriod: res.rows[0]?.reference_period ? String(res.rows[0].reference_period).slice(0, 7) : "",
+    referencePeriod: res.rows[0]?.reference_period ? String(res.rows[0].reference_period) : "",
     calculationVersion: res.rows[0]?.calculation_version ? String(res.rows[0].calculation_version) : "",
     calculatedAt: res.rows[0]?.calculated_at ? String(res.rows[0].calculated_at) : "",
     totalAgregados: registros.length,
