@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { publicProcedure, router } from "./_core/trpc";
-import { assertPortalAdministrator, getPortalIdentity } from "./supabasePortal";
+import { applicationPermissionsForUser, assertPortalAdministrator, getPortalIdentity, type PortalIdentity } from "./supabasePortal";
 import { importCatalogRows, importOperationalRows } from "./operationalImportService";
 import { parseSa2, parseSb1, parseSb5, parseSbz } from "./protheusCatalogParsers";
 import { parseMaterialEntries, parseStockEvolution } from "./operationalSourceParsers";
@@ -11,6 +12,21 @@ import { obterCurvaIndustriaAtual, recalcularCurvaIndustria } from "./industryCu
 function auth(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 const fileInput = z.object({ fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1) });
 async function admin(ctx: { req: { headers: Record<string, string | string[] | undefined> } }) { const identity = await getPortalIdentity(auth(ctx.req.headers)); assertPortalAdministrator(identity); }
+// ----- PERMISSÃO Curva ABC da Indústria (01/10/2026) -----
+// Mesmo padrão do Recebimento NF: aceita o nó "curva-abc-industria" OU o PAI
+// "suprimentos-estoques" (regra pai-libera-filho também no servidor).
+async function curvaIndustriaPermissions(identity: PortalIdentity) {
+  const [child, parent] = await Promise.all([
+    applicationPermissionsForUser(identity, "curva-abc-industria"),
+    applicationPermissionsForUser(identity, "suprimentos-estoques"),
+  ]);
+  return { view: child.view || parent.view, manage: child.manage || parent.manage, approve: child.approve || parent.approve };
+}
+async function assertCurvaIndustriaPermission(identity: PortalIdentity, permission: "view" | "manage") {
+  if (identity.isDevelopmentAdmin) return;
+  const permissions = await curvaIndustriaPermissions(identity);
+  if (!permissions[permission]) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não possui o nível de acesso necessário neste módulo." });
+}
 export const operationalImportRouter = router({
   previewOperationMap: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationMap(input.fileName, content); }),
   previewPurchaseOrders: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationalImport("PEDIDO_COMPRA", input.fileName, content); }),
@@ -42,14 +58,16 @@ export const operationalImportRouter = router({
     }
   }),
   importMaterialEntries: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parsed = parseMaterialEntries(content); return importOperationalRows({ sourceKind: "ENTRADA_NF", fileName: input.fileName, content, rows: parsed.rows }); }),
-  // Botão manual "Recalcular curva" (tela do próximo bloco)
+  // Botão manual "Recalcular curva" — exige permissão de GERENCIAR no módulo (ou admin)
   recalcularCurvaIndustria: publicProcedure.mutation(async ({ ctx }) => {
-    await admin(ctx);
+    const identity = await getPortalIdentity(auth(ctx.req.headers));
+    await assertCurvaIndustriaPermission(identity, "manage");
     return recalcularCurvaIndustria();
   }),
-  // Leitura da curva corrente (tela Curva ABC da Indústria) — 01/10/2026
+  // Leitura da curva corrente (tela Curva ABC da Indústria) — exige permissão de VISUALIZAR no módulo (ou admin)
   curvaIndustriaAtual: publicProcedure.query(async ({ ctx }) => {
-    await admin(ctx);
+    const identity = await getPortalIdentity(auth(ctx.req.headers));
+    await assertCurvaIndustriaPermission(identity, "view");
     return obterCurvaIndustriaAtual();
   }),
 });
