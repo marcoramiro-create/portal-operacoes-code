@@ -47,4 +47,9 @@ export const operationalImportRouter = router({
     await admin(ctx);
     return recalcularCurvaIndustria();
   }),
+  // Leitura da curva corrente (tela Curva ABC da Indústria) — 01/10/2026
+  curvaIndustriaAtual: publicProcedure.query(async ({ ctx }) => {
+    await admin(ctx);
+    return obterCurvaIndustriaAtual();
+  }),
 });
