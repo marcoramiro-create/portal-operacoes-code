@@ -25,7 +25,7 @@ const MAX_WIDTH = 390;
 // - Administrador técnico (isDevelopmentAdmin) vê TODOS os itens (com e sem nó).
 // - O item "Início" (alwaysVisible) aparece para TODOS os usuários logados,
 //   sem depender de liberação — decisão do usuário em 28/09/2026.
-// - Demais usuários veem APENAS os itens que têm nó de referência (nodeLabels)
+// - Demais usuários veem APENAS os itens que têm nó de referência (node: s)
 //   E cujo nó (ou um nó PAI dele) esteja liberado para o usuário logado.
 //   Regra "pai libera filho": liberar um nó pai mostra os itens dos filhos.
 // - Itens sem nó (Almoxarifado, Empresas/Filiais/etc.) aparecem SOMENTE
@@ -53,6 +53,7 @@ const MENU: MenuSection[] = [
     items: [
       { label: "Custos Auto Peças", path: "/custos/autopecas", icon: TrendingUp, nodeLabels: ["Evolução de custos de autopeças", "Suprimentos e estoques"] },
       { label: "Custos Indústria", path: "/custos/industria", icon: TrendingUp, nodeLabels: ["Evolução de custos da indústria", "Suprimentos e estoques"] },
+      { label: "Curva ABC da Indústria", path: "/industria/curva-abc", icon: TrendingUp, nodeLabels: ["Curva ABC da Indústria", "Suprimentos e estoques"] },
     ],
   },
   {
