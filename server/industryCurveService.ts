@@ -1,29 +1,24 @@
 /**
  * industryCurveService.ts
  * Gravação da Curva ABC da Indústria (0105) em sbz_product_curves.
- * Módulo: server (API tRPC). Data: 01/10/2026.
+ * Módulo: server (API tRPC). Data: 01/10/2026 — v2 (consumo em R$ puro).
  *
- * MECANISMO "IMPORTAÇÃO EM USO" (regra 11): para cada fonte, o batch ATIVO é
- * o mais recente com status='processed' (imported_at desc — coluna real de
- * operational_import_batches; NÃO existe created_at nessa tabela).
+ * MECANISMO "IMPORTAÇÃO EM USO": para cada fonte, o batch ATIVO é o mais
+ * recente com status='processed' (imported_at desc — coluna real de
+ * operational_import_batches). Nada é fixado no código.
  *
- * GARANTIA DE CADASTRO (01/10/2026): public.products estava VAZIA (a
- * materialização do SB1 foi suspensa em 24/09). A Curva precisa do
- * products.id (FK de sbz_product_curves). Antes de gravar a curva, este
- * service garante em products SOMENTE os produtos que a curva vai usar,
- * lendo a SB1 em uso direto da operational_source_rows (SQL, sem corpo HTTP
- * de ~80 mil linhas — o caminho do erro de 24/09 NÃO é usado) e inserindo
- * com a MESMA semântica da materializeSb1 (operationalImportService.ts):
- * product_code = código normalizado, name = descrição ou "Produto <código>",
- * product_type, metadata {familia, subfamilia, ncm, inclusionDate},
- * source_system='SB1', source_product_code=código,
- * ON CONFLICT (product_code) DO UPDATE (nunca apaga; idempotente).
+ * GARANTIA DE CADASTRO: public.products estava VAZIA (materialização do SB1
+ * suspensa em 24/09). Antes de gravar a curva, este service garante em
+ * products SOMENTE os produtos que a curva vai usar, lendo a SB1 em uso
+ * direto da operational_source_rows (SQL, sem corpo HTTP de ~80 mil linhas)
+ * e inserindo com a MESMA semântica da materializeSb1
+ * (operationalImportService.ts): mesmo ON CONFLICT (product_code) DO UPDATE.
  *
- * GRAVAÇÃO (regra 13): operation=INDUSTRIA, branch_code=0105,
- * source='CURVA_ABC_INDUSTRIA', calculation_version='v1',
- * reference_period = mês de referência, is_current=true. Antes do UPSERT,
- * a versão anterior do mesmo período é marcada is_current=false. Transação
- * única: se qualquer passo falhar, nada fica gravado.
+ * GRAVAÇÃO: operation=INDUSTRIA, branch_code=0105, source='CURVA_ABC_INDUSTRIA',
+ * calculation_version='v2', reference_period = mês de referência,
+ * is_current=true. Antes do UPSERT, a versão anterior do mesmo período é
+ * marcada is_current=false. Transação única: se qualquer passo falhar, nada
+ * fica gravado.
  */
 import type { Pool, PoolClient } from "pg";
 import { TRPCError } from "@trpc/server";
@@ -107,15 +102,14 @@ async function lerFechamentos(client: PoolClient, batchId: string): Promise<Indu
       month: p.month != null ? Number(p.month) : null,
       quantity: p.quantity != null ? Number(p.quantity) : null,
       unit: p.unit ? String(p.unit) : null,
+      totalValue: p.totalValue != null ? Number(p.totalValue) : null, // R$ total da linha (soma entre quebras)
     };
   });
 }
 
 /**
  * Garante em public.products os produtos que a curva vai usar.
- * Espelha a semântica da materializeSb1 (operationalImportService.ts):
- * mesmos campos, mesmo ON CONFLICT (product_code) DO UPDATE.
- * Não apaga nada; idempotente; lê a SB1 em uso via SQL (sem corpo HTTP).
+ * Mesma semântica da materializeSb1; idempotente; não apaga nada.
  */
 async function garantirProdutos(client: PoolClient, batchSb1: string, codigosNecessarios: string[]): Promise<void> {
   const codigos = Array.from(new Set(codigosNecessarios.filter((c) => c && c.trim())));
@@ -178,7 +172,7 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
       sbz: batchSbz ? await lerSbz(client, batchSbz) : [],
     };
     const resultado = calcularCurvaIndustriaCore(input);
-    if (!resultado.referencePeriod) {
+    if (!resultado.referencePeriod || !resultado.resumo.referencePeriod) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
         message: "Curva ABC da Indústria: FECHAMENTO_ESTOQUE em uso não possui meses (mês de referência vazio).",
@@ -189,9 +183,8 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
     await client.query("begin");
     await client.query(
       "update public.sbz_product_curves set is_current = false where operation = $1 and branch_code = $2 and reference_period = $3 and is_current = true",
-      [INDUSTRIA_OPERATION, INDUSTRIA_BRANCH, `${resultado.referencePeriod}-01`],
+      [INDUSTRIA_OPERATION, INDUSTRIA_BRANCH, `${resultado.resumo.referencePeriod}-01`],
     );
-    // Garante os produtos da curva em products (SB1 em uso) ANTES de gravar.
     if (batchSb1) {
       await garantirProdutos(client, batchSb1, resultado.registros.map((r) => r.productCode));
     }
@@ -224,7 +217,7 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
           INDUSTRIA_BRANCH,
           INDUSTRIA_OPERATION,
           reg.classe,
-          `${resultado.referencePeriod}-01`,
+          `${resultado.resumo.referencePeriod}-01`,
           CURVA_ABC_INDUSTRIA_SOURCE,
           CURVA_ABC_INDUSTRIA_VERSION,
           JSON.stringify(metadata),

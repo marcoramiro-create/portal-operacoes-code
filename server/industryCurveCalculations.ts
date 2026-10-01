@@ -2,42 +2,39 @@
  * industryCurveCalculations.ts
  * Curva ABC da Indústria (filial 0105) — 80/15/05 por agregado.
  * Módulo: server (API tRPC) — cálculo puro, sem acesso a banco.
- * Data: 01/10/2026 — REVISÃO: universo ESTRITO = ENTRADA_NF.
+ * Data: 01/10/2026 — REVISÃO v2: consumo em R$ PURO (regra do usuário).
  *
- * REGRAS DE NEGÓCIO (validadas com dados reais em 30/09/2026):
- *  1. Consumo mensal por produto = saldo inicial + entradas - saldo final
- *     (saldos do FECHAMENTO_ESTOQUE; saldo final do mês = saldo inicial do
- *     próximo; consumo negativo -> 0 e divergência sinalizada).
- *  2. Entradas = ENTRADA_NF (quantity; valor = itemValue; totalValue é null
- *     no arquivo real -> NÃO usar). Mês sai do entryDate.
- *  3. Janela móvel = últimos 12 meses terminando no mês de referência
- *     (mês de referência = último mês com saldo no FECHAMENTO em uso).
- *  4. Valor do consumo = consumo_qtd x custo unitário médio do item na janela
- *     (soma itemValue*qty / soma qty da ENTRADA_NF na janela).
- *  5. Ranking por agregado: participação = consumo do agregado / consumo total
- *     da janela; A (acumulado <= 80%), B (<= 95%), C (resto);
- *     valor/consumo 0 -> C.
- *  6. Agregados do universo sem consumo na janela -> classe C, participação 0.
- *  7. UNIVERSO = SOMENTE os agregados do arquivo ENTRADA_NF (2.280 validados).
- *     REVISÃO 01/10/2026: a SB1/cadastro NUNCA cria agregado novo. Produto com
- *     saldo (FECHAMENTO) sem entrada na janela soma consumo ao seu agregado
- *     SOMENTE se o vínculo (SB1) apontar para um agregado do universo; caso
- *     contrário, o produto é ÓRFÃO: não entra na curva nem no ranking, e é
- *     reportado (validação entrada x SB1/SBZ — regra 5.1).
- *  8. Classe do agregado replicada para cada produto SBZ 0105 do agregado.
- *     Descrição do agregado vem da SB1 (produto-chefe).
- *  9. Normalização SEMPRE com normalizeProductCode/normalizeBranchCode
- *     (preservam zeros). NUNCA normalizeCode (remove zeros — regra 10).
- * 10. Unidade (decisão 01/10/2026): SB1 primeiro (hoje não tem unidade) ->
- *     senão unidade dominante do FECHAMENTO (unit). Unidades misturadas são
- *     SINALIZADAS (unidadeDivergente), nunca bloqueiam a gravação.
+ * REGRAS DE NEGÓCIO (validadas com dados reais — 30/09 e 01/10/2026):
+ *  1. UNIVERSO = SOMENTE os agregados do arquivo ENTRADA_NF (2.280 validados).
+ *     A SB1/SBZ NUNCA criam agregado novo; servem só para descrição e para
+ *     validar vínculo de produto com saldo SEM entrada (regras 5.1/7).
+ *  2. Entradas em R$ = itemValue (PREÇO UNITÁRIO — confirmado em 01/10:
+ *     constante por linha) x quantity, somadas por produto@mês.
+ *  3. Saldo em R$ = totalValue do FECHAMENTO (VALOR TOTAL da linha —
+ *     confirmado em 01/10: o mesmo produto@mês tem múltiplas linhas de
+ *     quebra com o MESMO preço unitário => SOMA quantity e totalValue),
+ *     somado por produto@mês.
+ *  4. Consumo R$(mês) = saldoR$(mês anterior) + entradasR$(mês) - saldoR$(mês).
+ *     Consumo negativo no mês -> 0 + divergência sinalizada. Soma nos 12
+ *     meses da janela (primeiro mês usa saldo do mês imediatamente anterior).
+ *  5. Janela = últimos 12 meses terminando no mês de referência (= último mês
+ *     com FECHAMENTO em uso). Referência 2026-08, janela 2025-09 a 2026-08.
+ *  6. Ranking por agregado: participação = consumo R$ do agregado / soma R$
+ *     da janela; A (acumulado <= 80%), B (<= 95%), C (resto); consumo 0 -> C.
+ *  7. Classe do agregado replicada para cada produto SBZ 0105 do agregado.
+ *  8. Produto com saldo/entrada mas SEM agregado no universo = ÓRFÃO:
+ *     não entra na curva nem no ranking; é contado e amostrado no resumo
+ *     (validação entrada x SB1/SBZ).
+ *  9. Normalização SEMPRE normalizeProductCode/normalizeBranchCode.
+ * 10. Unidade: dominante do FECHAMENTO por produto; misturas sinalizadas.
+ * 11. calculation_version = 'v2' (a v1 fica como histórico no banco).
  */
 import { normalizeBranchCode, normalizeProductCode } from "./operationalNormalization";
 
 export const INDUSTRIA_BRANCH = "0105";
 export const INDUSTRIA_OPERATION = "INDUSTRIA";
 export const CURVA_ABC_INDUSTRIA_SOURCE = "CURVA_ABC_INDUSTRIA";
-export const CURVA_ABC_INDUSTRIA_VERSION = "v1";
+export const CURVA_ABC_INDUSTRIA_VERSION = "v2";
 export const ABC_LIMIAR_A = 0.8;
 export const ABC_LIMIAR_B = 0.95;
 
@@ -48,7 +45,7 @@ export interface IndustryEntryRow {
   aggregateProductCode: string | null;
   entryDate: string | null; // ISO yyyy-mm-dd
   quantity: number | null;
-  itemValue: number | null;
+  itemValue: number | null; // PREÇO UNITÁRIO
 }
 export interface IndustryStockRow {
   productCode: string;
@@ -56,6 +53,7 @@ export interface IndustryStockRow {
   month: number | null;
   quantity: number | null;
   unit: string | null;
+  totalValue: number | null; // VALOR TOTAL da linha (soma entre quebras)
 }
 export interface IndustrySb1Row {
   productCode: string;
@@ -100,12 +98,14 @@ export interface IndustryCurveSummary {
   produtosClasseC: number;
   produtosGravados: number;
   divergenciasUnidade: number;
-  produtosConsumoForaUniverso: number; // órfãos (validação 5.1)
-  amostraForaUniverso: string[]; // até 20 códigos de órfãos
+  divergenciasConsumoNegativo: number;
+  produtosConsumoForaUniverso: number; // órfãos
+  amostraForaUniverso: string[];
   achados: IndustryCurveFinding[];
 }
 export interface IndustryCurveResult {
   referencePeriod: string;
+  calculoVersion: string;
   registros: IndustryCurveRegister[];
   resumo: IndustryCurveSummary;
 }
@@ -130,7 +130,6 @@ function anoMesDe(chave: string): { ano: number; mes: number } {
 function mesAnterior(ano: number, mes: number): string {
   return mes === 1 ? mesChave(ano - 1, 12) : mesChave(ano, mes - 1);
 }
-/** Primeiro mês dos últimos 12 meses terminando em `fim` (11 meses antes). */
 function dozeMesesAtras(fim: string): string {
   const { ano, mes } = anoMesDe(fim);
   let a = ano;
@@ -177,9 +176,8 @@ function ultimoMesFechamento(fechamentos: IndustryStockRow[]): string | null {
 // Função principal (pura)
 // ---------------------------------------------------------------------------
 export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryCurveResult {
-  // 1) Índices auxiliares
-  // Mapa produto -> agregado A PARTIR DO ARQUIVO ENTRADA_NF (fonte primária;
-  // confirmação real: 13.859 linhas, 2.280 agregados, 0 sem agregado).
+  // 1) Vínculo produto -> agregado A PARTIR DO ARQUIVO ENTRADA_NF (fonte
+  // primária; confirmado: 13.859 linhas, 2.280 agregados, 0 sem agregado).
   const agregadoPorProduto = new Map<string, string>();
   for (const e of input.entradas) {
     const prod = normalizeProductCode(e.productCode);
@@ -226,23 +224,37 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     return null;
   };
 
-  // Saldo (FECHAMENTO) por produto@mês — última linha do mês prevalece.
-  const saldoPorMes = new Map<string, { qty: number; unit: string | null }>();
+  // 2) Saldo em R$ por produto@mês — SOMA (quebras do FECHAMENTO).
+  const saldoPorMes = new Map<string, { qty: number; valor: number; unit: string | null }>();
   for (const f of input.fechamentos) {
     const prod = normalizeProductCode(f.productCode);
     if (!prod || f.year == null || f.month == null) continue;
     const chave = `${prod}@${mesChave(f.year, f.month)}`;
-    const atual = saldoPorMes.get(chave) ?? { qty: 0, unit: null };
-    atual.qty = numero(f.quantity);
+    const atual = saldoPorMes.get(chave) ?? { qty: 0, valor: 0, unit: null };
+    atual.qty += numero(f.quantity);
+    atual.valor += numero(f.totalValue);
     if (f.unit && String(f.unit).trim()) atual.unit = String(f.unit).trim();
     saldoPorMes.set(chave, atual);
   }
 
-  // Mês de referência = último mês do FECHAMENTO em uso.
+  // 3) Entradas em R$ por produto@mês — SOMA (itemValue x quantity).
+  const entradasPorMes = new Map<string, { qty: number; valor: number }>();
+  for (const e of input.entradas) {
+    const prod = normalizeProductCode(e.productCode);
+    if (!prod || !e.entryDate) continue;
+    const mes = e.entryDate.slice(0, 7);
+    const cMes = entradasPorMes.get(`${prod}@${mes}`) ?? { qty: 0, valor: 0 };
+    cMes.qty += numero(e.quantity);
+    cMes.valor += numero(e.itemValue) * numero(e.quantity);
+    entradasPorMes.set(`${prod}@${mes}`, cMes);
+  }
+
+  // 4) Mês de referência e janela de 12 meses.
   const referencia = ultimoMesFechamento(input.fechamentos);
   if (!referencia) {
     return {
       referencePeriod: "",
+      calculoVersion: CURVA_ABC_INDUSTRIA_VERSION,
       registros: [],
       resumo: {
         referencePeriod: "",
@@ -257,6 +269,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
         produtosClasseC: 0,
         produtosGravados: 0,
         divergenciasUnidade: 0,
+        divergenciasConsumoNegativo: 0,
         produtosConsumoForaUniverso: 0,
         amostraForaUniverso: [],
         achados: [],
@@ -266,71 +279,55 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
   const meses = mesesDaJanela(dozeMesesAtras(referencia), referencia);
   const setMeses = new Set(meses);
 
-  // 2) Entradas na janela + custo unitário médio por item
-  const entradasPorMes = new Map<string, { qty: number; valorPonderado: number }>();
-  const custoGlobal = new Map<string, { qty: number; valor: number }>();
-  for (const e of input.entradas) {
-    const prod = normalizeProductCode(e.productCode);
-    if (!prod || !e.entryDate) continue;
-    const mes = e.entryDate.slice(0, 7);
-    if (!setMeses.has(mes)) continue;
-    const qty = numero(e.quantity);
-    const valor = numero(e.itemValue) * qty;
-    const cMes = entradasPorMes.get(`${prod}@${mes}`) ?? { qty: 0, valorPonderado: 0 };
-    cMes.qty += qty;
-    cMes.valorPonderado += valor;
-    entradasPorMes.set(`${prod}@${mes}`, cMes);
-    const cG = custoGlobal.get(prod) ?? { qty: 0, valor: 0 };
-    cG.qty += qty;
-    cG.valor += valor;
-    custoGlobal.set(prod, cG);
-  }
-
-  // 3) Consumo por produto na janela — somente dentro do universo (regra 7)
-  const consumoPorProduto = new Map<string, { qty: number }>();
+  // 5) Consumo R$ por produto na janela — somente dentro do universo.
+  const consumoPorProduto = new Map<string, { qty: number; valor: number }>();
   const orfaos = new Set<string>();
   const produtosComDado = new Set<string>();
   for (const chave of saldoPorMes.keys()) {
-    const prod = chave.split("@")[0];
     const mes = chave.split("@")[1];
-    if (mes && setMeses.has(mes)) produtosComDado.add(prod);
+    if (mes && setMeses.has(mes)) produtosComDado.add(chave.split("@")[0]);
   }
   for (const chave of entradasPorMes.keys()) produtosComDado.add(chave.split("@")[0]);
+
+  let divergenciasConsumoNegativo = 0;
   for (const prod of produtosComDado) {
     if (!agregadoDe(prod)) {
       orfaos.add(prod);
       continue;
     }
-    let total = 0;
+    let totalValor = 0;
+    let totalQtd = 0;
     for (const mes of meses) {
       const { ano, mes: mesNum } = anoMesDe(mes);
-      const saldoInit = saldoPorMes.get(`${prod}@${mesAnterior(ano, mesNum)}`)?.qty ?? 0;
-      const saldoFim = saldoPorMes.get(`${prod}@${mes}`)?.qty ?? 0;
-      const entradas = entradasPorMes.get(`${prod}@${mes}`)?.qty ?? 0;
-      const consumoMes = saldoInit + entradas - saldoFim;
-      if (consumoMes >= 0) total += consumoMes;
-      // consumoMes negativo -> 0 (divergência vai para auditoria no Bloco 5)
+      const saldoPrev = saldoPorMes.get(`${prod}@${mesAnterior(ano, mesNum)`)?.valor ?? 0;
+      const saldoAtual = saldoPorMes.get(`${prod}@${mes}`)?.valor ?? 0;
+      const entradas = entradasPorMes.get(`${prod}@${mes}`)?.valor ?? 0;
+      const consumoMes = saldoPrev + entradas - saldoAtual;
+      if (consumoMes < 0) {
+        divergenciasConsumoNegativo += 1;
+        totalValor += 0;
+      } else {
+        totalValor += consumoMes;
+      }
+      const qtyPrev = saldoPorMes.get(`${prod}@${mesAnterior(ano, mesNum)`)?.qty ?? 0;
+      const qtyAtual = saldoPorMes.get(`${prod}@${mes}`)?.qty ?? 0;
+      const entradasQtd = entradasPorMes.get(`${prod}@${mes}`)?.qty ?? 0;
+      const consumoQtdMes = qtyPrev + entradasQtd - qtyAtual;
+      if (consumoQtdMes > 0) totalQtd += consumoQtdMes;
     }
-    consumoPorProduto.set(prod, { qty: total });
+    consumoPorProduto.set(prod, { qty: totalQtd, valor: totalValor });
   }
 
-  // 4) Agregados: consumo, valor, descrição
+  // 6) Agregados: consumo R$, quantidade consumida, descrição.
   const agregadoConsumo = new Map<string, { qty: number; valor: number }>();
-  const somaPara = (agg: string, prod: string, qty: number, valor: number) => {
-    const atual = agregadoConsumo.get(agg) ?? { qty: 0, valor: 0 };
-    atual.qty += qty;
-    atual.valor += valor;
-    agregadoConsumo.set(agg, atual);
-    void prod;
-  };
   for (const [prod, cons] of consumoPorProduto) {
     const agg = agregadoDe(prod);
     if (!agg) continue;
-    const cg = custoGlobal.get(prod);
-    const custoMedio = cg && cg.qty > 0 ? cg.valor / cg.qty : 0;
-    somaPara(agg, prod, cons.qty, cons.qty * custoMedio);
+    const atual = agregadoConsumo.get(agg) ?? { qty: 0, valor: 0 };
+    atual.qty += cons.qty;
+    atual.valor += cons.valor;
+    agregadoConsumo.set(agg, atual);
   }
-  // Agregados do universo sem consumo (ficam com 0 -> classe C, participação 0)
   for (const agg of universo) {
     if (!agregadoConsumo.has(agg)) {
       agregadoConsumo.set(agg, { qty: 0, valor: 0 });
@@ -343,7 +340,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
       : "") ||
     agg;
 
-  // 5) Ranking ABC por agregado
+  // 7) Ranking ABC por agregado (80/15/05).
   const somaValores = Array.from(agregadoConsumo.values()).reduce((acc, a) => acc + a.valor, 0);
   const classeDoAgregado = new Map<string, IndustryCurveClass>();
   const participacaoDoAgregado = new Map<string, number>();
@@ -365,7 +362,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     }
   }
 
-  // 6) Unidades (FECHAMENTO): dominante por produto + divergências
+  // 8) Unidades (dominante do FECHAMENTO por produto) + divergências.
   const ocorrenciasUnidade = new Map<string, Map<string, number>>();
   const unidadesDistintasPorProduto = new Map<string, Set<string>>();
   const unidadesDoAgregado = new Map<string, Set<string>>();
@@ -399,11 +396,11 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     unidadePorProduto.set(prod, melhorUnit);
   }
 
-  // 7) Registros: classe do agregado replicada para cada produto SBZ 0105
+  // 9) Registros: classe do agregado replicada para cada produto SBZ 0105.
   const registros: IndustryCurveRegister[] = [];
   const agregadosComSbz = new Set<string>();
   const contProduto: Record<IndustryCurveClass, number> = { A: 0, B: 0, C: 0 };
-  let divergenciasUnidade = 0;
+  let divergenciasUnidadeTotal = 0;
   for (const prod of produtosSbz0105) {
     const agg = agregadoDe(prod);
     if (!agg || !agregadoConsumo.has(agg)) continue; // fora do universo
@@ -414,7 +411,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     const unidadeDivergente =
       (unidadesDistintasPorProduto.get(prod)?.size ?? 0) > 1 ||
       (unidadesDoAgregado.get(agg)?.size ?? 0) > 1;
-    if (unidadeDivergente) divergenciasUnidade += 1;
+    if (unidadeDivergente) divergenciasUnidadeTotal += 1;
     registros.push({
       productCode: prod,
       aggregateProductCode: agg,
@@ -428,7 +425,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     });
   }
 
-  // 8) Achados: agregados DO UNIVERSO sem produto SBZ 0105 (não somem)
+  // 10) Achados: agregados do universo sem produto SBZ 0105.
   const achados: IndustryCurveFinding[] = [];
   for (const agg of universo) {
     if (!agregadosComSbz.has(agg)) {
@@ -439,14 +436,14 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     }
   }
 
-  // 9) Resumo
+  // 11) Resumo.
   let contA = 0;
   let contB = 0;
   let contC = 0;
   let semConsumo = 0;
-  for (const [agg, a] of agregadoConsumo) {
-    const classe = classeDoAgregado.get(agg) ?? "C";
+  for (const [, a] of agregadoConsumo) {
     if (a.valor > 0) {
+      const classe = classeDoAgregado.get(Array.from(agregadoConsumo.keys()).find((k) => agregadoConsumo.get(k) === a)!) ?? "C";
       if (classe === "A") contA += 1;
       else if (classe === "B") contB += 1;
       else contC += 1;
@@ -454,8 +451,10 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
       semConsumo += 1;
     }
   }
+
   return {
     referencePeriod: referencia,
+    calculoVersion: CURVA_ABC_INDUSTRIA_VERSION,
     registros,
     resumo: {
       referencePeriod: referencia,
@@ -469,7 +468,8 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
       produtosClasseB: contProduto.B,
       produtosClasseC: contProduto.C,
       produtosGravados: registros.length,
-      divergenciasUnidade,
+      divergenciasUnidade: divergenciasUnidadeTotal,
+      divergenciasConsumoNegativo,
       produtosConsumoForaUniverso: orfaos.size,
       amostraForaUniverso: Array.from(orfaos).slice(0, 20),
       achados,
