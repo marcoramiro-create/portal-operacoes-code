@@ -6,8 +6,18 @@
  * MECANISMO "IMPORTAÇÃO EM USO" (regra 11): para cada fonte, o batch ATIVO é
  * o mais recente com status='processed' (imported_at desc — coluna real de
  * operational_import_batches; NÃO existe created_at nessa tabela).
- * Nada é fixado no código — se o usuário trocar a importadora (CSV/XLSX),
- * a carga em uso muda sozinha.
+ *
+ * GARANTIA DE CADASTRO (01/10/2026): public.products estava VAZIA (a
+ * materialização do SB1 foi suspensa em 24/09). A Curva precisa do
+ * products.id (FK de sbz_product_curves). Antes de gravar a curva, este
+ * service garante em products SOMENTE os produtos que a curva vai usar,
+ * lendo a SB1 em uso direto da operational_source_rows (SQL, sem corpo HTTP
+ * de ~80 mil linhas — o caminho do erro de 24/09 NÃO é usado) e inserindo
+ * com a MESMA semântica da materializeSb1 (operationalImportService.ts):
+ * product_code = código normalizado, name = descrição ou "Produto <código>",
+ * product_type, metadata {familia, subfamilia, ncm, inclusionDate},
+ * source_system='SB1', source_product_code=código,
+ * ON CONFLICT (product_code) DO UPDATE (nunca apaga; idempotente).
  *
  * GRAVAÇÃO (regra 13): operation=INDUSTRIA, branch_code=0105,
  * source='CURVA_ABC_INDUSTRIA', calculation_version='v1',
@@ -102,6 +112,47 @@ async function lerFechamentos(client: PoolClient, batchId: string): Promise<Indu
 }
 
 /**
+ * Garante em public.products os produtos que a curva vai usar.
+ * Espelha a semântica da materializeSb1 (operationalImportService.ts):
+ * mesmos campos, mesmo ON CONFLICT (product_code) DO UPDATE.
+ * Não apaga nada; idempotente; lê a SB1 em uso via SQL (sem corpo HTTP).
+ */
+async function garantirProdutos(client: PoolClient, batchSb1: string, codigosNecessarios: string[]): Promise<void> {
+  const codigos = Array.from(new Set(codigosNecessarios.filter((c) => c && c.trim())));
+  if (codigos.length === 0) return;
+  const res = await client.query(
+    "select product_code, normalized_payload from public.operational_source_rows where batch_id = $1 and product_code = any($2)",
+    [batchSb1, codigos],
+  );
+  for (const r of res.rows) {
+    const p = r.normalized_payload ?? {};
+    const codigo = normalizeProductCode(r.product_code);
+    if (!codigo) continue;
+    const name = String(p.description ?? "").trim() || `Produto ${codigo}`;
+    const productType = p.type != null && String(p.type).trim() !== "" ? String(p.type).trim() : null;
+    const metadata = {
+      familia: p.family != null && String(p.family).trim() !== "" ? String(p.family).trim() : null,
+      subfamilia: p.subfamily != null && String(p.subfamily).trim() !== "" ? String(p.subfamily).trim() : null,
+      ncm: p.ncm != null ? String(p.ncm) : "",
+      inclusionDate: p.inclusionDate != null ? String(p.inclusionDate) : "",
+    };
+    await client.query(
+      `insert into public.products
+         (product_code, name, product_type, active, metadata, source_batch_id, source_system, source_product_code, updated_at)
+       values ($1, $2, $3, true, $4::jsonb, $5, 'SB1', $1, now())
+       on conflict (product_code) do update set
+         name = excluded.name,
+         product_type = excluded.product_type,
+         metadata = excluded.metadata,
+         source_batch_id = excluded.source_batch_id,
+         active = true,
+         updated_at = now()`,
+      [codigo, name, productType, JSON.stringify(metadata), batchSb1],
+    );
+  }
+}
+
+/**
  * Recalcula e grava a Curva ABC da Indústria com as cargas EM USO.
  * Idempotente: recalcular a mesma versão do mesmo período sobrescreve as
  * linhas (UPSERT na UNIQUE product_id+branch_code+operation+reference_period+version).
@@ -140,6 +191,10 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
       "update public.sbz_product_curves set is_current = false where operation = $1 and branch_code = $2 and reference_period = $3 and is_current = true",
       [INDUSTRIA_OPERATION, INDUSTRIA_BRANCH, `${resultado.referencePeriod}-01`],
     );
+    // Garante os produtos da curva em products (SB1 em uso) ANTES de gravar.
+    if (batchSb1) {
+      await garantirProdutos(client, batchSb1, resultado.registros.map((r) => r.productCode));
+    }
     let produtosGravados = 0;
     const achadosExtra: Array<{ aggregateProductCode: string; motivo: string }> = [];
     for (const reg of resultado.registros) {
