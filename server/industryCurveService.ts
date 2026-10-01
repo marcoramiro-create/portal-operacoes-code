@@ -4,9 +4,10 @@
  * Módulo: server (API tRPC). Data: 01/10/2026.
  *
  * MECANISMO "IMPORTAÇÃO EM USO" (regra 11): para cada fonte, o batch ATIVO é
- * o mais recente com status='processed' (created_at desc). Nada é fixado no
- * código — se o usuário trocar a importadora (CSV/XLSX), a carga em uso muda
- * sozinha.
+ * o mais recente com status='processed' (imported_at desc — coluna real de
+ * operational_import_batches; NÃO existe created_at nessa tabela).
+ * Nada é fixado no código — se o usuário trocar a importadora (CSV/XLSX),
+ * a carga em uso muda sozinha.
  *
  * GRAVAÇÃO (regra 13): operation=INDUSTRIA, branch_code=0105,
  * source='CURVA_ABC_INDUSTRIA', calculation_version='v1',
@@ -30,7 +31,7 @@ import {
 
 async function batchEmUso(client: PoolClient, sourceKind: string): Promise<string | null> {
   const res = await client.query<{ id: string }>(
-    "select id from public.operational_import_batches where source_kind = $1 and status = 'processed' order by created_at desc limit 1",
+    "select id from public.operational_import_batches where source_kind = $1 and status = 'processed' order by imported_at desc limit 1",
     [sourceKind],
   );
   return res.rows[0]?.id ?? null;
