@@ -7,7 +7,7 @@ import { parseMaterialEntries, parseStockEvolution } from "./operationalSourcePa
 import { previewCatalogImport } from "./operationalCatalogPreview";
 import { previewOperationalImport } from "./operationalSourcePreview";
 import { previewOperationMap } from "./operationMapPreview";
-import { recalcularCurvaIndustria } from "./industryCurveService";
+import { obterCurvaIndustriaAtual, recalcularCurvaIndustria } from "./industryCurveService";
 function auth(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 const fileInput = z.object({ fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1) });
 async function admin(ctx: { req: { headers: Record<string, string | string[] | undefined> } }) { const identity = await getPortalIdentity(auth(ctx.req.headers)); assertPortalAdministrator(identity); }
@@ -30,19 +30,19 @@ export const operationalImportRouter = router({
     const content = Buffer.from(input.contentBase64, "base64");
     const parsed = parseStockEvolution(content);
     const imported = await importOperationalRows({ sourceKind: "FECHAMENTO_ESTOQUE", fileName: input.fileName, content, rows: parsed.rows });
-    // DECISÃO 01/10/2026: recálculo automático da Curva ABC Indústria APÓS
-    // importar FECHAMENTO_ESTOQUE (além do botão manual). Se faltar ENTRADA_NF
-    // ou SB1/SBZ em uso, o import não falha — apenas avisa.
+    // DECISÃƒO 01/10/2026: recÃ¡lculo automÃ¡tico da Curva ABC IndÃºstria APÃ“S
+    // importar FECHAMENTO_ESTOQUE (alÃ©m do botÃ£o manual). Se faltar ENTRADA_NF
+    // ou SB1/SBZ em uso, o import nÃ£o falha â€” apenas avisa.
     try {
       const curva = await recalcularCurvaIndustria();
       return { ...imported, curva };
     } catch (error) {
-      const msg = error instanceof Error ? error.message : "Curva ABC da Indústria não calculada.";
+      const msg = error instanceof Error ? error.message : "Curva ABC da IndÃºstria nÃ£o calculada.";
       return { ...imported, curva: null, curvaErro: msg };
     }
   }),
   importMaterialEntries: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parsed = parseMaterialEntries(content); return importOperationalRows({ sourceKind: "ENTRADA_NF", fileName: input.fileName, content, rows: parsed.rows }); }),
-  // Botão manual "Recalcular curva" (tela do próximo bloco)
+  // BotÃ£o manual "Recalcular curva" (tela do prÃ³ximo bloco)
   recalcularCurvaIndustria: publicProcedure.mutation(async ({ ctx }) => {
     await admin(ctx);
     return recalcularCurvaIndustria();

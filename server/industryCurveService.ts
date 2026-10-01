@@ -1,23 +1,23 @@
 /**
  * industryCurveService.ts
- * Gravação da Curva ABC da Indústria (0105) em sbz_product_curves.
- * Módulo: server (API tRPC). Data: 01/10/2026 — v2 (consumo em R$ puro).
+ * GravaÃ§Ã£o da Curva ABC da IndÃºstria (0105) em sbz_product_curves.
+ * MÃ³dulo: server (API tRPC). Data: 01/10/2026 â€” v2 (consumo em R$ puro).
  *
- * MECANISMO "IMPORTAÇÃO EM USO": para cada fonte, o batch ATIVO é o mais
- * recente com status='processed' (imported_at desc — coluna real de
- * operational_import_batches). Nada é fixado no código.
+ * MECANISMO "IMPORTAÃ‡ÃƒO EM USO": para cada fonte, o batch ATIVO Ã© o mais
+ * recente com status='processed' (imported_at desc â€” coluna real de
+ * operational_import_batches). Nada Ã© fixado no cÃ³digo.
  *
- * GARANTIA DE CADASTRO: public.products estava VAZIA (materialização do SB1
+ * GARANTIA DE CADASTRO: public.products estava VAZIA (materializaÃ§Ã£o do SB1
  * suspensa em 24/09). Antes de gravar a curva, este service garante em
  * products SOMENTE os produtos que a curva vai usar, lendo a SB1 em uso
  * direto da operational_source_rows (SQL, sem corpo HTTP de ~80 mil linhas)
- * e inserindo com a MESMA semântica da materializeSb1
+ * e inserindo com a MESMA semÃ¢ntica da materializeSb1
  * (operationalImportService.ts): mesmo ON CONFLICT (product_code) DO UPDATE.
  *
- * GRAVAÇÃO: operation=INDUSTRIA, branch_code=0105, source='CURVA_ABC_INDUSTRIA',
- * calculation_version='v2', reference_period = mês de referência,
- * is_current=true. Antes do UPSERT, a versão anterior do mesmo período é
- * marcada is_current=false. Transação única: se qualquer passo falhar, nada
+ * GRAVAÃ‡ÃƒO: operation=INDUSTRIA, branch_code=0105, source='CURVA_ABC_INDUSTRIA',
+ * calculation_version='v2', reference_period = mÃªs de referÃªncia,
+ * is_current=true. Antes do UPSERT, a versÃ£o anterior do mesmo perÃ­odo Ã©
+ * marcada is_current=false. TransaÃ§Ã£o Ãºnica: se qualquer passo falhar, nada
  * fica gravado.
  */
 import type { Pool, PoolClient } from "pg";
@@ -109,7 +109,7 @@ async function lerFechamentos(client: PoolClient, batchId: string): Promise<Indu
 
 /**
  * Garante em public.products os produtos que a curva vai usar.
- * Mesma semântica da materializeSb1; idempotente; não apaga nada.
+ * Mesma semÃ¢ntica da materializeSb1; idempotente; nÃ£o apaga nada.
  */
 async function garantirProdutos(client: PoolClient, batchSb1: string, codigosNecessarios: string[]): Promise<void> {
   const codigos = Array.from(new Set(codigosNecessarios.filter((c) => c && c.trim())));
@@ -147,8 +147,8 @@ async function garantirProdutos(client: PoolClient, batchSb1: string, codigosNec
 }
 
 /**
- * Recalcula e grava a Curva ABC da Indústria com as cargas EM USO.
- * Idempotente: recalcular a mesma versão do mesmo período sobrescreve as
+ * Recalcula e grava a Curva ABC da IndÃºstria com as cargas EM USO.
+ * Idempotente: recalcular a mesma versÃ£o do mesmo perÃ­odo sobrescreve as
  * linhas (UPSERT na UNIQUE product_id+branch_code+operation+reference_period+version).
  */
 export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCurveSummary> {
@@ -160,7 +160,7 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
     if (!batchEntrada || !batchFechamento) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
-        message: "Curva ABC da Indústria: é preciso ter importado ENTRADA_NF e FECHAMENTO_ESTOQUE antes.",
+        message: "Curva ABC da IndÃºstria: Ã© preciso ter importado ENTRADA_NF e FECHAMENTO_ESTOQUE antes.",
       });
     }
     const batchSb1 = await batchEmUso(client, "SB1");
@@ -175,11 +175,11 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
     if (!resultado.referencePeriod || !resultado.resumo.referencePeriod) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
-        message: "Curva ABC da Indústria: FECHAMENTO_ESTOQUE em uso não possui meses (mês de referência vazio).",
+        message: "Curva ABC da IndÃºstria: FECHAMENTO_ESTOQUE em uso nÃ£o possui meses (mÃªs de referÃªncia vazio).",
       });
     }
 
-    // ---- gravação em transação única ----
+    // ---- gravaÃ§Ã£o em transaÃ§Ã£o Ãºnica ----
     await client.query("begin");
     await client.query(
       "update public.sbz_product_curves set is_current = false where operation = $1 and branch_code = $2 and reference_period = $3 and is_current = true",
@@ -245,4 +245,65 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
   } finally {
     client.release();
   }
+}
+// ---------------------------------------------------------------------------
+// Leitura da curva corrente (tela do Bloco 4.4) â€” 01/10/2026
+// ---------------------------------------------------------------------------
+export interface IndustryCurveSnapshotRow {
+  agregado: string;
+  descricao: string;
+  classe: "A" | "B" | "C";
+  participacao: number;
+  valorConsumo: number;
+  quantidadeConsumo: number;
+  unidade: string | null;
+}
+export interface IndustryCurveSnapshot {
+  referencePeriod: string; // "2026-08"
+  calculationVersion: string;
+  calculatedAt: string;
+  totalAgregados: number;
+  porClasse: { A: number; B: number; C: number };
+  registros: IndustryCurveSnapshotRow[];
+}
+
+export async function obterCurvaIndustriaAtual(pool?: Pool): Promise<IndustryCurveSnapshot> {
+  const connection = pool ?? getSupabasePool();
+  const res = await connection.query(
+    `select distinct on ((c.metadata->>'aggregateCode'))
+            (c.metadata->>'aggregateCode') as agregado,
+            (c.metadata->>'aggregateDescription') as descricao,
+            c.curve_code as classe,
+            (c.metadata->>'participacao') as participacao,
+            (c.metadata->>'valorConsumo') as valor,
+            (c.metadata->>'quantidadeConsumo') as quantidade,
+            (c.metadata->>'unidade') as unidade,
+            c.calculation_version,
+            c.reference_period,
+            c.calculated_at
+       from public.sbz_product_curves c
+      where c.operation = $1 and c.is_current = true
+      order by (c.metadata->>'aggregateCode'), (c.metadata->>'valorConsumo')::numeric desc nulls last`,
+    [INDUSTRIA_OPERATION],
+  );
+  const num = (v: unknown): number => (v == null || v === "" ? 0 : Number(v));
+  const registros: IndustryCurveSnapshotRow[] = res.rows.map((r) => ({
+    agregado: String(r.agregado ?? ""),
+    descricao: String(r.descricao ?? ""),
+    classe: (String(r.classe ?? "C") === "A" ? "A" : String(r.classe) === "B" ? "B" : "C") as "A" | "B" | "C",
+    participacao: num(r.participacao),
+    valorConsumo: num(r.valor),
+    quantidadeConsumo: num(r.quantidade),
+    unidade: r.unidade ? String(r.unidade) : null,
+  }));
+  const porClasse = { A: 0, B: 0, C: 0 };
+  for (const reg of registros) porClasse[reg.classe] += 1;
+  return {
+    referencePeriod: res.rows[0]?.reference_period ? String(res.rows[0].reference_period).slice(0, 7) : "",
+    calculationVersion: res.rows[0]?.calculation_version ? String(res.rows[0].calculation_version) : "",
+    calculatedAt: res.rows[0]?.calculated_at ? String(res.rows[0].calculated_at) : "",
+    totalAgregados: registros.length,
+    porClasse,
+    registros,
+  };
 }
