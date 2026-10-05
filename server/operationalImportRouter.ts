@@ -11,6 +11,13 @@ import { previewOperationMap } from "./operationMapPreview";
 import { obterCurvaIndustriaAtual, recalcularCurvaIndustria } from "./industryCurveService";
 function auth(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 const fileInput = z.object({ fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1) });
+const catalogKind = z.enum(["SB1", "SBZ", "SB5", "SA2"]);
+function parseCatalog(kind: "SB1" | "SBZ" | "SB5" | "SA2", content: Buffer) {
+  if (kind === "SB1") return parseSb1(content);
+  if (kind === "SBZ") return parseSbz(content);
+  if (kind === "SB5") return parseSb5(content);
+  return parseSa2(content);
+}
 async function admin(ctx: { req: { headers: Record<string, string | string[] | undefined> } }) { const identity = await getPortalIdentity(auth(ctx.req.headers)); assertPortalAdministrator(identity); }
 // ----- PERMISSÃO Curva ABC da Indústria (01/10/2026) -----
 // Mesmo padrão do Recebimento NF: aceita o nó "curva-abc-industria" OU o PAI
@@ -37,10 +44,12 @@ export const operationalImportRouter = router({
   previewSbz: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewCatalogImport("SBZ", input.fileName, content); }),
   previewSb5: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewCatalogImport("SB5", input.fileName, content); }),
   previewSa2: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewCatalogImport("SA2", input.fileName, content); }),
+  previewCatalog: publicProcedure.input(fileInput.extend({ sourceKind: catalogKind })).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewCatalogImport(input.sourceKind, input.fileName, content); }),
   importSb1: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parsed = parseSb1(content); return importCatalogRows({ sourceKind: "SB1", fileName: input.fileName, content, rows: parsed.rows }); }),
   importSbz: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parsed = parseSbz(content); return importCatalogRows({ sourceKind: "SBZ", fileName: input.fileName, content, rows: parsed.rows }); }),
   importSb5: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parsed = parseSb5(content); return importCatalogRows({ sourceKind: "SB5", fileName: input.fileName, content, rows: parsed.rows }); }),
   importSa2: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parsed = parseSa2(content); return importCatalogRows({ sourceKind: "SA2", fileName: input.fileName, content, rows: parsed.rows }); }),
+  importCatalog: publicProcedure.input(fileInput.extend({ sourceKind: catalogKind })).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parsed = parseCatalog(input.sourceKind, content); return importCatalogRows({ sourceKind: input.sourceKind, fileName: input.fileName, content, rows: parsed.rows }); }),
   importStockEvolution: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => {
     await admin(ctx);
     const content = Buffer.from(input.contentBase64, "base64");
