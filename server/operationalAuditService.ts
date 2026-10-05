@@ -80,7 +80,7 @@ function countKeys<T>(rows: T[], keyOf: (row: T) => string): Map<string, number>
 }
 
 function duplicatesFrom(counts: Map<string, number>, scope: string): AuditDuplicate[] {
-  return [...counts.entries()].filter(([, occurrences]) => occurrences > 1).map(([key, occurrences]) => ({ scope, key, occurrences }));
+  return Array.from(counts.entries()).filter(([, occurrences]) => occurrences > 1).map(([key, occurrences]) => ({ scope, key, occurrences }));
 }
 
 /** Índices somente leitura construídos a partir da SB1 (cadastro base). */

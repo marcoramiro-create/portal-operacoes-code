@@ -1,5 +1,5 @@
 import { cleanSourceText, normalizeBranchCode, normalizeProductCode } from "./operationalNormalization";
-import { createOperationalSourceRowReader, type OperationalSourceKind, type SourceRowPage } from "./operationalSourceRowReader";
+import { createOperationalSourceRowReader, type OperationalSourceKind, type OperationalSourceRowReader, type SourceRowPage } from "./operationalSourceRowReader";
 import { getSupabasePool, type PortalIdentity } from "./supabasePortal";
 import { createHash } from "node:crypto";
 
@@ -29,7 +29,7 @@ function duplicateFindings(source: OperationalSourceKind, counts: Map<string, nu
   if (!scope) return [];
   const findingSource = source === "PEDIDO_COMPRA" ? "Pedidos" : source;
   const result: IncrementalFinding[] = [];
-  for (const [key, occurrences] of counts) if (key && occurrences > 1) result.push(finding("DUPLICIDADE", "CHAVE_DUPLICADA", findingSource, key, `A chave ${key} aparece ${occurrences} vezes no escopo ${scope}.`, scope));
+  for (const [key, occurrences] of Array.from(counts.entries())) if (key && occurrences > 1) result.push(finding("DUPLICIDADE", "CHAVE_DUPLICADA", findingSource, key, `A chave ${key} aparece ${occurrences} vezes no escopo ${scope}.`, scope));
   return result;
 }
 function findingsForPage(source: OperationalSourceKind, page: SourceRowPage, index: Indexes): IncrementalFinding[] {
@@ -45,12 +45,12 @@ function findingsForPage(source: OperationalSourceKind, page: SourceRowPage, ind
 }
 
 export async function syncIncrementally(actor: PortalIdentity, options?: { db?: SyncDb; reader?: ReturnType<typeof createOperationalSourceRowReader> }): Promise<IncrementalSyncResult> {
-  const db = options?.db ?? getSupabasePool();
+  const db: SyncDb = options?.db ?? (getSupabasePool() as unknown as SyncDb);
   const client = await db.connect();
   // REGRA DE SEGURANÇA (pool max baixo): o leitor deve usar a MESMA conexão
   // retida acima. Consultar o pool durante o sync causaria deadlock: o pool
   // não teria conexão livre enquanto o sync espera a página.
-  const reader = options?.reader ?? createOperationalSourceRowReader({ query: (sql, params) => client.query(sql, params) });
+    const reader = options?.reader ?? createOperationalSourceRowReader({ query: async <T = unknown>(sql: string, params?: unknown[]) => client.query<T>(sql, params) });
   let runId = ""; let rowsRead = 0; let findingCount = 0; let exceptionCount = 0; let duplicateCount = 0; let findingsNew = 0; let findingsUpdated = 0;
   try {
     const latest = await reader.listLatestProcessedBatchIds(); const missing = SOURCES.filter(source => !latest.has(source)); if (missing.length) throw new Error(`Fontes sem lote processado: ${missing.join(", ")}`);

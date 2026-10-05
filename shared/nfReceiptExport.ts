@@ -17,7 +17,7 @@ type ExportRow = {
   accessKey: string; invoiceNumber: string; invoiceSeries: string; issuerCnpj: string;
   readingPoint: string; captureMethod: string; capturedAt: Date | string; capturedBy?: string | null;
   carrierName?: string | null; vehiclePlate?: string | null;
-  supplier?: { code: string; store: string; legalName?: string | null; tradeName?: string | null } | null;
+  supplier?: { code: string; store: string | null; legalName?: string | null; tradeName?: string | null } | null;
 };
 
 export function formatNfReceiptExportRows(rows: ExportRow[]) {

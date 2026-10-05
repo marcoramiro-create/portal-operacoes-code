@@ -186,7 +186,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
   }
   const universo = new Set(agregadoPorProduto.values());
   const primeiroProdutoDoAgregado = new Map<string, string>();
-  for (const [prod, agg] of agregadoPorProduto) {
+  for (const [prod, agg] of Array.from(agregadoPorProduto.entries())) {
     if (!primeiroProdutoDoAgregado.has(agg)) primeiroProdutoDoAgregado.set(agg, prod);
   }
 
@@ -282,14 +282,14 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
   const consumoPorProduto = new Map<string, { qty: number; valor: number }>();
   const orfaos = new Set<string>();
   const produtosComDado = new Set<string>();
-  for (const chave of saldoPorMes.keys()) {
+  for (const chave of Array.from(saldoPorMes.keys())) {
     const mes = chave.split("@")[1];
     if (mes && setMeses.has(mes)) produtosComDado.add(chave.split("@")[0]);
   }
-  for (const chave of entradasPorMes.keys()) produtosComDado.add(chave.split("@")[0]);
+  for (const chave of Array.from(entradasPorMes.keys())) produtosComDado.add(chave.split("@")[0]);
 
   let divergenciasConsumoNegativo = 0;
-  for (const prod of produtosComDado) {
+  for (const prod of Array.from(produtosComDado)) {
     if (!agregadoDe(prod)) {
       orfaos.add(prod);
       continue;
@@ -319,7 +319,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
 
   // 6) Agregados: consumo R$, quantidade consumida, descrição.
   const agregadoConsumo = new Map<string, { qty: number; valor: number }>();
-  for (const [prod, cons] of consumoPorProduto) {
+  for (const [prod, cons] of Array.from(consumoPorProduto.entries())) {
     const agg = agregadoDe(prod);
     if (!agg) continue;
     const atual = agregadoConsumo.get(agg) ?? { qty: 0, valor: 0 };
@@ -354,7 +354,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     classeDoAgregado.set(agg, classe);
     participacaoDoAgregado.set(agg, somaValores > 0 ? a.valor / somaValores : 0);
   }
-  for (const agg of agregadoConsumo.keys()) {
+  for (const agg of Array.from(agregadoConsumo.keys())) {
     if (!classeDoAgregado.has(agg)) {
       classeDoAgregado.set(agg, "C");
       participacaoDoAgregado.set(agg, 0);
@@ -365,7 +365,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
   const ocorrenciasUnidade = new Map<string, Map<string, number>>();
   const unidadesDistintasPorProduto = new Map<string, Set<string>>();
   const unidadesDoAgregado = new Map<string, Set<string>>();
-  for (const [chave, saldo] of saldoPorMes) {
+  for (const [chave, saldo] of Array.from(saldoPorMes.entries())) {
     const prod = chave.split("@")[0];
     const mes = chave.split("@")[1];
     if (!mes || !setMeses.has(mes)) continue;
@@ -383,10 +383,10 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
     }
   }
   const unidadePorProduto = new Map<string, string | null>();
-  for (const [prod, cont] of ocorrenciasUnidade) {
+  for (const [prod, cont] of Array.from(ocorrenciasUnidade.entries())) {
     let melhorUnit: string | null = null;
     let melhorQtd = -1;
-    for (const [unit, qtd] of cont) {
+    for (const [unit, qtd] of Array.from(cont.entries())) {
       if (qtd > melhorQtd) {
         melhorQtd = qtd;
         melhorUnit = unit;
@@ -400,7 +400,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
   const agregadosComSbz = new Set<string>();
   const contProduto: Record<IndustryCurveClass, number> = { A: 0, B: 0, C: 0 };
   let divergenciasUnidadeTotal = 0;
-  for (const prod of produtosSbz0105) {
+  for (const prod of Array.from(produtosSbz0105)) {
     const agg = agregadoDe(prod);
     if (!agg || !agregadoConsumo.has(agg)) continue; // fora do universo
     agregadosComSbz.add(agg);
@@ -426,7 +426,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
 
   // 10) Achados: agregados do universo sem produto SBZ 0105.
   const achados: IndustryCurveFinding[] = [];
-  for (const agg of universo) {
+  for (const agg of Array.from(universo)) {
     if (!agregadosComSbz.has(agg)) {
       achados.push({
         aggregateProductCode: agg,
@@ -440,7 +440,7 @@ export function calcularCurvaIndustriaCore(input: IndustryCurveInput): IndustryC
   let contB = 0;
   let contC = 0;
   let semConsumo = 0;
-  for (const [agg, a] of agregadoConsumo) {
+  for (const [agg, a] of Array.from(agregadoConsumo.entries())) {
     if (a.valor > 0) {
       const classe = classeDoAgregado.get(agg) ?? "C";
       if (classe === "A") contA += 1;

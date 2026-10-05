@@ -13,6 +13,9 @@ export const nfReceiptsRouter = router({
     carrierId: z.string().uuid().nullable().optional(),
     carrierName: z.string().max(200).nullable().optional(),
     vehiclePlate: z.string().max(12).nullable().optional(),
+    filial: z.string().max(80).nullable().optional(),
+    armazem: z.string().max(80).nullable().optional(),
+    localEstoque: z.string().max(160).nullable().optional(),
   })).mutation(async ({ ctx, input }) => createNfReceipt(input, await getPortalIdentity(authorizationHeader(ctx.req.headers)))),
   updateReadingPoint: publicProcedure.input(z.object({
     id: z.string().min(1),

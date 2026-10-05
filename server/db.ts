@@ -331,8 +331,8 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           ultimaCompra: r.ultimaCompra || null,
           pedidos: r.pedidos.toString(),
           branch: r.filial,
-          productType: (r.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
-          mrp: r.mrp === "Sim" ? "Sim" : "Não",
+          productType: (r.tipo || "").toUpperCase() === "PE" ? ("PE" as const) : ("ME" as const),
+          mrp: r.mrp === "Sim" ? ("Sim" as const) : ("Não" as const),
           family: r.familia || "",
           subfamily: r.subFamilia || "",
           curve: r.curva,
@@ -342,6 +342,7 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           stockValue: r.stockValue.toString(),
           coverageDays: r.coverageDays.toString(),
           excessValue: r.excessValue.toString(),
+          capitalTurnover: r.turnover.toString(),
         }))
       );
     }
