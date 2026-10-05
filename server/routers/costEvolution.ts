@@ -43,7 +43,7 @@ export const costEvolutionRouter = router({
     const result = await commitCostEvolutionImport({ ...input, importedBy: identity.email });
     // MUDANÇA: o registro de auditoria é opcional — se falhar, NÃO bloqueia a importação.
     try {
-      await recordPortalAudit(identity, "cost_evolution_import", String(result.id), "created", { segment: input.segment, fileName: input.fileName, itemCount: result.itemCount, observationCount: result.observationCount });
+      await recordPortalAudit(identity, "cost_evolution_import", identity.id, "created", { costImportId: result.id, segment: input.segment, fileName: input.fileName, itemCount: result.itemCount, observationCount: result.observationCount });
     } catch {
       // auditoria falhou (ex.: tipo de coluna) — a importação já foi concluída com sucesso.
     }
@@ -59,7 +59,7 @@ export const costEvolutionRouter = router({
     await assertApplicationPermission(identity, importerNode(input.segment), "approve");
     const result = await updateCostEvolutionImportStatus(input.id, input.status);
     try {
-      await recordPortalAudit(identity, "cost_evolution_import", String(input.id), input.status, { segment: input.segment });
+      await recordPortalAudit(identity, "cost_evolution_import", identity.id, input.status, { costImportId: input.id, segment: input.segment });
     } catch {
       // auditoria opcional — não bloqueia a operação.
     }

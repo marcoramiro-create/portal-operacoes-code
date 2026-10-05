@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { costEvolutionImports } from "../drizzle/schema";
 import { getDb } from "./db";
 import { parseCostEvolutionWorkbook, type CostEvolutionSegment } from "./costEvolution";
@@ -63,6 +64,27 @@ export async function commitCostEvolutionImport(input: {
     throw new Error(`A planilha contém ${parsed.issues.length} erro(s) de validação. Revise a prévia antes de confirmar.`);
   if (!parsed.rows.length) throw new Error("A planilha não contém itens válidos para importação.");
 
+  const fileKey = `local:${createHash("sha256").update(buffer).digest("hex")}`;
+  const existing = await db
+    .select()
+    .from(costEvolutionImports)
+    .where(and(eq(costEvolutionImports.segment, input.segment), eq(costEvolutionImports.fileKey, fileKey)))
+    .orderBy(desc(costEvolutionImports.importedAt), desc(costEvolutionImports.id))
+    .limit(1);
+  if (existing[0]) {
+    const row = existing[0];
+    return {
+      id: row.id,
+      status: row.status,
+      fileName: row.fileName,
+      itemCount: row.itemCount,
+      observationCount: row.observationCount,
+      periodStart: row.periodStart,
+      periodEnd: row.periodEnd,
+      idempotent: true as const,
+    };
+  }
+
   return db.transaction(async (tx) => {
     // 1) Registra a versão (para aparecer na lista e poder aprovar).
     const inserted = await tx
@@ -70,7 +92,7 @@ export async function commitCostEvolutionImport(input: {
       .values({
         segment: input.segment,
         fileName: input.fileName,
-        fileKey: "local",
+        fileKey,
         status: "pending",
         itemCount: parsed.itemCount,
         observationCount: parsed.observationCount,
@@ -140,6 +162,7 @@ export async function commitCostEvolutionImport(input: {
       observationCount: parsed.observationCount,
       periodStart: parsed.periodStart,
       periodEnd: parsed.periodEnd,
+      idempotent: false as const,
     };
   });
 }
