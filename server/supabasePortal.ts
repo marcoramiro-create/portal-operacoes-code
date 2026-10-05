@@ -250,7 +250,7 @@ export async function resendInvite(email: string) {
   const response = await fetch(`${projectUrl}/auth/v1/recover`, {
     method: "POST",
     headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, redirect_to: "https://gestaolog-ehcfqbaf.manus.space" }),
+    body: JSON.stringify({ email, redirect_to: "https://portal-operacoes-megatec.duckdns.org" }),
   });
   if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: "Não foi possível enviar a redefinição de senha." });
   return { success: true } as const;
@@ -272,7 +272,7 @@ export async function resendActivationInvite(userId: string) {
   const response = await fetch(`${projectUrl}/auth/v1/invite`, {
     method: "POST",
     headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email: user.email, data: { display_name: user.display_name, portal_environment: "homologacao" }, redirect_to: "https://gestaolog-ehcfqbaf.manus.space" }),
+    body: JSON.stringify({ email: user.email, data: { display_name: user.display_name, portal_environment: "homologacao" }, redirect_to: "https://portal-operacoes-megatec.duckdns.org" }),
   });
   const body = await response.json();
   if (!response.ok) throw new TRPCError({ code: "BAD_REQUEST", message: body.msg ?? body.message ?? "Não foi possível reenviar o convite de ativação." });

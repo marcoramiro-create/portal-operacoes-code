@@ -6,7 +6,7 @@ if (!projectUrl || !serviceRoleKey) {
 }
 
 const emails = ["marco.ramiro@megatec.com.br", "marcoramiro@gmail.com"];
-const redirectTo = "https://gestaolog-ehcfqbaf.manus.space";
+const redirectTo = "https://portal-operacoes-megatec.duckdns.org";
 
 const results = [];
 for (const email of emails) {

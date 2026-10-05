@@ -1,7 +1,7 @@
 const projectUrl = process.env.VITE_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const email = "marcoramiro@gmail.com";
-const redirectTo = "https://gestaolog-ehcfqbaf.manus.space";
+const redirectTo = "https://portal-operacoes-megatec.duckdns.org";
 
 if (!projectUrl || !serviceRoleKey) {
   throw new Error("A integração de identidade do Supabase não está configurada.");

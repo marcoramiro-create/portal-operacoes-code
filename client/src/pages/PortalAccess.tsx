@@ -51,7 +51,7 @@ export default function PortalAccess() {
     if (!email) return toast.error("Informe seu e-mail para receber a redefinição de senha.");
     if (recoveryRequested) return toast.message("A solicitação já foi feita. Verifique o e-mail antes de pedir outro link.");
     setPending(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: "https://gestaolog-ehcfqbaf.manus.space" });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: "https://portal-operacoes-megatec.duckdns.org" });
     setPending(false);
     if (error) {
       if (isEmailRateLimitError(error.message)) setRecoveryRequested(true);
