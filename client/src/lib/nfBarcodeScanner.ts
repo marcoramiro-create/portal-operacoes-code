@@ -65,7 +65,7 @@ export class NfBarcodeScanner {
     this.videoTrack = track ?? null;
     if (track && typeof track.applyConstraints === "function") {
       try {
-        await track.applyConstraints({ advanced: [{ focusMode: "continuous" }] } as MediaTrackConstraints);
+        await track.applyConstraints({ advanced: [{ focusMode: "continuous" } as unknown as MediaTrackConstraintSet] });
       } catch { /* sem suporte */ }
     }
     target.innerHTML = "";

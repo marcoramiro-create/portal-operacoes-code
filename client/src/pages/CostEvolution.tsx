@@ -218,7 +218,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
     headerRow.alignment = { vertical: "middle", horizontal: "center" };
     headerRow.height = 22;
-    sheet.columns.forEach((col, index) => {
+    sheet.columns.forEach((col: ExcelJS.Column, index: number) => {
       col.width = index === 0 ? 10 : index === 1 ? 14 : index === 2 ? 50 : index === 3 ? 16 : index === header.length - 1 ? 70 : 14;
     });
     sheet.views = [{ state: "frozen", ySplit: 1 }];

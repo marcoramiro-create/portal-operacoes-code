@@ -56,7 +56,7 @@ export async function importCarriers(input: { rows: CarrierRow[]; sourceFileName
         found = hit.rows[0];
       }
       if (!found && (row.code || "").trim()) {
-        const hit = await client.query<{ id: string }>("select id from public.transportadoras where code = $1", [row.code.trim()]);
+        const hit = await client.query<{ id: string }>("select id from public.transportadoras where code = $1", [row.code?.trim() ?? ""]);
         found = hit.rows[0];
       }
       if (found) {

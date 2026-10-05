@@ -80,7 +80,7 @@ export default function IndustryCurve() {
     headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F172A" } };
     headerRow.alignment = { vertical: "middle", horizontal: "center" };
     headerRow.height = 22;
-    sheet.columns.forEach((col, index) => {
+    sheet.columns.forEach((col: ExcelJS.Column, index: number) => {
       col.width = index === 0 ? 8 : index === 1 ? 18 : index === 2 ? 55 : index === 5 ? 18 : 16;
     });
     sheet.getColumn(4).numFmt = "#,##0.00";

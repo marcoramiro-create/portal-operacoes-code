@@ -99,7 +99,11 @@ export async function saveSbzReferences(records: { chave: string; code: string; 
   if (!db) throw new Error("Banco de dados indisponível.");
   await db.delete(sbzReferences);
   for (let start = 0; start < records.length; start += 500) {
-    await db.insert(sbzReferences).values(records.slice(start, start + 500));
+    await db.insert(sbzReferences).values(records.slice(start, start + 500).map((row) => ({
+      ...row,
+      estoqMin: row.estoqMin?.toString() ?? null,
+      estoqMax: row.estoqMax?.toString() ?? null,
+    })));
   }
   return records.length;
 }
@@ -230,6 +234,7 @@ async function montarIndicesReferencias(): Promise<{ sb1: Sb1Index; sbz: SbzInde
     const chave = String(r.code ?? "").trim();
     if (!chave) continue;
     const linha: Sb1Row = {
+      code: chave,
       codigo: chave,
       codAgregado: chave,
       descricao: "",
@@ -324,19 +329,19 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           codeOriginal: r.codigoOriginal || r.codigo,
           description: r.descricao || "",
           ultimaCompra: r.ultimaCompra || null,
-          pedidos: r.pedidos,
+          pedidos: r.pedidos.toString(),
           branch: r.filial,
           productType: (r.tipo || "").toUpperCase() === "PE" ? "PE" : "ME",
           mrp: r.mrp === "Sim" ? "Sim" : "Não",
           family: r.familia || "",
           subfamily: r.subFamilia || "",
           curve: r.curva,
-          sales13M: r.total,
-          salesValue13M: r.custoTot13M,
-          stock: r.estoque,
-          stockValue: r.stockValue,
-          coverageDays: r.coverageDays,
-          excessValue: r.excessValue,
+          sales13M: r.total.toString(),
+          salesValue13M: r.custoTot13M.toString(),
+          stock: r.estoque.toString(),
+          stockValue: r.stockValue.toString(),
+          coverageDays: r.coverageDays.toString(),
+          excessValue: r.excessValue.toString(),
         }))
       );
     }
