@@ -83,7 +83,7 @@ function ehBufferXlsx(content: Buffer): boolean {
  * - texto/CSV: mantém o fluxo original (parseCsv + decodificação UTF-8/Windows-1252).
  */
 function lerLinhasBrutas(content: Buffer | string): CsvRow[] {
-  if (!(content instanceof Buffer)) return parseCsv(content);
+  if (typeof content === "string") return parseCsv(content);
   if (ehBufferXlsx(content)) {
     try {
       const workbook = XLSX.read(content, { type: "buffer", cellText: false });

@@ -275,7 +275,7 @@ export function calcularCurvasAbcde(rows: PurchaseRow[], emissao?: Date | null):
   const limite180 = new Date(hoje.getTime() - DIAS_RECLASSIFICACAO * 86400000);
   const totalDias = totalDiasGiro(emissao);
   for (const lista of grupos.values()) {
-    const totalGrupo = lista.reduce((acc, r) => acc + r.custoTot13M, 0);
+    const totalGrupo = lista.reduce((acc: number, r: PurchaseRow) => acc + r.custoTot13M, 0);
     const ordenados = [...lista].sort((a, b) => b.custoTot13M - a.custoTot13M);
     let acumulado = 0;
     for (const r of ordenados) {

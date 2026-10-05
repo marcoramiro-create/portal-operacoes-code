@@ -103,9 +103,9 @@ async function main() {
         comprador_codigo: comprador.codigo,
         comprador_nome: comprador.nome,
         ultima_compra: normalizeDate8(r[6]),
-        ultimo_preco: toNumber(r[7]),
+        ultimo_preco: toNumber(r[7])?.toString() ?? null,
         period: toPeriod(rows[1][colIdx]),
-        custo_medio: toNumber(r[colIdx]),
+        custo_medio: toNumber(r[colIdx])?.toString() ?? null,
         source_file: 'Acompanhamento de Custos - Peças - 202501+.xlsx',
         imported_at: new Date(),
       });

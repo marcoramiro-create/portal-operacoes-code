@@ -74,8 +74,8 @@ export async function commitCostEvolutionImport(input: {
         status: "pending",
         itemCount: parsed.itemCount,
         observationCount: parsed.observationCount,
-        periodStart: asBusinessDate(parsed.periodStart),
-        periodEnd: asBusinessDate(parsed.periodEnd),
+        periodStart: parsed.periodStart,
+        periodEnd: parsed.periodEnd,
         importedBy: input.importedBy,
       })
       .returning({ id: costEvolutionImports.id });
@@ -174,14 +174,14 @@ export async function updateCostEvolutionImportStatus(id: number, status: "appro
   return { success: true as const };
 }
 
-export async function getCostEvolutionFilterOptions() {
+export async function getCostEvolutionFilterOptions(_segment?: CostEvolutionSegment) {
   return { currentImport: null, branches: [] as string[], buyers: [] as string[], mrps: [] as ("Sim" | "Não")[] };
 }
 
-export async function getCostEvolutionItems() {
+export async function getCostEvolutionItems(_filters?: CostEvolutionFilters) {
   return { currentImport: null, page: 1, pageSize: 50, total: 0, items: [] };
 }
 
-export async function getCostEvolutionSummary() {
+export async function getCostEvolutionSummary(_filters?: CostEvolutionFilters) {
   return { currentImport: null, itemCount: 0, observationCount: 0, latestAverageCost: 0 };
 }

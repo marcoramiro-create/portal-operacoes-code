@@ -286,9 +286,9 @@ export function enriquecerCompras(
     if (sb1Row) {
       descricao = sb1Row.descricao || r.descricao;
       tipo = sb1Row.tipo || '';
-      const fam = normalizeCode(sb1Row.familiaCod);
+      const fam = normalizeCode(sb1Row.familiaCode);
       if (fam && familias.has(fam)) familia = familias.get(fam) ?? '';
-      const sub = normalizeCode(sb1Row.subFamiliaCod);
+      const sub = normalizeCode(sb1Row.subfamiliaCode);
       if (sub && subFamilias.has(sub)) subFamilia = subFamilias.get(sub) ?? '';
     }
     // 2) SBZ por chave = código normalizado + filial (para o MRP)
