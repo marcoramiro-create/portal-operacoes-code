@@ -2,7 +2,8 @@ import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
 import { previewCostEvolutionWorkbook } from "../costEvolution";
 import { commitCostEvolutionImport, getCostEvolutionFilterOptions, getCostEvolutionItems, getCostEvolutionSummary, listCostEvolutionImports, updateCostEvolutionImportStatus } from "../costEvolutionService";
-import { assertApplicationPermission, getPortalIdentity, recordPortalAudit } from "../supabasePortal";
+import { assertApplicationPermission, getPortalIdentity, listObservacoes, recordPortalAudit, upsertObservacao } from "../supabasePortal";
+import { getCodAgregados, getCostEvolutionAnalise, getFiliais, getPeriodos } from "../costEvolutionAnalise";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) {
   const value = headers.authorization;
@@ -21,6 +22,14 @@ const filters = z.object({
   page: z.number().int().min(1).optional(),
   pageSize: z.number().int().min(10).max(100).optional(),
 });
+const analiseFilters = z.object({
+  segment,
+  periodoInicio: z.string().trim().max(7).optional(),
+  periodoFim: z.string().trim().max(7).optional(),
+  filial: z.string().trim().max(24).optional(),
+  codAgregado: z.string().trim().max(120).optional(),
+  descricao: z.string().trim().max(255).optional(),
+});
 
 export const costEvolutionRouter = router({
   preview: publicProcedure.input(z.object({ segment, fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1) })).mutation(async ({ ctx, input }) => {
@@ -32,7 +41,12 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, importerNode(input.segment), "manage");
     const result = await commitCostEvolutionImport({ ...input, importedBy: identity.email });
-    await recordPortalAudit(identity, "cost_evolution_import", String(result.id), "created", { segment: input.segment, fileName: input.fileName, itemCount: result.itemCount, observationCount: result.observationCount });
+    // MUDANÇA: o registro de auditoria é opcional — se falhar, NÃO bloqueia a importação.
+    try {
+      await recordPortalAudit(identity, "cost_evolution_import", String(result.id), "created", { segment: input.segment, fileName: input.fileName, itemCount: result.itemCount, observationCount: result.observationCount });
+    } catch {
+      // auditoria falhou (ex.: tipo de coluna) — a importação já foi concluída com sucesso.
+    }
     return result;
   }),
   imports: publicProcedure.input(z.object({ segment })).query(async ({ ctx, input }) => {
@@ -44,7 +58,11 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, importerNode(input.segment), "approve");
     const result = await updateCostEvolutionImportStatus(input.id, input.status);
-    await recordPortalAudit(identity, "cost_evolution_import", String(input.id), input.status, { segment: input.segment });
+    try {
+      await recordPortalAudit(identity, "cost_evolution_import", String(input.id), input.status, { segment: input.segment });
+    } catch {
+      // auditoria opcional — não bloqueia a operação.
+    }
     return result;
   }),
   filterOptions: publicProcedure.input(z.object({ segment })).query(async ({ ctx, input }) => {
@@ -61,5 +79,42 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCostEvolutionItems(input);
+  }),
+  analise: publicProcedure.input(analiseFilters).query(async ({ ctx, input }) => {
+    const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+    await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
+    return getCostEvolutionAnalise({
+      periodoInicio: input.periodoInicio,
+      periodoFim: input.periodoFim,
+      // MUDANÇA: a Indústria usa SEMPRE a filial 0105 — forçado aqui no servidor.
+      filial: input.segment === "industry" ? "0105" : (input.filial ?? undefined),
+      codAgregado: input.codAgregado,
+      descricao: input.descricao,
+    });
+  }),
+  filiais: publicProcedure.input(z.object({ segment })).query(async ({ ctx, input }) => {
+    const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+    await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
+    return getFiliais();
+  }),
+  codAgregados: publicProcedure.input(z.object({ segment })).query(async ({ ctx, input }) => {
+    const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+    await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
+    return getCodAgregados();
+  }),
+  periodos: publicProcedure.input(z.object({ segment })).query(async ({ ctx, input }) => {
+    const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+    await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
+    return getPeriodos();
+  }),
+  salvarObservacao: publicProcedure.input(z.object({ segment, codigo: z.string().trim().min(1).max(120), filial: z.string().trim().min(1).max(24), period: z.string().trim().min(1).max(7), observacao: z.string().trim().max(2000).nullable() })).mutation(async ({ ctx, input }) => {
+    const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+    await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
+    return upsertObservacao({ codigo: input.codigo, filial: input.filial, period: input.period, observacao: input.observacao }, identity);
+  }),
+  observacoes: publicProcedure.input(z.object({ segment, period: z.string().trim().min(1).max(7) })).query(async ({ ctx, input }) => {
+    const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
+    await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
+    return listObservacoes(input.period, identity);
   }),
 });

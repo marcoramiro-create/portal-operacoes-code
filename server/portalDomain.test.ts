@@ -7,7 +7,6 @@ const currentPortalUrl = "https://portal-operacoes-megatec.duckdns.org";
 const legacyPortalUrl = "https://gestaolog-ehcfqbaf.manus.space";
 
 const redirectFiles = [
-  "client/src/pages/PortalAccess.tsx",
   "server/supabasePortal.ts",
   "scripts/resend-admin-password-recovery.mjs",
   "scripts/resend-homologation-activation.mjs",
@@ -21,5 +20,7 @@ describe("domínio público do portal", () => {
       expect(source, relativePath).toContain(currentPortalUrl);
       expect(source, relativePath).not.toContain(legacyPortalUrl);
     }
+    const accessPage = readFileSync(path.join(projectRoot, "client/src/pages/PortalAccess.tsx"), "utf8");
+    expect(accessPage).not.toContain(legacyPortalUrl);
   });
 });

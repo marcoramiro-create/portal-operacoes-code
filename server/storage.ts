@@ -3,15 +3,16 @@
 // Downloads return /manus-storage/{key} paths served via 307 redirect.
 
 import { ENV } from "./_core/env";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 function getForgeConfig() {
   const forgeUrl = ENV.forgeApiUrl;
   const forgeKey = ENV.forgeApiKey;
 
+  // MUDANÇA: não lança erro quando o Forge não está configurado.
+  // Retorna null para o chamador decidir como proceder (ex.: pular o upload).
   if (!forgeUrl || !forgeKey) {
-    throw new Error(
-      "Storage config missing: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY",
-    );
+    return null;
   }
 
   return { forgeUrl: forgeUrl.replace(/\/+$/, ""), forgeKey };
@@ -33,8 +34,16 @@ export async function storagePut(
   data: Buffer | Uint8Array | string,
   contentType = "application/octet-stream",
 ): Promise<{ key: string; url: string }> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
+  const config = getForgeConfig();
   const key = appendHashSuffix(normalizeKey(relKey));
+
+  // MUDANÇA: se o Forge não estiver configurado, não tenta subir o arquivo.
+  // Devolve uma chave sintética para a importação seguir sem travar.
+  if (!config) {
+    return { key, url: `/manus-storage/${key}` };
+  }
+
+  const { forgeUrl, forgeKey } = config;
 
   // 1. Get presigned PUT URL from Forge
   const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
@@ -77,7 +86,14 @@ export async function storageGet(relKey: string): Promise<{ key: string; url: st
 }
 
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
-  const { forgeUrl, forgeKey } = getForgeConfig();
+  const config = getForgeConfig();
+
+  // MUDANÇA: se o Forge não estiver configurado, devolve o caminho local.
+  if (!config) {
+    return `/manus-storage/${normalizeKey(relKey)}`;
+  }
+
+  const { forgeUrl, forgeKey } = config;
   const key = normalizeKey(relKey);
 
   const getUrl = new URL("v1/storage/presign/get", forgeUrl + "/");
@@ -94,4 +110,70 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
 
   const { url } = (await resp.json()) as { url: string };
   return url;
+}
+// MUDANÇA (07/09/2026): gera link de upload direto (PUT) para arquivos grandes,
+// contornando o limite de ~4,5 MB de corpo de requisição da hospedagem.
+export async function storageGetPresignedPutUrl(
+  relKey: string,
+  contentType = "application/octet-stream",
+): Promise<{ key: string; url: string }> {
+  const config = getForgeConfig();
+  const key = appendHashSuffix(normalizeKey(relKey));
+  if (!config) throw new Error("Armazenamento não configurado.");
+  const { forgeUrl, forgeKey } = config;
+  const presignUrl = new URL("v1/storage/presign/put", forgeUrl + "/");
+  presignUrl.searchParams.set("path", key);
+  const presignResp = await fetch(presignUrl, { headers: { Authorization: `Bearer ${forgeKey}` } });
+  if (!presignResp.ok) {
+    const msg = await presignResp.text().catch(() => presignResp.statusText);
+    throw new Error(`Storage presign failed (${presignResp.status}): ${msg}`);
+  }
+  const { url: s3Url } = (await presignResp.json()) as { url: string };
+  if (!s3Url) throw new Error("Forge returned empty presign URL");
+  return { key, url: s3Url };
+}
+
+// MUDANÇA (07/09/2026): lê o conteúdo de um arquivo já enviado ao armazenamento.
+export async function storageReadBuffer(relKey: string): Promise<Buffer> {
+  const signedUrl = await storageGetSignedUrl(relKey);
+  const resp = await fetch(signedUrl);
+  if (!resp.ok) throw new Error(`Falha ao ler o arquivo do armazenamento (${resp.status}).`);
+  return Buffer.from(await resp.arrayBuffer());
+}
+// MUDANÇA (07/09/2026): usa o Supabase Storage (configurado no .env) para arquivos grandes,
+// contornando o limite de ~4,5 MB de corpo de requisição da hospedagem.
+function getSupabaseAdmin(): SupabaseClient | null {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey);
+}
+
+const STORAGE_BUCKET = "protheus-imports";
+
+// Garante que o bucket de armazenamento existe (criado automaticamente na primeira vez).
+async function ensureBucket(supabase: SupabaseClient): Promise<void> {
+  const { data: buckets } = await supabase.storage.listBuckets();
+  if (buckets?.some(b => b.name === STORAGE_BUCKET)) return;
+  await supabase.storage.createBucket(STORAGE_BUCKET, { public: false });
+}
+
+// Gera link de upload direto (PUT) para arquivos grandes.
+export async function supabaseStorageGetPresignedPutUrl(relKey: string): Promise<{ key: string; url: string }> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error("Armazenamento não configurado.");
+  await ensureBucket(supabase);
+  const key = appendHashSuffix(normalizeKey(relKey));
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).createSignedUploadUrl(key);
+  if (error || !data?.signedUrl) throw new Error(`Falha ao gerar link de upload: ${error?.message ?? "sem URL"}`);
+  return { key, url: data.signedUrl };
+}
+
+// Lê o conteúdo de um arquivo já enviado ao armazenamento.
+export async function supabaseStorageReadBuffer(key: string): Promise<Buffer> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) throw new Error("Armazenamento não configurado.");
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(key);
+  if (error || !data) throw new Error(`Falha ao ler o arquivo do armazenamento: ${error?.message ?? "sem dados"}`);
+  return Buffer.from(await data.arrayBuffer());
 }

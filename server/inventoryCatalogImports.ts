@@ -1,6 +1,6 @@
-import { TRPCError } from "@trpc/server";
+﻿import { TRPCError } from "@trpc/server";
 import { CatalogEntity } from "./inventoryCatalog";
-import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
+import { assertApplicationPermission, getSupabasePool, type PortalIdentity } from "./supabasePortal";
 
 export type CatalogImportEntity = CatalogEntity;
 export type CatalogImportRow = Record<string, string>;

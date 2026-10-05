@@ -49,4 +49,6 @@ export const applicationPaths: Record<string, string> = {
   "ativos-ferramentas": "/ativos/ferramentas",
   "custos-autopecas": "/custos/autopecas",
   "custos-industria": "/custos/industria",
+  "cadastros-epis": "/cadastros/epis",
+  "entrega-epis": "/consumo/epis",
 };

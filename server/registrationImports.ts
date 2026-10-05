@@ -1,7 +1,7 @@
-import { TRPCError } from "@trpc/server";
+﻿import { TRPCError } from "@trpc/server";
 import { PoolClient } from "pg";
 import { normalizeCell, parseActive, parseYesNo, registrationLayouts, RegistrationType } from "../shared/registrationLayouts";
-import { getSupabasePool, PortalIdentity } from "./supabasePortal";
+import { getSupabasePool, type PortalIdentity } from "./supabasePortal";
 
 export type ImportRow = Record<string, string>;
 export type ImportIssue = { row: number; field: string; message: string };

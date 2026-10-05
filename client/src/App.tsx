@@ -8,6 +8,8 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Dashboard from "./pages/Dashboard";
 import Home from "./pages/Home";
 import ImportData from "./pages/ImportData";
+import OperationalAudit from "./pages/OperationalAudit";
+import AuditBacklog from "./pages/AuditBacklog";
 import NotFound from "./pages/NotFound";
 import PortalAccess from "./pages/PortalAccess";
 import RegistrationImport from "./pages/RegistrationImport";
@@ -22,7 +24,9 @@ import InventoryReturns from "./pages/InventoryReturns";
 import AssetManagement from "./pages/AssetManagement";
 import AssetImport from "./pages/AssetImport";
 import { CostEvolutionDashboard, CostEvolutionImport } from "./pages/CostEvolution";
+import MaterialEntryImport from "./pages/MaterialEntryImport";
 import { Route, Switch } from "wouter";
+import IndustryCurve from "./pages/IndustryCurve";
 
 function WithLayout({ children }: { children: React.ReactNode }) { return <DashboardLayout>{children}</DashboardLayout>; }
 
@@ -47,7 +51,11 @@ function Router() {
     <Route path="/importacoes/ativos-ferramentas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-ativos-ferramentas" level="manage"><AssetImport type="tool" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/custos-autopecas"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-autopecas" level="manage"><CostEvolutionImport segment="auto_parts" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/custos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-industria" level="manage"><CostEvolutionImport segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/entrada-materiais"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-entrada-materiais" level="manage"><MaterialEntryImport /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/industria/curva-abc"><WithLayout><IndustryCurve /></WithLayout></Route>
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/administracao/auditoria-backlog"><WithLayout><ApplicationRouteGuard nodeKey="administracao"><AuditBacklog /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/administracao/auditoria-cruzamentos"><WithLayout><ApplicationRouteGuard nodeKey="administracao"><OperationalAudit /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/usuarios"><WithLayout><UserManagement /></WithLayout></Route>
     <Route path="/perfis-acesso"><WithLayout><AccessProfiles /></WithLayout></Route>
     <Route path="/recebimentos/nf"><WithLayout><ApplicationRouteGuard nodeKey="chaves-nf"><NfReceipts /></ApplicationRouteGuard></WithLayout></Route>
@@ -81,9 +89,10 @@ function Router() {
 }
 
 function AuthGate() {
-  const { session, loading, passwordSetupRequired } = useSupabaseAuth();
+  const { session, loading, passwordSetupRequired, portalIdentity } = useSupabaseAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-[#f2f4f5]"><div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-950" /></div>;
-  if (!session || passwordSetupRequired) return <PortalAccess />;
+  if (!session && !portalIdentity) return <PortalAccess />;
+  if (session && passwordSetupRequired) return <PortalAccess />;
   return <Router />;
 }
 

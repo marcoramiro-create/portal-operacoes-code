@@ -1,6 +1,6 @@
-import { TRPCError } from "@trpc/server";
+﻿import { TRPCError } from "@trpc/server";
 import type { PoolClient } from "pg";
-import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
+import { assertApplicationPermission, getSupabasePool, type PortalIdentity } from "./supabasePortal";
 
 export type OperationLineInput = { productId: string; quantity: number; sizeCode?: string };
 

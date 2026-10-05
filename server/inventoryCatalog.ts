@@ -1,5 +1,5 @@
-import { TRPCError } from "@trpc/server";
-import { assertApplicationPermission, getSupabasePool, PortalIdentity } from "./supabasePortal";
+﻿import { TRPCError } from "@trpc/server";
+import { assertApplicationPermission, getSupabasePool, type PortalIdentity } from "./supabasePortal";
 
 type CatalogInput = { code: string; name: string };
 export type CatalogEntity = "productType" | "orgUnit" | "costCenter" | "company" | "branch" | "warehouse" | "stockLocation";

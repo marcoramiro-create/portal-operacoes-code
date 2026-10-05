@@ -1,87 +1,98 @@
-import { date, decimal, int, mysqlEnum, mysqlTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/mysql-core";
-
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
+import { date, decimal, integer, pgEnum, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
+export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]);
+export const stockMovementTypeEnum = pgEnum("stock_movement_type", ["entrada", "saida"]);
+export const deliveryStatusEnum = pgEnum("delivery_status", ["pendente", "recebido"]);
+export const protheusImportStatusEnum = pgEnum("protheus_import_status", ["pending", "approved", "archived"]);
+export const productTypeEnum = pgEnum("product_type", ["ME", "PE"]);
+export const mrpEnum = pgEnum("mrp_status", ["Sim", "Não"]);
+export const curveEnum = pgEnum("curve_class", ["A", "B", "C", "D", "E"]);
+export const costEvolutionSegmentEnum = pgEnum("cost_evolution_segment", ["auto_parts", "industry"]);
+export const costEvolutionStatusEnum = pgEnum("cost_evolution_status", ["pending", "approved", "archived"]);
+export const users = pgTable("users", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: varchar("name", { length: 320 }),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: userRoleEnum("role").default("user").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
-
-// Tabelas do primeiro fluxo operacional preservadas para evitar descarte destrutivo de dados já existentes.
-export const suppliers = mysqlTable("suppliers", {
-  id: int("id").autoincrement().primaryKey(),
+export type InsertUser = typeof users.$inferInsert;
+export type User = typeof users.$inferSelect;
+export const suppliers = pgTable("suppliers", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: varchar("name", { length: 200 }).notNull(),
   contact: varchar("contact", { length: 200 }).notNull(),
   category: varchar("category", { length: 120 }).notNull(),
-  deliveryLeadTime: int("deliveryLeadTime").notNull(),
+  deliveryLeadTime: integer("deliveryLeadTime").notNull(),
   evaluation: decimal("evaluation", { precision: 4, scale: 1 }).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
-export const purchaseOrders = mysqlTable("purchaseOrders", {
-  id: int("id").autoincrement().primaryKey(),
-  supplierId: int("supplierId").notNull().references(() => suppliers.id),
-  status: mysqlEnum("status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]).default("rascunho").notNull(),
+export const purchaseOrders = pgTable("purchaseOrders", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  supplierId: integer("supplierId").notNull().references(() => suppliers.id),
+  status: purchaseOrderStatusEnum("status").default("rascunho").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
-export const inventoryItems = mysqlTable("inventoryItems", {
-  id: int("id").autoincrement().primaryKey(),
+export const inventoryItems = pgTable("inventoryItems", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   item: varchar("item", { length: 200 }).notNull(),
-  quantityAvailable: int("quantityAvailable").notNull(),
-  reorderPoint: int("reorderPoint").notNull(),
+  quantityAvailable: integer("quantityAvailable").notNull(),
+  reorderPoint: integer("reorderPoint").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
-export const stockMovements = mysqlTable("stockMovements", {
-  id: int("id").autoincrement().primaryKey(),
-  inventoryItemId: int("inventoryItemId").notNull().references(() => inventoryItems.id),
-  type: mysqlEnum("type", ["entrada", "saida"]).notNull(),
-  quantity: int("quantity").notNull(),
+export const stockMovements = pgTable("stockMovements", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  inventoryItemId: integer("inventoryItemId").notNull().references(() => inventoryItems.id),
+  type: stockMovementTypeEnum("type").notNull(),
+  quantity: integer("quantity").notNull(),
   occurredAt: timestamp("occurredAt").defaultNow().notNull(),
 });
-
-export const deliveries = mysqlTable("deliveries", {
-  id: int("id").autoincrement().primaryKey(),
-  purchaseOrderId: int("purchaseOrderId").notNull().references(() => purchaseOrders.id),
+export const deliveries = pgTable("deliveries", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  purchaseOrderId: integer("purchaseOrderId").notNull().references(() => purchaseOrders.id),
   expectedAt: timestamp("expectedAt").notNull(),
   actualAt: timestamp("actualAt"),
-  status: mysqlEnum("status", ["pendente", "recebido"]).default("pendente").notNull(),
+  status: deliveryStatusEnum("status").default("pendente").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
-
-export const protheusImports = mysqlTable("protheusImports", {
-  id: int("id").autoincrement().primaryKey(),
+export const protheusImports = pgTable("protheusImports", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   versionName: varchar("versionName", { length: 32 }).notNull().default("Compras - legado"),
-  status: mysqlEnum("status", ["pending", "approved", "archived"]).notNull().default("pending"),
+  status: protheusImportStatusEnum("status").default("pending").notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
-  rowCount: int("rowCount").notNull(),
+  rowCount: integer("rowCount").notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
 });
-
-export const inventoryAnalytics = mysqlTable(
+export const inventoryAnalytics = pgTable(
   "inventoryAnalytics",
   {
-    id: int("id").autoincrement().primaryKey(),
-    importId: int("importId").notNull().references(() => protheusImports.id),
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    importId: integer("importId").notNull().references(() => protheusImports.id),
     code: varchar("code", { length: 120 }).notNull(),
+    // REGRA DE NEGÓCIO (27/09/2026): código de produto/agregado é TEXTO e PRESERVA
+    // zeros à esquerda e todos os caracteres (ex.: "03545-mgt").
+    // "code" (normalizada) continua sendo a CHAVE usada nos cruzamentos e na
+    // recomendação de IA. "codeOriginal" guarda o código EXATAMENTE como veio da
+    // planilha, para exibição, exportação e telas.
+    codeOriginal: varchar("codeOriginal", { length: 120 }).notNull().default(""),
     description: varchar("description", { length: 1000 }).notNull(),
+    ultimaCompra: date("ultimaCompra"),
+    pedidos: decimal("pedidos", { precision: 20, scale: 3 }).notNull().default("0"),
     branch: varchar("branch", { length: 24 }).notNull(),
-    productType: mysqlEnum("productType", ["ME", "PE"]).notNull().default("ME"),
-    mrp: mysqlEnum("mrp", ["Sim", "Não"]).notNull().default("Não"),
+    productType: productTypeEnum("productType").default("ME").notNull(),
+    mrp: mrpEnum("mrp").default("Não").notNull(),
     family: varchar("family", { length: 255 }).notNull().default(""),
     subfamily: varchar("subfamily", { length: 255 }).notNull().default(""),
-    curve: mysqlEnum("curve", ["A", "B", "C", "D", "E"]).notNull(),
+    curve: curveEnum("curve").notNull(),
     sales13M: decimal("sales13M", { precision: 20, scale: 3 }).notNull(),
     salesValue13M: decimal("salesValue13M", { precision: 20, scale: 2 }).notNull().default("0"),
     stock: decimal("stock", { precision: 20, scale: 3 }).notNull(),
@@ -90,55 +101,94 @@ export const inventoryAnalytics = mysqlTable(
     excessValue: decimal("excessValue", { precision: 20, scale: 2 }).notNull(),
     capitalTurnover: decimal("capitalTurnover", { precision: 20, scale: 3 }).notNull().default("0"),
   },
-  table => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
+  (table) => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
 );
-
-export const costEvolutionImports = mysqlTable("costEvolutionImports", {
-  id: int("id").autoincrement().primaryKey(),
-  segment: mysqlEnum("segment", ["auto_parts", "industry"]).notNull(),
+export const costEvolutionImports = pgTable("costEvolutionImports", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  segment: costEvolutionSegmentEnum("segment").notNull(),
   fileName: varchar("fileName", { length: 255 }).notNull(),
   fileKey: varchar("fileKey", { length: 512 }).notNull(),
-  status: mysqlEnum("status", ["pending", "approved", "archived"]).notNull().default("pending"),
-  itemCount: int("itemCount").notNull(),
-  observationCount: int("observationCount").notNull(),
+  status: costEvolutionStatusEnum("status").default("pending").notNull(),
+  itemCount: integer("itemCount").notNull(),
+  observationCount: integer("observationCount").notNull(),
   periodStart: date("periodStart").notNull(),
   periodEnd: date("periodEnd").notNull(),
   importedBy: varchar("importedBy", { length: 320 }).notNull(),
   importedAt: timestamp("importedAt").defaultNow().notNull(),
 });
-
-export const costEvolutionItems = mysqlTable(
+export const costEvolutionItems = pgTable(
   "costEvolutionItems",
   {
-    id: int("id").autoincrement().primaryKey(),
-    importId: int("importId").notNull().references(() => costEvolutionImports.id),
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    importId: integer("importId").notNull().references(() => costEvolutionImports.id),
     branch: varchar("branch", { length: 24 }).notNull(),
     aggregateCode: varchar("aggregateCode", { length: 120 }).notNull(),
     code: varchar("code", { length: 120 }).notNull(),
-    mrp: mysqlEnum("mrp", ["Sim", "Não"]).notNull().default("Não"),
+    mrp: mrpEnum("mrp").default("Não").notNull(),
     description: varchar("description", { length: 1000 }).notNull(),
+    ultimaCompra: date("ultimaCompra"),
     buyer: varchar("buyer", { length: 320 }).notNull().default(""),
     lastPurchaseDate: date("lastPurchaseDate"),
     lastPurchasePrice: decimal("lastPurchasePrice", { precision: 20, scale: 6 }),
   },
-  table => [uniqueIndex("costEvolutionItems_import_business_key_unique").on(table.importId, table.branch, table.aggregateCode, table.code)],
 );
-
-export const costEvolutionObservations = mysqlTable(
+export const costEvolutionObservations = pgTable(
   "costEvolutionObservations",
   {
-    id: int("id").autoincrement().primaryKey(),
-    itemId: int("itemId").notNull().references(() => costEvolutionItems.id),
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    importId: integer("importId").notNull().references(() => costEvolutionImports.id),
+    itemId: integer("itemId").references(() => costEvolutionItems.id),
     balanceDate: date("balanceDate").notNull(),
     cost: decimal("cost", { precision: 20, scale: 6 }).notNull(),
   },
-  table => [uniqueIndex("costEvolutionObservations_item_date_unique").on(table.itemId, table.balanceDate)],
 );
-
-export type User = typeof users.$inferSelect;
-export type InsertUser = typeof users.$inferInsert;
-export type AnalyticsImport = typeof protheusImports.$inferSelect;
-export type InventoryAnalytics = typeof inventoryAnalytics.$inferSelect;
-export type CostEvolutionImport = typeof costEvolutionImports.$inferSelect;
-export type CostEvolutionItem = typeof costEvolutionItems.$inferSelect;
-export type CostEvolutionObservation = typeof costEvolutionObservations.$inferSelect;
+export const sb1References = pgTable(
+  "sb1References",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    code: varchar("code", { length: 120 }).notNull().unique(),
+    tipo: varchar("tipo", { length: 24 }).notNull().default(""),
+    familiaCode: varchar("familiaCode", { length: 120 }).notNull().default(""),
+    subfamiliaCode: varchar("subfamiliaCode", { length: 120 }).notNull().default(""),
+  },
+);
+export const sbzReferences = pgTable(
+  "sbzReferences",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    chave: varchar("chave", { length: 255 }).notNull().unique(),
+    code: varchar("code", { length: 120 }).notNull(),
+    filial: varchar("filial", { length: 24 }).notNull(),
+    estoqMin: decimal("estoqMin", { precision: 20, scale: 3 }),
+    estoqMax: decimal("estoqMax", { precision: 20, scale: 3 }),
+    entraMrp: varchar("entraMrp", { length: 24 }).notNull().default(""),
+  },
+);
+export const familyReferences = pgTable(
+  "familyReferences",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    code: varchar("code", { length: 120 }).notNull().unique(),
+    descricao: varchar("descricao", { length: 255 }).notNull().default(""),
+  },
+);
+export const subfamilyReferences = pgTable(
+  "subfamilyReferences",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    code: varchar("code", { length: 120 }).notNull().unique(),
+    descricao: varchar("descricao", { length: 255 }).notNull().default(""),
+  },
+);
+// MUDANÇA (07/09/2026): histórico de importações dos cadastros de referência (SB1, SBZ, Famílias, SubFamílias).
+export const referenceImports = pgTable(
+  "referenceImports",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    kind: varchar("kind", { length: 32 }).notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    rowCount: integer("rowCount").notNull().default(0),
+    importedAt: timestamp("importedAt").defaultNow().notNull(),
+  },
+);
+export * from './schema-costs';

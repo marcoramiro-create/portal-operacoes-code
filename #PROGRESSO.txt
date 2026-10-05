@@ -1,0 +1,5 @@
+# PROGRESSO — Portal de Operações
+## Último ponto (data: 02/09/2026)
+- Deploy: Ready (portal carrega)
+- API: ainda devolve HTML em vez de dados (erro Unexpected token '<')
+- Próximo passo: [anotar aqui o que falta]
