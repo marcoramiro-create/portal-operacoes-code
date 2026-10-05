@@ -6,7 +6,7 @@ function hash(content: Buffer|string){return createHash("sha256").update(content
 export function previewOperationalImport(sourceKind:OperationalPreviewKind,fileName:string,content:Buffer|string):OperationalPreview{
   const parsed =
     sourceKind==="PEDIDO_COMPRA"?parsePurchaseOrders(content.toString()):
-    sourceKind==="NF_LEGAL"||sourceKind==="NF_NATIVA"?parseNfLegal(content,sourceKind):
+    sourceKind==="NF_LEGAL"||sourceKind==="NF_NATIVA"?parseNfLegal(content,sourceKind === "NF_NATIVA" ? "PROTHEUS_NATIVA" : "NF_LEGAL"):
     sourceKind==="ENTRADA_NF"?parseMaterialEntries(content):
     parseStockEvolution(content);
   return {sourceKind,fileName,fileHash:hash(content),sourceRows:parsed.sourceRows,validRows:parsed.rows.length,skippedRows:parsed.skippedRows,issues:parsed.issues.slice(0,200),sampleRows:parsed.rows.slice(0,20)};

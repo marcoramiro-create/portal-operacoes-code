@@ -1,10 +1,11 @@
-import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
-import { promisify } from "node:util";
+import { createHash, randomBytes, scrypt as scryptCallback, timingSafeEqual, type ScryptOptions } from "node:crypto";
 import type { PoolClient } from "pg";
 import { TRPCError } from "@trpc/server";
 import { getSupabasePool } from "./supabasePortal";
 
-const scrypt = promisify(scryptCallback);
+const scrypt = (password: string, salt: Buffer, keyLength: number, options: ScryptOptions) => new Promise<Buffer>((resolve, reject) => {
+  scryptCallback(password, salt, keyLength, options, (error, derivedKey) => error ? reject(error) : resolve(derivedKey as Buffer));
+});
 const PASSWORD_KEY_LENGTH = 64;
 const SESSION_TTL_MS = 1000 * 60 * 60 * 8;
 const MAX_FAILED_LOGINS = 5;
