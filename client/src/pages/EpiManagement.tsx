@@ -39,7 +39,7 @@ export default function EpiManagement({ initialTab = "certificates" }: { initial
   const products = trpc.inventoryCatalog.list.useQuery(undefined, { retry: false });
   const epiProducts = products.data?.products.filter((p: any) => p.inventoryControlCategory === "epi") ?? [];
 
-  const employees = trpc.inventoryCatalog.list.useQuery(undefined, { retry: false });
+  const employees = trpc.portal.employeeOptions.useQuery(undefined, { retry: false });
 
   const createCertificate = trpc.epi.createCertificate.useMutation({
     onSuccess: () => { toast.success("Certificado CA cadastrado."); setCertForm({ productId: "", caNumber: "", manufacturer: "", caIssuedAt: "", caExpiresAt: "" }); refresh(); },
@@ -213,7 +213,7 @@ export default function EpiManagement({ initialTab = "certificates" }: { initial
                 <Label className="text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500">Funcionário</Label>
                 <select className="control" value={deliveryForm.employeeId} disabled={!canManage} onChange={e => setDeliveryForm({ ...deliveryForm, employeeId: e.target.value })} required>
                   <option value="" disabled>Selecione o funcionário</option>
-                  {products.data?.employees?.map((emp: any) => <option key={emp.id} value={emp.id}>{emp.employee_code ?? ""} · {emp.full_name}</option>) ?? []}
+                  {employees.data?.map((emp: any) => <option key={emp.id} value={emp.id}>{emp.label}</option>) ?? []}
                 </select>
               </label>
               <div className="grid grid-cols-2 gap-4">

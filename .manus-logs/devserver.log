@@ -1871,3 +1871,11 @@
 [2026-10-05T11:45:33.802Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
 [2026-10-05T11:45:33.802Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
 [2026-10-05T11:45:33.802Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T17:27:04.222Z] 5:27:04 PM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css
+[2026-10-05T17:27:07.895Z] 5:27:07 PM [vite] (client) hmr update /src/index.css
+[2026-10-05T17:27:10.800Z] 5:27:10 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+[2026-10-05T17:27:34.730Z] 5:27:34 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+[2026-10-05T17:27:47.622Z] 5:27:47 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+[2026-10-05T17:28:16.147Z] 5:28:16 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+[2026-10-05T17:28:23.964Z] 5:28:23 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+[2026-10-05T17:28:45.885Z] 5:28:45 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
