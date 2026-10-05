@@ -1,0 +1,48 @@
+{
+  "build_command": "pnpm run build",
+  "capabilities": [
+    "db",
+    "server",
+    "user"
+  ],
+  "dev_command": "pnpm run dev",
+  "env_vars": {
+    "DATABASE_URL": "mysql://2AUYAEonDJijdiu.root:NSgmU17J5F5YjU6ni9Ka@gateway03.us-east-1.prod.aws.tidbcloud.com:4000/ehCFQbAFp2MW5ww3BSzb7k?ssl={\"rejectUnauthorized\":true}"
+  },
+  "experiments": [
+    "no_db_push"
+  ],
+  "git_remote": {
+    "repo_url": "https://7f0548f6b28a1758d9bf7be630d36cb4.artifacts.cloudflare.net/git/prod/ehCFQbAFp2MW5ww3BSzb7k.git",
+    "expiration": "2026-09-29T20:24:29.882Z",
+    "token": "art_v2_x_c7f2d3f2b63e50b4656d5880ae54ff8ae5032622?expires=1790713469",
+    "backend": "GIT_BACKEND_ARTIFACTS"
+  },
+  "name": "gestao-suprimentos-logistica",
+  "path": "/home/ubuntu/gestao-suprimentos-logistica",
+  "port": 3000,
+  "runtime_endpoints": null,
+  "secrets": {
+    "BUILT_IN_FORGE_API_KEY": "YSt84tC5VHqyexgdFQ9wqw",
+    "BUILT_IN_FORGE_API_URL": "https://forge.manus.ai",
+    "JWT_SECRET": "HWX9parysUzQWYhV8u96dS",
+    "OAUTH_SERVER_URL": "https://api.manus.im",
+    "ONEDRIVE_IMPORTS_LINK": "https://1drv.ms/f/c/6b0be27bfe197df0/IgB2woUYPkU7T6n0mlTzTfeOAZcUnEstJBhb1PEPJYFgePE?e=sLr5Lv",
+    "OWNER_NAME": "Marco RAMIRO",
+    "OWNER_OPEN_ID": "LocGwA7EYDQDizUC6iMsTm",
+    "SUPABASE_DATABASE_URL": "postgresql://postgres.xuoahdofctpwgmxsuygi:R@m1r0~748105@aws-0-sa-east-1.pooler.supabase.com:5432/postgres",
+    "SUPABASE_SERVICE_ROLE_KEY": "sb_secret__iBAr_UDHrTyimDqMwmlnQ_ftt9m1hV",
+    "VITE_ANALYTICS_ENDPOINT": "https://manus-analytics.com",
+    "VITE_ANALYTICS_WEBSITE_ID": "4d90c54c-fd64-4037-b13b-de10eb67e121",
+    "VITE_APP_ID": "ehCFQbAFp2MW5ww3BSzb7k",
+    "VITE_APP_LOGO": "https://files.manuscdn.com/user_upload_by_module/web_dev_logo/310519663900583951/wiyUFFWCHfUXrtVj.png",
+    "VITE_APP_TITLE": "Gestão de Suprimentos e Logística",
+    "VITE_FRONTEND_FORGE_API_KEY": "G7hr3qhHbA62H8e975cFaw",
+    "VITE_FRONTEND_FORGE_API_URL": "https://forge.manus.ai",
+    "VITE_OAUTH_PORTAL_URL": "https://manus.im",
+    "VITE_SUPABASE_ANON_KEY": "sb_publishable_53DfZ_Q9vYYLpWUL_Cex1g_StqDj16J",
+    "VITE_SUPABASE_URL": "https://xuoahdofctpwgmxsuygi.supabase.co"
+  },
+  "template_id": "web-db-user",
+  "test_command": "pnpm test"
+}

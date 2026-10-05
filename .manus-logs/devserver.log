@@ -1,0 +1,551 @@
+[2026-09-28T20:24:37.852Z] Starting dev server with command: pnpm run dev
+[2026-09-28T20:24:40.258Z] > gestao-suprimentos-logistica@1.0.0 dev /home/ubuntu/gestao-suprimentos-logistica
+[2026-09-28T20:24:40.258Z] > NODE_ENV=development tsx watch server/_core/index.ts
+[2026-09-28T20:24:42.370Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-09-28T20:24:42.749Z] Server running on http://localhost:3000/
+[2026-10-05T11:24:16.163Z] Starting dev server with command: pnpm run dev
+[2026-10-05T11:24:18.868Z] > gestao-suprimentos-logistica@1.0.0 dev /home/ubuntu/gestao-suprimentos-logistica
+[2026-10-05T11:24:18.868Z] > NODE_ENV=development tsx watch server/_core/index.ts
+[2026-10-05T11:24:23.290Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-05T11:24:23.874Z] Server running on http://localhost:3000/
+[2026-10-05T11:24:43.484Z] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[2026-10-05T11:28:47.396Z] 11:28:47 AM [vite] (client) hmr update /src/pages/PortalAccess.tsx, /src/index.css
+[2026-10-05T11:28:51.946Z] 11:28:51 AM [tsx] change in ./server/supabasePortal.ts Restarting...
+[2026-10-05T11:28:54.289Z] c[OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-05T11:28:54.654Z] Server running on http://localhost:3000/
+[2026-10-05T11:28:55.077Z] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[2026-10-05T11:30:27.765Z] 11:30:27 AM [vite] (client) hmr update /src/pages/PortalAccess.tsx, /src/index.css
+[2026-10-05T11:30:27.776Z] 11:30:27 AM [vite] (client) hmr update /src/App.tsx, /src/index.css
+[2026-10-05T11:30:27.777Z] 11:30:27 AM [vite] (client) hmr update /src/components/ApplicationRouteGuard.tsx, /src/index.css
+[2026-10-05T11:30:27.778Z] 11:30:27 AM [vite] (client) hmr update /src/components/DashboardLayout.tsx, /src/index.css
+[2026-10-05T11:30:27.778Z] 11:30:27 AM [vite] (client) hmr update /src/contexts/SupabaseAuthContext.tsx, /src/index.css
+[2026-10-05T11:30:27.780Z] 11:30:27 AM [vite] (client) hmr update /src/index.css, /src/pages/NfReceipts.tsx
+[2026-10-05T11:30:27.781Z] 11:30:27 AM [vite] (client) hmr update /src/index.css
+[2026-10-05T11:30:27.781Z] 11:30:27 AM [vite] (client) hmr update /src/App.tsx, /src/components/ApplicationTree.tsx, /src/index.css
+[2026-10-05T11:30:27.782Z] 11:30:27 AM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css
+[2026-10-05T11:30:27.783Z] 11:30:27 AM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+[2026-10-05T11:30:27.787Z] 11:30:27 AM [vite] (client) hmr update /src/pages/ImportData.tsx, /src/index.css
+[2026-10-05T11:30:27.788Z] 11:30:27 AM [vite] (client) hmr update /src/pages/NfReceipts.tsx, /src/index.css
+[2026-10-05T11:30:27.788Z] 11:30:27 AM [vite] (client) hmr update /src/pages/UserManagement.tsx, /src/index.css
+[2026-10-05T11:30:27.789Z] 11:30:27 AM [vite] (client) page reload index.html
+[2026-10-05T11:30:27.814Z] 11:30:27 AM [vite] (client) hmr update /src/pages/NfReceipts.tsx
+[2026-10-05T11:30:27.886Z] 11:30:27 AM [vite] (client) hmr update /src/pages/PortalAccess.tsx, /src/index.css
+[2026-10-05T11:30:27.915Z] 11:30:27 AM [tsx] change in ./vite.config.ts Restarting...
+[2026-10-05T11:30:29.863Z] c[OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-05T11:30:30.234Z] Server running on http://localhost:3000/
+[2026-10-05T11:30:30.863Z] [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[2026-10-05T11:34:10.787Z] 11:34:10 AM [vite] (client) page reload index.html
+[2026-10-05T11:34:10.789Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/App.tsx
+[2026-10-05T11:34:10.790Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/components/ApplicationRouteGuard.tsx
+[2026-10-05T11:34:10.791Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/components/DashboardLayout.tsx
+[2026-10-05T11:34:10.792Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/contexts/SupabaseAuthContext.tsx
+[2026-10-05T11:34:10.792Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/pages/NfReceipts.tsx
+[2026-10-05T11:34:10.794Z] 11:34:10 AM [vite] (client) hmr update /src/index.css
+[2026-10-05T11:34:10.795Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/App.tsx, /src/components/ApplicationTree.tsx
+[2026-10-05T11:34:10.796Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/pages/CostEvolution.tsx
+[2026-10-05T11:34:10.796Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/pages/Dashboard.tsx
+[2026-10-05T11:34:10.797Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/pages/ImportData.tsx
+[2026-10-05T11:34:10.797Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/pages/NfReceipts.tsx
+[2026-10-05T11:34:10.797Z] 11:34:10 AM [vite] (client) hmr update /src/pages/PortalAccess.tsx, /src/index.css
+[2026-10-05T11:34:10.797Z] 11:34:10 AM [vite] (client) hmr update /src/index.css, /src/pages/UserManagement.tsx
+[2026-10-05T11:34:10.811Z] 11:34:10 AM [vite] (client) hmr update /src/pages/NfReceipts.tsx
+[2026-10-05T11:34:11.463Z] 11:34:11 AM [vite] (client) Pre-transform error: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/PortalAccess.tsx: Unexpected token (25:1)
+[2026-10-05T11:34:11.463Z] 23 |   const [confirmPassword, setConfirmPassword] = useState("");
+[2026-10-05T11:34:11.463Z] 24 |   const [pending, setPending] = useState(false);
+[2026-10-05T11:34:11.463Z] > 25 | <<<<<<< HEAD
+[2026-10-05T11:34:11.463Z] |  ^
+[2026-10-05T11:34:11.463Z] 26 |   const [recoveryRequested, setRecoveryRequested] = useState(false);
+[2026-10-05T11:34:11.463Z] 27 |   const requestAccess = trpc.portal.createAccessRequest.useMutation({
+[2026-10-05T11:34:11.463Z] 28 |     onSuccess: () => { setMode("login"); setDisplayName(""); setReason(""); toast.success("Solicitação enviada para revisão."); },
+[2026-10-05T11:34:11.463Z] Plugin: vite:react-babel
+[2026-10-05T11:34:11.463Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/PortalAccess.tsx:25:1
+[2026-10-05T11:34:11.463Z] 23 |    const [confirmPassword, setConfirmPassword] = useState("");
+[2026-10-05T11:34:11.463Z] 24 |    const [pending, setPending] = useState(false);
+[2026-10-05T11:34:11.463Z] 25 |  <<<<<<< HEAD
+[2026-10-05T11:34:11.463Z] |   ^
+[2026-10-05T11:34:11.463Z] 26 |    const [recoveryRequested, setRecoveryRequested] = useState(false);
+[2026-10-05T11:34:11.463Z] 27 |    const requestAccess = trpc.portal.createAccessRequest.useMutation({
+[2026-10-05T11:34:11.914Z] 11:34:11 AM [vite] (client) Pre-transform error: Failed to resolve import "exceljs" from "client/src/pages/CostEvolution.tsx". Does the file exist?
+[2026-10-05T11:34:11.914Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:11.914Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/CostEvolution.tsx:188:29
+[2026-10-05T11:34:11.914Z] 614 |        return;
+[2026-10-05T11:34:11.914Z] 615 |      }
+[2026-10-05T11:34:11.914Z] 616 |      const mod = await import("exceljs");
+[2026-10-05T11:34:11.914Z] |                               ^
+[2026-10-05T11:34:11.914Z] 617 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:11.914Z] 618 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:11.961Z] 11:34:11 AM [vite] (client) Pre-transform error: Failed to resolve import "exceljs" from "client/src/pages/IndustryCurve.tsx". Does the file exist?
+[2026-10-05T11:34:11.962Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:11.962Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/IndustryCurve.tsx:68:29
+[2026-10-05T11:34:11.962Z] 73 |        return;
+[2026-10-05T11:34:11.962Z] 74 |      }
+[2026-10-05T11:34:11.962Z] 75 |      const mod = await import("exceljs");
+[2026-10-05T11:34:11.962Z] |                               ^
+[2026-10-05T11:34:11.962Z] 76 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:11.962Z] 77 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:12.250Z] 11:34:12 AM [vite] Internal server error: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/PortalAccess.tsx: Unexpected token (25:1)
+[2026-10-05T11:34:12.250Z] 23 |   const [confirmPassword, setConfirmPassword] = useState("");
+[2026-10-05T11:34:12.250Z] 24 |   const [pending, setPending] = useState(false);
+[2026-10-05T11:34:12.250Z] > 25 | <<<<<<< HEAD
+[2026-10-05T11:34:12.250Z] |  ^
+[2026-10-05T11:34:12.250Z] 26 |   const [recoveryRequested, setRecoveryRequested] = useState(false);
+[2026-10-05T11:34:12.250Z] 27 |   const requestAccess = trpc.portal.createAccessRequest.useMutation({
+[2026-10-05T11:34:12.250Z] 28 |     onSuccess: () => { setMode("login"); setDisplayName(""); setReason(""); toast.success("Solicitação enviada para revisão."); },
+[2026-10-05T11:34:12.250Z] Plugin: vite:react-babel
+[2026-10-05T11:34:12.250Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/PortalAccess.tsx:25:1
+[2026-10-05T11:34:12.250Z] 23 |    const [confirmPassword, setConfirmPassword] = useState("");
+[2026-10-05T11:34:12.250Z] 24 |    const [pending, setPending] = useState(false);
+[2026-10-05T11:34:12.250Z] 25 |  <<<<<<< HEAD
+[2026-10-05T11:34:12.250Z] |   ^
+[2026-10-05T11:34:12.250Z] 26 |    const [recoveryRequested, setRecoveryRequested] = useState(false);
+[2026-10-05T11:34:12.250Z] 27 |    const requestAccess = trpc.portal.createAccessRequest.useMutation({
+[2026-10-05T11:34:12.250Z] at toParseError (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parse-error.ts:95:45)
+[2026-10-05T11:34:12.250Z] at raise (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)
+[2026-10-05T11:34:12.250Z] at unexpected (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/tokenizer/index.ts:1543:16)
+[2026-10-05T11:34:12.250Z] at jsxParseIdentifier (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:278:14)
+[2026-10-05T11:34:12.250Z] at jsxParseNamespacedName (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:288:25)
+[2026-10-05T11:34:12.250Z] at jsxParseElementName (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:306:14)
+[2026-10-05T11:34:12.250Z] at jsxParseOpeningElementAt (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:429:24)
+[2026-10-05T11:34:12.250Z] at jsxParseElementAt (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:470:35)
+[2026-10-05T11:34:12.250Z] at jsxParseElement (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:559:19)
+[2026-10-05T11:34:12.250Z] at parseExprAtom (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:573:21)
+[2026-10-05T11:34:12.250Z] at parseExprSubscripts (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:734:23)
+[2026-10-05T11:34:12.250Z] at parseUpdate (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:713:21)
+[2026-10-05T11:34:12.250Z] at parseMaybeUnary (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:675:23)
+[2026-10-05T11:34:12.250Z] at parseMaybeUnary (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3855:20)
+[2026-10-05T11:34:12.250Z] at parseMaybeUnaryOrPrivate (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:409:14)
+[2026-10-05T11:34:12.250Z] at parseExprOps (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:421:23)
+[2026-10-05T11:34:12.250Z] at parseMaybeConditional (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:376:23)
+[2026-10-05T11:34:12.250Z] at parseMaybeAssign (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:301:21)
+[2026-10-05T11:34:12.250Z] at fn (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3708:23)
+[2026-10-05T11:34:12.250Z] at tryParse (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/util.ts:174:20)
+[2026-10-05T11:34:12.250Z] at parseMaybeAssign (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3707:20)
+[2026-10-05T11:34:12.250Z] at parseExpressionBase (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:226:23)
+[2026-10-05T11:34:12.250Z] at callback (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:217:39)
+[2026-10-05T11:34:12.250Z] at allowInAnd (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:3187:16)
+[2026-10-05T11:34:12.250Z] at parseExpression (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:217:17)
+[2026-10-05T11:34:12.250Z] at parseStatementContent (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:683:23)
+[2026-10-05T11:34:12.250Z] at parseStatementContent (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3185:20)
+[2026-10-05T11:34:12.250Z] at parseStatementLike (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:477:17)
+[2026-10-05T11:34:12.250Z] at parseStatementListItem (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:426:17)
+[2026-10-05T11:34:12.250Z] at parseBlockOrModuleBlockBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1439:16)
+[2026-10-05T11:34:12.250Z] at parseBlockBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1412:10)
+[2026-10-05T11:34:12.250Z] at parseBlock (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1380:10)
+[2026-10-05T11:34:12.250Z] at parseFunctionBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:2616:24)
+[2026-10-05T11:34:12.250Z] at parseFunctionBodyAndFinish (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:2585:10)
+[2026-10-05T11:34:12.250Z] at parseFunctionBodyAndFinish (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:2646:20)
+[2026-10-05T11:34:12.250Z] at callback (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1690:12)
+[2026-10-05T11:34:12.250Z] at withSmartMixTopicForbiddingContext (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:3166:14)
+[2026-10-05T11:34:12.251Z] at parseFunction (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1688:10)
+[2026-10-05T11:34:12.251Z] at parseExportDefaultExpression (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:2565:19)
+[2026-10-05T11:34:12.251Z] at parseExportDefaultExpression (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3117:20)
+[2026-10-05T11:34:12.251Z] at parseExport (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:2447:25)
+[2026-10-05T11:34:12.251Z] at parseExport (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3087:22)
+[2026-10-05T11:34:12.251Z] at parseStatementContent (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:644:25)
+[2026-10-05T11:34:12.251Z] at parseStatementContent (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3185:20)
+[2026-10-05T11:34:12.251Z] at parseStatementLike (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:477:17)
+[2026-10-05T11:34:12.251Z] at parseModuleItem (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:414:17)
+[2026-10-05T11:34:12.251Z] at parseBlockOrModuleBlockBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1438:16)
+[2026-10-05T11:34:12.251Z] at parseBlockBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1412:10)
+[2026-10-05T11:34:12.251Z] at parseProgram (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:229:10)
+[2026-10-05T11:34:12.251Z] at parseTopLevel (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:203:25)
+[2026-10-05T11:34:12.704Z] 11:34:12 AM [vite] Internal server error: Failed to resolve import "exceljs" from "client/src/pages/CostEvolution.tsx". Does the file exist?
+[2026-10-05T11:34:12.704Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:12.704Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/CostEvolution.tsx:188:29
+[2026-10-05T11:34:12.704Z] 614 |        return;
+[2026-10-05T11:34:12.704Z] 615 |      }
+[2026-10-05T11:34:12.704Z] 616 |      const mod = await import("exceljs");
+[2026-10-05T11:34:12.704Z] |                               ^
+[2026-10-05T11:34:12.704Z] 617 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:12.704Z] 618 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:12.704Z] at TransformPluginContext._formatLog (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31219:43)
+[2026-10-05T11:34:12.704Z] at TransformPluginContext.error (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31216:14)
+[2026-10-05T11:34:12.704Z] at normalizeUrl (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29699:18)
+[2026-10-05T11:34:12.704Z] at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2026-10-05T11:34:12.704Z] at async <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29757:32)
+[2026-10-05T11:34:12.704Z] at async Promise.all (index 10)
+[2026-10-05T11:34:12.704Z] at async TransformPluginContext.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29725:4)
+[2026-10-05T11:34:12.704Z] at async EnvironmentPluginContainer.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31018:14)
+[2026-10-05T11:34:12.704Z] at async loadAndTransform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:26143:26)
+[2026-10-05T11:34:12.704Z] at async viteTransformMiddleware (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:27221:20)
+[2026-10-05T11:34:12.714Z] 11:34:12 AM [vite] Internal server error: Failed to resolve import "exceljs" from "client/src/pages/IndustryCurve.tsx". Does the file exist?
+[2026-10-05T11:34:12.714Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:12.714Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/IndustryCurve.tsx:68:29
+[2026-10-05T11:34:12.714Z] 73 |        return;
+[2026-10-05T11:34:12.714Z] 74 |      }
+[2026-10-05T11:34:12.714Z] 75 |      const mod = await import("exceljs");
+[2026-10-05T11:34:12.714Z] |                               ^
+[2026-10-05T11:34:12.714Z] 76 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:12.714Z] 77 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:12.714Z] at TransformPluginContext._formatLog (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31219:43)
+[2026-10-05T11:34:12.714Z] at TransformPluginContext.error (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31216:14)
+[2026-10-05T11:34:12.714Z] at normalizeUrl (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29699:18)
+[2026-10-05T11:34:12.714Z] at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2026-10-05T11:34:12.714Z] at async <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29757:32)
+[2026-10-05T11:34:12.714Z] at async Promise.all (index 8)
+[2026-10-05T11:34:12.714Z] at async TransformPluginContext.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29725:4)
+[2026-10-05T11:34:12.714Z] at async EnvironmentPluginContainer.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31018:14)
+[2026-10-05T11:34:12.714Z] at async loadAndTransform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:26143:26)
+[2026-10-05T11:34:12.714Z] at async viteTransformMiddleware (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:27221:20)
+[2026-10-05T11:34:12.999Z] 11:34:12 AM [vite] Internal server error: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/PortalAccess.tsx: Unexpected token (25:1)
+[2026-10-05T11:34:12.999Z] 23 |   const [confirmPassword, setConfirmPassword] = useState("");
+[2026-10-05T11:34:12.999Z] 24 |   const [pending, setPending] = useState(false);
+[2026-10-05T11:34:12.999Z] > 25 | <<<<<<< HEAD
+[2026-10-05T11:34:12.999Z] |  ^
+[2026-10-05T11:34:12.999Z] 26 |   const [recoveryRequested, setRecoveryRequested] = useState(false);
+[2026-10-05T11:34:12.999Z] 27 |   const requestAccess = trpc.portal.createAccessRequest.useMutation({
+[2026-10-05T11:34:12.999Z] 28 |     onSuccess: () => { setMode("login"); setDisplayName(""); setReason(""); toast.success("Solicitação enviada para revisão."); },
+[2026-10-05T11:34:12.999Z] Plugin: vite:react-babel
+[2026-10-05T11:34:12.999Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/PortalAccess.tsx:25:1
+[2026-10-05T11:34:12.999Z] 23 |    const [confirmPassword, setConfirmPassword] = useState("");
+[2026-10-05T11:34:12.999Z] 24 |    const [pending, setPending] = useState(false);
+[2026-10-05T11:34:12.999Z] 25 |  <<<<<<< HEAD
+[2026-10-05T11:34:12.999Z] |   ^
+[2026-10-05T11:34:12.999Z] 26 |    const [recoveryRequested, setRecoveryRequested] = useState(false);
+[2026-10-05T11:34:12.999Z] 27 |    const requestAccess = trpc.portal.createAccessRequest.useMutation({
+[2026-10-05T11:34:12.999Z] at toParseError (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parse-error.ts:95:45)
+[2026-10-05T11:34:12.999Z] at raise (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)
+[2026-10-05T11:34:12.999Z] at unexpected (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/tokenizer/index.ts:1543:16)
+[2026-10-05T11:34:12.999Z] at jsxParseIdentifier (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:278:14)
+[2026-10-05T11:34:12.999Z] at jsxParseNamespacedName (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:288:25)
+[2026-10-05T11:34:12.999Z] at jsxParseElementName (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:306:14)
+[2026-10-05T11:34:12.999Z] at jsxParseOpeningElementAt (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:429:24)
+[2026-10-05T11:34:12.999Z] at jsxParseElementAt (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:470:35)
+[2026-10-05T11:34:13.000Z] at jsxParseElement (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:559:19)
+[2026-10-05T11:34:13.000Z] at parseExprAtom (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/jsx/index.ts:573:21)
+[2026-10-05T11:34:13.000Z] at parseExprSubscripts (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:734:23)
+[2026-10-05T11:34:13.000Z] at parseUpdate (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:713:21)
+[2026-10-05T11:34:13.000Z] at parseMaybeUnary (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:675:23)
+[2026-10-05T11:34:13.000Z] at parseMaybeUnary (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3855:20)
+[2026-10-05T11:34:13.000Z] at parseMaybeUnaryOrPrivate (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:409:14)
+[2026-10-05T11:34:13.000Z] at parseExprOps (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:421:23)
+[2026-10-05T11:34:13.000Z] at parseMaybeConditional (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:376:23)
+[2026-10-05T11:34:13.000Z] at parseMaybeAssign (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:301:21)
+[2026-10-05T11:34:13.000Z] at fn (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3708:23)
+[2026-10-05T11:34:13.000Z] at tryParse (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/util.ts:174:20)
+[2026-10-05T11:34:13.000Z] at parseMaybeAssign (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3707:20)
+[2026-10-05T11:34:13.000Z] at parseExpressionBase (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:226:23)
+[2026-10-05T11:34:13.000Z] at callback (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:217:39)
+[2026-10-05T11:34:13.000Z] at allowInAnd (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:3187:16)
+[2026-10-05T11:34:13.000Z] at parseExpression (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:217:17)
+[2026-10-05T11:34:13.000Z] at parseStatementContent (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:683:23)
+[2026-10-05T11:34:13.000Z] at parseStatementContent (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3185:20)
+[2026-10-05T11:34:13.000Z] at parseStatementLike (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:477:17)
+[2026-10-05T11:34:13.000Z] at parseStatementListItem (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:426:17)
+[2026-10-05T11:34:13.000Z] at parseBlockOrModuleBlockBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1439:16)
+[2026-10-05T11:34:13.000Z] at parseBlockBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1412:10)
+[2026-10-05T11:34:13.000Z] at parseBlock (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1380:10)
+[2026-10-05T11:34:13.000Z] at parseFunctionBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:2616:24)
+[2026-10-05T11:34:13.000Z] at parseFunctionBodyAndFinish (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:2585:10)
+[2026-10-05T11:34:13.000Z] at parseFunctionBodyAndFinish (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:2646:20)
+[2026-10-05T11:34:13.000Z] at callback (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1690:12)
+[2026-10-05T11:34:13.000Z] at withSmartMixTopicForbiddingContext (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/expression.ts:3166:14)
+[2026-10-05T11:34:13.000Z] at parseFunction (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1688:10)
+[2026-10-05T11:34:13.000Z] at parseExportDefaultExpression (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:2565:19)
+[2026-10-05T11:34:13.000Z] at parseExportDefaultExpression (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3117:20)
+[2026-10-05T11:34:13.000Z] at parseExport (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:2447:25)
+[2026-10-05T11:34:13.000Z] at parseExport (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3087:22)
+[2026-10-05T11:34:13.000Z] at parseStatementContent (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:644:25)
+[2026-10-05T11:34:13.000Z] at parseStatementContent (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/plugins/typescript/index.ts:3185:20)
+[2026-10-05T11:34:13.000Z] at parseStatementLike (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:477:17)
+[2026-10-05T11:34:13.000Z] at parseModuleItem (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:414:17)
+[2026-10-05T11:34:13.000Z] at parseBlockOrModuleBlockBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1438:16)
+[2026-10-05T11:34:13.000Z] at parseBlockBody (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:1412:10)
+[2026-10-05T11:34:13.000Z] at parseProgram (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:229:10)
+[2026-10-05T11:34:13.000Z] at parseTopLevel (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@babel+parser@7.28.4/node_modules/@babel/parser/src/parser/statement.ts:203:25)
+[2026-10-05T11:34:13.209Z] 11:34:13 AM [vite] Internal server error: Failed to resolve import "exceljs" from "client/src/pages/CostEvolution.tsx". Does the file exist?
+[2026-10-05T11:34:13.209Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:13.209Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/CostEvolution.tsx:188:29
+[2026-10-05T11:34:13.209Z] 614 |        return;
+[2026-10-05T11:34:13.209Z] 615 |      }
+[2026-10-05T11:34:13.209Z] 616 |      const mod = await import("exceljs");
+[2026-10-05T11:34:13.209Z] |                               ^
+[2026-10-05T11:34:13.209Z] 617 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:13.209Z] 618 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:13.209Z] at TransformPluginContext._formatLog (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31219:43)
+[2026-10-05T11:34:13.209Z] at TransformPluginContext.error (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31216:14)
+[2026-10-05T11:34:13.209Z] at normalizeUrl (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29699:18)
+[2026-10-05T11:34:13.209Z] at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2026-10-05T11:34:13.209Z] at async <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29757:32)
+[2026-10-05T11:34:13.209Z] at async Promise.all (index 10)
+[2026-10-05T11:34:13.209Z] at async TransformPluginContext.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29725:4)
+[2026-10-05T11:34:13.209Z] at async EnvironmentPluginContainer.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31018:14)
+[2026-10-05T11:34:13.209Z] at async loadAndTransform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:26143:26)
+[2026-10-05T11:34:13.209Z] at async viteTransformMiddleware (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:27221:20)
+[2026-10-05T11:34:13.222Z] 11:34:13 AM [vite] Internal server error: Failed to resolve import "exceljs" from "client/src/pages/IndustryCurve.tsx". Does the file exist?
+[2026-10-05T11:34:13.222Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:13.222Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/IndustryCurve.tsx:68:29
+[2026-10-05T11:34:13.222Z] 73 |        return;
+[2026-10-05T11:34:13.222Z] 74 |      }
+[2026-10-05T11:34:13.222Z] 75 |      const mod = await import("exceljs");
+[2026-10-05T11:34:13.222Z] |                               ^
+[2026-10-05T11:34:13.222Z] 76 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:13.222Z] 77 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:13.222Z] at TransformPluginContext._formatLog (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31219:43)
+[2026-10-05T11:34:13.222Z] at TransformPluginContext.error (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31216:14)
+[2026-10-05T11:34:13.222Z] at normalizeUrl (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29699:18)
+[2026-10-05T11:34:13.223Z] at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2026-10-05T11:34:13.223Z] at async <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29757:32)
+[2026-10-05T11:34:13.223Z] at async Promise.all (index 8)
+[2026-10-05T11:34:13.223Z] at async TransformPluginContext.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29725:4)
+[2026-10-05T11:34:13.223Z] at async EnvironmentPluginContainer.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31018:14)
+[2026-10-05T11:34:13.223Z] at async loadAndTransform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:26143:26)
+[2026-10-05T11:34:13.223Z] at async viteTransformMiddleware (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:27221:20)
+[2026-10-05T11:34:13.749Z] 11:34:13 AM [vite] (client) ✨ new dependencies optimized: @zxing/browser, @zxing/library
+[2026-10-05T11:34:13.749Z] 11:34:13 AM [vite] (client) ✨ optimized dependencies changed. reloading
+[2026-10-05T11:34:14.741Z] 11:34:14 AM [vite] (client) Pre-transform error: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/PortalAccess.tsx: Unexpected token (25:1)
+[2026-10-05T11:34:14.741Z] 23 |   const [confirmPassword, setConfirmPassword] = useState("");
+[2026-10-05T11:34:14.741Z] 24 |   const [pending, setPending] = useState(false);
+[2026-10-05T11:34:14.741Z] > 25 | <<<<<<< HEAD
+[2026-10-05T11:34:14.741Z] |  ^
+[2026-10-05T11:34:14.741Z] 26 |   const [recoveryRequested, setRecoveryRequested] = useState(false);
+[2026-10-05T11:34:14.742Z] 27 |   const requestAccess = trpc.portal.createAccessRequest.useMutation({
+[2026-10-05T11:34:14.742Z] 28 |     onSuccess: () => { setMode("login"); setDisplayName(""); setReason(""); toast.success("Solicitação enviada para revisão."); },
+[2026-10-05T11:34:14.742Z] Plugin: vite:react-babel
+[2026-10-05T11:34:14.742Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/PortalAccess.tsx:25:1
+[2026-10-05T11:34:14.742Z] 23 |    const [confirmPassword, setConfirmPassword] = useState("");
+[2026-10-05T11:34:14.742Z] 24 |    const [pending, setPending] = useState(false);
+[2026-10-05T11:34:14.742Z] 25 |  <<<<<<< HEAD
+[2026-10-05T11:34:14.742Z] |   ^
+[2026-10-05T11:34:14.742Z] 26 |    const [recoveryRequested, setRecoveryRequested] = useState(false);
+[2026-10-05T11:34:14.742Z] 27 |    const requestAccess = trpc.portal.createAccessRequest.useMutation({
+[2026-10-05T11:34:15.640Z] 11:34:15 AM [vite] (client) Pre-transform error: Failed to resolve import "exceljs" from "client/src/pages/CostEvolution.tsx". Does the file exist?
+[2026-10-05T11:34:15.640Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:15.640Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/CostEvolution.tsx:188:29
+[2026-10-05T11:34:15.640Z] 614 |        return;
+[2026-10-05T11:34:15.640Z] 615 |      }
+[2026-10-05T11:34:15.640Z] 616 |      const mod = await import("exceljs");
+[2026-10-05T11:34:15.640Z] |                               ^
+[2026-10-05T11:34:15.640Z] 617 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:15.640Z] 618 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:15.657Z] 11:34:15 AM [vite] (client) Pre-transform error: Failed to resolve import "exceljs" from "client/src/pages/IndustryCurve.tsx". Does the file exist?
+[2026-10-05T11:34:15.657Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:15.657Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/IndustryCurve.tsx:68:29
+[2026-10-05T11:34:15.657Z] 73 |        return;
+[2026-10-05T11:34:15.657Z] 74 |      }
+[2026-10-05T11:34:15.657Z] 75 |      const mod = await import("exceljs");
+[2026-10-05T11:34:15.657Z] |                               ^
+[2026-10-05T11:34:15.657Z] 76 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:15.657Z] 77 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:34.340Z] 11:34:34 AM [vite] (client) hmr update /src/pages/PortalAccess.tsx, /src/index.css
+[2026-10-05T11:34:46.549Z] 11:34:46 AM [vite] (client) Pre-transform error: Failed to resolve import "exceljs" from "client/src/pages/CostEvolution.tsx". Does the file exist?
+[2026-10-05T11:34:46.549Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:46.549Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/CostEvolution.tsx:188:29
+[2026-10-05T11:34:46.549Z] 614 |        return;
+[2026-10-05T11:34:46.549Z] 615 |      }
+[2026-10-05T11:34:46.549Z] 616 |      const mod = await import("exceljs");
+[2026-10-05T11:34:46.549Z] |                               ^
+[2026-10-05T11:34:46.549Z] 617 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:46.549Z] 618 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:34:46.559Z] 11:34:46 AM [vite] (client) Pre-transform error: Failed to resolve import "exceljs" from "client/src/pages/IndustryCurve.tsx". Does the file exist?
+[2026-10-05T11:34:46.560Z] Plugin: vite:import-analysis
+[2026-10-05T11:34:46.560Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/IndustryCurve.tsx:68:29
+[2026-10-05T11:34:46.560Z] 73 |        return;
+[2026-10-05T11:34:46.560Z] 74 |      }
+[2026-10-05T11:34:46.560Z] 75 |      const mod = await import("exceljs");
+[2026-10-05T11:34:46.560Z] |                               ^
+[2026-10-05T11:34:46.560Z] 76 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:34:46.560Z] 77 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:35:17.566Z] 11:35:17 AM [vite] Internal server error: Failed to resolve import "exceljs" from "client/src/pages/CostEvolution.tsx". Does the file exist?
+[2026-10-05T11:35:17.567Z] Plugin: vite:import-analysis
+[2026-10-05T11:35:17.567Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/CostEvolution.tsx:188:29
+[2026-10-05T11:35:17.567Z] 614 |        return;
+[2026-10-05T11:35:17.567Z] 615 |      }
+[2026-10-05T11:35:17.567Z] 616 |      const mod = await import("exceljs");
+[2026-10-05T11:35:17.567Z] |                               ^
+[2026-10-05T11:35:17.567Z] 617 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:35:17.567Z] 618 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:35:17.567Z] at TransformPluginContext._formatLog (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31219:43)
+[2026-10-05T11:35:17.567Z] at TransformPluginContext.error (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31216:14)
+[2026-10-05T11:35:17.567Z] at normalizeUrl (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29699:18)
+[2026-10-05T11:35:17.567Z] at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2026-10-05T11:35:17.567Z] at async <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29757:32)
+[2026-10-05T11:35:17.567Z] at async Promise.all (index 10)
+[2026-10-05T11:35:17.567Z] at async TransformPluginContext.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29725:4)
+[2026-10-05T11:35:17.567Z] at async EnvironmentPluginContainer.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31018:14)
+[2026-10-05T11:35:17.567Z] at async loadAndTransform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:26143:26)
+[2026-10-05T11:35:17.567Z] at async viteTransformMiddleware (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:27221:20)
+[2026-10-05T11:35:17.579Z] 11:35:17 AM [vite] Internal server error: Failed to resolve import "exceljs" from "client/src/pages/IndustryCurve.tsx". Does the file exist?
+[2026-10-05T11:35:17.579Z] Plugin: vite:import-analysis
+[2026-10-05T11:35:17.579Z] File: /home/ubuntu/gestao-suprimentos-logistica/client/src/pages/IndustryCurve.tsx:68:29
+[2026-10-05T11:35:17.579Z] 73 |        return;
+[2026-10-05T11:35:17.579Z] 74 |      }
+[2026-10-05T11:35:17.579Z] 75 |      const mod = await import("exceljs");
+[2026-10-05T11:35:17.579Z] |                               ^
+[2026-10-05T11:35:17.579Z] 76 |      const ExcelJS = mod.default ?? mod;
+[2026-10-05T11:35:17.579Z] 77 |      const workbook = new ExcelJS.Workbook();
+[2026-10-05T11:35:17.579Z] at TransformPluginContext._formatLog (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31219:43)
+[2026-10-05T11:35:17.579Z] at TransformPluginContext.error (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31216:14)
+[2026-10-05T11:35:17.579Z] at normalizeUrl (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29699:18)
+[2026-10-05T11:35:17.579Z] at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+[2026-10-05T11:35:17.579Z] at async <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29757:32)
+[2026-10-05T11:35:17.579Z] at async Promise.all (index 8)
+[2026-10-05T11:35:17.579Z] at async TransformPluginContext.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:29725:4)
+[2026-10-05T11:35:17.579Z] at async EnvironmentPluginContainer.transform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:31018:14)
+[2026-10-05T11:35:17.579Z] at async loadAndTransform (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:26143:26)
+[2026-10-05T11:35:17.579Z] at async viteTransformMiddleware (/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js:27221:20)
+[2026-10-05T11:38:13.835Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:13.836Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:13.836Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:13.836Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:13.836Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:13.836Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:13.836Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:13.836Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:13.836Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:13.836Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:13.836Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:17.289Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:17.289Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:17.289Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:17.289Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:17.289Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:17.289Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:17.289Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:17.289Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:17.289Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:17.289Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:17.289Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:20.634Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:20.634Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:20.634Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:20.634Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:20.634Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:20.634Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:20.634Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:20.634Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:20.634Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:20.634Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:20.634Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:23.844Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:23.844Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:23.844Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:23.844Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:23.844Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:23.844Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:23.844Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:23.844Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:23.844Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:23.844Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:23.844Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:27.041Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:27.041Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:27.041Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:27.041Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:27.041Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:27.041Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:27.041Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:27.041Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:27.041Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:27.041Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:27.041Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:30.248Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:30.248Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:30.248Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:30.248Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:30.248Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:30.248Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:30.248Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:30.248Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:30.248Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:30.248Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:30.248Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:33.458Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:33.458Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:33.458Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:33.458Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:33.458Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:33.458Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:33.458Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:33.458Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:33.458Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:33.458Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:33.458Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:36.788Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:36.788Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:36.788Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:36.788Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:36.788Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:36.788Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:36.788Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:36.788Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:36.788Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:36.788Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:36.788Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:39.994Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:39.995Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:39.995Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:39.995Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:39.995Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:39.995Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:39.995Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:39.995Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:39.995Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:39.995Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:39.995Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:43.205Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:43.206Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:43.206Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:43.206Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:43.206Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:43.206Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:43.206Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:43.206Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:43.206Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:43.206Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:43.206Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:46.422Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:46.422Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:46.422Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:46.422Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:46.422Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:46.422Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:46.422Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:46.422Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:46.422Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:46.422Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:46.422Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:49.637Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:49.638Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:49.638Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:49.638Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:49.638Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:49.638Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:49.638Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:49.638Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:49.638Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:49.638Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:49.638Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:52.854Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:52.854Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:52.854Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:52.854Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:52.854Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:52.854Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:52.854Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:52.854Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:52.854Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:52.854Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:52.854Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:56.070Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:56.070Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:56.070Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:56.070Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:56.070Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:56.070Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:56.070Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:56.070Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:56.070Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:56.070Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:56.070Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
+[2026-10-05T11:38:59.272Z] Error [ERR_MODULE_NOT_FOUND]: Cannot find module '/home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-CCSnTAeo.js' imported from /home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/vite@7.1.9_@types+node@24.7.0_jiti@2.6.1_lightningcss@1.30.1_tsx@4.20.6/node_modules/vite/dist/node/chunks/dep-Chhhsdoe.js
+[2026-10-05T11:38:59.272Z] at finalizeResolution (node:internal/modules/esm/resolve:275:11)
+[2026-10-05T11:38:59.272Z] at moduleResolve (node:internal/modules/esm/resolve:932:10)
+[2026-10-05T11:38:59.272Z] at defaultResolve (node:internal/modules/esm/resolve:1056:11)
+[2026-10-05T11:38:59.272Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:59.272Z] at resolveBase (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:3744)
+[2026-10-05T11:38:59.272Z] at resolveDirectory (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4243)
+[2026-10-05T11:38:59.272Z] at resolveTsPaths (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:4984)
+[2026-10-05T11:38:59.272Z] at resolve (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/tsx@4.20.6/node_modules/tsx/dist/esm/index.mjs?1791199828088:2:5361)
+[2026-10-05T11:38:59.272Z] at nextResolve (node:internal/modules/esm/hooks:748:28)
+[2026-10-05T11:38:59.272Z] at o (file:///home/ubuntu/gestao-suprimentos-logistica/node_modules/.pnpm/@tailwindcss+node@4.1.14/node_modules/@tailwindcss/node/dist/esm-cache.loader.mjs:1:69)
