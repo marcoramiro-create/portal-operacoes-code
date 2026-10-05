@@ -136,7 +136,11 @@ export async function saveReferenceImport(kind: "sb1" | "sbz" | "familias" | "su
       const rows = records as { chave: string; code: string; filial: string; estoqMin: number | null; estoqMax: number | null; entraMrp: string }[];
       await tx.delete(sbzReferences);
       for (let start = 0; start < rows.length; start += batchSize) {
-        await tx.insert(sbzReferences).values(rows.slice(start, start + batchSize));
+        await tx.insert(sbzReferences).values(rows.slice(start, start + batchSize).map((row) => ({
+          ...row,
+          estoqMin: row.estoqMin?.toString() ?? null,
+          estoqMax: row.estoqMax?.toString() ?? null,
+        })));
       }
     } else if (kind === "familias") {
       const rows = records as { code: string; descricao: string }[];
@@ -230,8 +234,8 @@ async function montarIndicesReferencias(): Promise<{ sb1: Sb1Index; sbz: SbzInde
       codAgregado: chave,
       descricao: "",
       tipo: r.tipo,
-      familiaCod: r.familiaCode,
-      subFamiliaCod: r.subfamiliaCode,
+      familiaCode: r.familiaCode,
+      subfamiliaCode: r.subfamiliaCode,
     };
     registros.push(linha);
     porCodigo.set(chave, linha);
@@ -244,7 +248,7 @@ async function montarIndicesReferencias(): Promise<{ sb1: Sb1Index; sbz: SbzInde
     if (!codigo || !filial) continue;
     const chave = codigo + filial;
     if (porChave.has(chave)) continue;
-    porChave.set(chave, { chave, codigo, filial, entraMrp: r.entraMrp });
+    porChave.set(chave, { chave, codigo, filial, estoqMin: r.estoqMin == null ? null : Number(r.estoqMin), estoqMax: r.estoqMax == null ? null : Number(r.estoqMax), entraMrp: r.entraMrp });
   }
   return {
     sb1: { porCodigo, porCodAgregado, registros },
