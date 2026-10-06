@@ -71,6 +71,7 @@ create table if not exists auth.users (
 \ir /home/ubuntu/portal-operacoes-code/supabase/migrations/0025_complete_corporate_catalog.sql
 \ir /home/ubuntu/portal-operacoes-code/supabase/migrations/0026_nf_receipts_reading_point.sql
 \ir /home/ubuntu/portal-operacoes-code/supabase/migrations/0029_user_operational_scope.sql
+\ir /home/ubuntu/portal-operacoes-code/supabase/migrations/0030_production_role_rls.sql
 
 -- 0019, 0020 e 0028 alteram inventoryAnalytics, que pertence ao banco
 -- operacional de negócio (MySQL/TiDB), não a esta base PostgreSQL do portal.
