@@ -26,8 +26,8 @@ let pool: Pool | null = null;
 
 export function getSupabasePool() {
   if (!pool) {
-    const connectionString = process.env.SUPABASE_DATABASE_URL;
-    if (!connectionString) throw new Error("A conexão externa com o Supabase não está configurada.");
+    const connectionString = process.env.PORTAL_DATABASE_URL ?? process.env.SUPABASE_DATABASE_URL;
+    if (!connectionString) throw new Error("A conexão do banco do portal não está configurada.");
     pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },
@@ -36,7 +36,7 @@ export function getSupabasePool() {
       connectionTimeoutMillis: 10000,
     });
     pool.on('error', (err) => {
-      console.error('[SupabasePool] Unexpected error on idle client:', err);
+      console.error('[PortalDatabase] Unexpected error on idle client:', err);
     });
   }
   return pool;
@@ -218,6 +218,77 @@ export async function listPortalUsers() {
 export async function listActiveEmployees() {
   const result = await getSupabasePool().query<{ id: string; employee_code: string | null; full_name: string; is_inventory_requester: boolean }>("select id, employee_code, full_name, is_inventory_requester from public.employees where active = true order by full_name");
   return result.rows.map(row => ({ id: row.id, canRequestInventory: row.is_inventory_requester, label: `${row.employee_code ? `${row.employee_code} · ` : ""}${row.full_name}${row.is_inventory_requester ? " · requisitante" : " · não requisitante"}` }));
+}
+
+export const OPERATIONAL_PRIVILEGES = [
+  "receipts.capture",
+  "receipts.consult",
+  "receipts.redespacho.approve",
+  "receipts.redespacho.confirm_destination",
+] as const;
+export type OperationalPrivilege = (typeof OPERATIONAL_PRIVILEGES)[number];
+
+export async function listActiveBranches() {
+  const result = await getSupabasePool().query<{ id: string; code: string; name: string; company_name: string }>(
+    `select branch.id, branch.code, branch.name, company.legal_name as company_name
+       from public.branches branch
+       join public.companies company on company.id = branch.company_id
+      where branch.active = true and company.active = true
+      order by branch.code, branch.name`,
+  );
+  return result.rows.map(row => ({ id: row.id, code: row.code, name: row.name, companyName: row.company_name, label: `${row.code} · ${row.name}` }));
+}
+
+export async function listUserOperationalScope(userId: string) {
+  const database = getSupabasePool();
+  const branches = await database.query<{ branch_id: string; is_default: boolean }>(
+    "select branch_id, is_default from public.portal_user_branch_access where user_id = $1 and active = true order by is_default desc, branch_id",
+    [userId],
+  );
+  const privileges = await database.query<{ privilege_key: OperationalPrivilege }>(
+    "select privilege_key from public.portal_user_operational_privileges where user_id = $1 and allowed = true order by privilege_key",
+    [userId],
+  );
+  return {
+    branchIds: branches.rows.map(row => row.branch_id),
+    defaultBranchId: branches.rows.find(row => row.is_default)?.branch_id ?? null,
+    privileges: privileges.rows.map(row => row.privilege_key),
+  };
+}
+
+export async function updateUserOperationalScope(input: { userId: string; branchIds: string[]; defaultBranchId: string | null; privileges: OperationalPrivilege[] }, actor: PortalIdentity) {
+  const database = getSupabasePool();
+  const user = await database.query<{ id: string }>("select id from public.portal_users where id = $1", [input.userId]);
+  if (!user.rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Usuário não encontrado." });
+  const branchIds = Array.from(new Set(input.branchIds));
+  if (input.defaultBranchId && !branchIds.includes(input.defaultBranchId)) throw new TRPCError({ code: "BAD_REQUEST", message: "A filial padrão deve estar entre as filiais autorizadas." });
+  if (branchIds.length) {
+    const validBranches = await database.query<{ id: string }>("select id from public.branches where id = any($1::uuid[]) and active = true", [branchIds]);
+    if (validBranches.rows.length !== branchIds.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Uma ou mais filiais selecionadas estão inativas ou não existem." });
+  }
+  const privileges = Array.from(new Set(input.privileges));
+  if (privileges.some(privilege => !(OPERATIONAL_PRIVILEGES as readonly string[]).includes(privilege))) throw new TRPCError({ code: "BAD_REQUEST", message: "Privilégio operacional inválido." });
+
+  const client = await database.connect();
+  try {
+    await client.query("begin");
+    await client.query("delete from public.portal_user_branch_access where user_id = $1", [input.userId]);
+    for (const branchId of branchIds) {
+      await client.query("insert into public.portal_user_branch_access (user_id, branch_id, is_default, assigned_by_user_id) values ($1, $2, $3, $4)", [input.userId, branchId, input.defaultBranchId === branchId, actor.id]);
+    }
+    await client.query("delete from public.portal_user_operational_privileges where user_id = $1", [input.userId]);
+    for (const privilege of privileges) {
+      await client.query("insert into public.portal_user_operational_privileges (user_id, privilege_key, allowed, assigned_by_user_id) values ($1, $2, true, $3)", [input.userId, privilege, actor.id]);
+    }
+    await client.query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, 'portal_user', $2, 'operational_scope_updated', jsonb_build_object('branch_ids', $3::jsonb, 'default_branch_id', $4::text, 'privileges', $5::jsonb))", [actor.id, input.userId, JSON.stringify(branchIds), input.defaultBranchId, JSON.stringify(privileges)]);
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally {
+    client.release();
+  }
+  return listUserOperationalScope(input.userId);
 }
 
 export async function createPortalUser(input: { email: string; displayName: string; profileKey: string }, actor: PortalIdentity) {

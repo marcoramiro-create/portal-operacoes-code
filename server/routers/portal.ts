@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
-import { assertPortalAdministrator, assertApplicationPermission, applicationPermissionsForUser, createAccessRequest, createPortalUser, getPortalIdentity, listAccessProfiles, listAccessRequests, listActiveEmployees, listApplicationTreeForUser, listPortalUsers, listProfileNodePermissions, listUserNodePermissions, reviewAccessRequest, updateProfileNodePermission, updateUserNodePermission, updatePortalUser, upsertObservacao, listObservacoes } from "../supabasePortal";
+import { assertPortalAdministrator, assertApplicationPermission, applicationPermissionsForUser, createAccessRequest, createPortalUser, getPortalIdentity, listAccessProfiles, listAccessRequests, listActiveBranches, listActiveEmployees, listApplicationTreeForUser, listPortalUsers, listProfileNodePermissions, listUserOperationalScope, listUserNodePermissions, reviewAccessRequest, updateProfileNodePermission, updateUserNodePermission, updatePortalUser, updateUserOperationalScope, upsertObservacao, listObservacoes } from "../supabasePortal";
 import { resendPortalActivation, resendPortalInvite } from "../passwordFlowService";
 import { registrationOperations, resolvedRegistrationPermissionsForUser, updateRegistrationPermission } from "../registrationAccess";
 import { getOneDriveImportsLink, getOneDriveSourceStatus } from "../onedriveSharedLink";
@@ -10,6 +10,7 @@ function authorizationHeader(headers: Record<string, string | string[] | undefin
 function requestInfo(ctx: { req: { ip?: string } }) { return { ip: ctx.req.ip }; }
 const profileKey = z.enum(["development-admin", "operations-admin", "manager", "operator", "viewer"]);
 const nodePermission = z.enum(["view", "manage", "approve"]);
+const operationalPrivilege = z.enum(["receipts.capture", "receipts.consult", "receipts.redespacho.approve", "receipts.redespacho.confirm_destination"]);
 async function administrator(ctx: { req: { headers: Record<string, string | string[] | undefined> } }) { const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers)); assertPortalAdministrator(identity); return identity; }
 
 export const portalRouter = router({
@@ -19,8 +20,11 @@ export const portalRouter = router({
   profiles: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listAccessProfiles(); }),
   users: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listPortalUsers(); }),
   employeeOptions: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listActiveEmployees(); }),
+  branchOptions: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listActiveBranches(); }),
+  userOperationalScope: publicProcedure.input(z.object({ userId: z.string().uuid() })).query(async ({ ctx, input }) => { await administrator(ctx); return listUserOperationalScope(input.userId); }),
   createUser: publicProcedure.input(z.object({ email: z.string().email(), displayName: z.string().trim().min(3).max(160), profileKey })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return createPortalUser(input, identity); }),
   updateUser: publicProcedure.input(z.object({ userId: z.string().uuid(), status: z.enum(["active", "inactive"]), profileKey, canFulfillInventoryRequests: z.boolean().optional(), employeeId: z.string().uuid().nullable().optional() })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return updatePortalUser(input.userId, input, identity); }),
+  updateUserOperationalScope: publicProcedure.input(z.object({ userId: z.string().uuid(), branchIds: z.array(z.string().uuid()).max(100), defaultBranchId: z.string().uuid().nullable(), privileges: z.array(operationalPrivilege).max(4) })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return updateUserOperationalScope(input, identity); }),
   resendInvite: publicProcedure.input(z.object({ email: z.string().email() })).mutation(async ({ ctx, input }) => { await administrator(ctx); return resendPortalInvite(input.email, requestInfo(ctx)); }),
   resendActivationInvite: publicProcedure.input(z.object({ userId: z.string().uuid() })).mutation(async ({ ctx, input }) => { await administrator(ctx); return resendPortalActivation(input.userId, requestInfo(ctx)); }),
   createAccessRequest: publicProcedure.input(z.object({ email: z.string().email(), displayName: z.string().trim().min(3).max(160), reason: z.string().trim().max(500).optional() })).mutation(({ input }) => createAccessRequest(input)),
