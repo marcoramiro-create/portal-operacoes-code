@@ -37,7 +37,7 @@ import type { Sb1Index, Sb1Row, SbzIndex, SbzRow, FamiliasMap } from "./referenc
 import { storagePut } from "./storage";
 let _db: ReturnType<typeof drizzle> | null = null;
 export async function getDb() {
-  const connectionString = process.env.PORTAL_DATABASE_URL ?? process.env.SUPABASE_DATABASE_URL;
+  const connectionString = process.env.BUSINESS_DATABASE_URL ?? process.env.PORTAL_DATABASE_URL ?? process.env.SUPABASE_DATABASE_URL;
   if (!_db && connectionString) {
     try {
       const pool = new Pool({
