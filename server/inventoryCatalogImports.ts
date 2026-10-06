@@ -5,8 +5,8 @@ import { assertApplicationPermission, getSupabasePool, type PortalIdentity } fro
 export type CatalogImportEntity = CatalogEntity;
 export type CatalogImportRow = Record<string, string>;
 
-const nodeKeys: Record<CatalogImportEntity, string> = { productType: "cadastros-tipos-produto", orgUnit: "cadastros-unidades", costCenter: "cadastros-centros-custo", company: "cadastros-empresas", branch: "cadastros-filiais", warehouse: "cadastros-armazens", stockLocation: "cadastros-locais-estoque" };
-const importNodeKeys: Record<CatalogImportEntity, string> = { productType: "importacoes-tipos-produto", orgUnit: "importacoes-unidades", costCenter: "importacoes-centros-custo", company: "importacoes-empresas", branch: "importacoes-filiais", warehouse: "importacoes-armazens", stockLocation: "importacoes-locais-estoque" };
+const nodeKeys: Record<CatalogImportEntity, string> = { productType: "cadastros-tipos-produto", orgUnit: "cadastros-unidades", costCenter: "cadastros-centros-custo", company: "cadastros-empresas", branch: "cadastros-filiais", warehouse: "cadastros-armazens", stockLocation: "cadastros-locais-estoque", department: "cadastros-departamentos", jobPosition: "cadastros-cargos" };
+const importNodeKeys: Record<CatalogImportEntity, string> = { productType: "importacoes-tipos-produto", orgUnit: "importacoes-unidades", costCenter: "importacoes-centros-custo", company: "importacoes-empresas", branch: "importacoes-filiais", warehouse: "importacoes-armazens", stockLocation: "importacoes-locais-estoque", department: "importacoes-departamentos", jobPosition: "importacoes-cargos" };
 
 export function getCatalogImportMaxRows(entity: CatalogImportEntity) {
   return entity === "costCenter" ? 10_000 : 500;

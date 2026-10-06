@@ -2,7 +2,7 @@
 import { assertApplicationPermission, getSupabasePool, type PortalIdentity } from "./supabasePortal";
 
 type CatalogInput = { code: string; name: string };
-export type CatalogEntity = "productType" | "orgUnit" | "costCenter" | "company" | "branch" | "warehouse" | "stockLocation";
+export type CatalogEntity = "productType" | "orgUnit" | "costCenter" | "company" | "branch" | "warehouse" | "stockLocation" | "department" | "jobPosition";
 export type CatalogEntryUpdate =
   | { entity: "productType"; id: string; code: string; name: string; description?: string; stockControlled: boolean }
   | { entity: "orgUnit"; id: string; code: string; name: string }
@@ -12,7 +12,7 @@ export type CatalogEntryUpdate =
   | { entity: "warehouse"; id: string; branchId: string; code: string; name: string }
   | { entity: "stockLocation"; id: string; warehouseId: string; code: string; name: string };
 
-const catalogNodeKeys: Record<CatalogEntity, string> = { productType: "cadastros-tipos-produto", orgUnit: "cadastros-unidades", costCenter: "cadastros-centros-custo", company: "cadastros-empresas", branch: "cadastros-filiais", warehouse: "cadastros-armazens", stockLocation: "cadastros-locais-estoque" };
+const catalogNodeKeys: Record<CatalogEntity, string> = { productType: "cadastros-tipos-produto", orgUnit: "cadastros-unidades", costCenter: "cadastros-centros-custo", company: "cadastros-empresas", branch: "cadastros-filiais", warehouse: "cadastros-armazens", stockLocation: "cadastros-locais-estoque", department: "cadastros-departamentos", jobPosition: "cadastros-cargos" };
 
 function trimRequired(value: string, label: string) {
   const normalized = value.trim();
@@ -47,6 +47,8 @@ async function assertCanDeactivate(entity: CatalogEntity, id: string) {
     branch: { query: "select 1 from public.warehouses where branch_id = $1 and active = true limit 1", label: "existem armazéns ativos vinculados a esta filial" },
     warehouse: { query: "select 1 from public.stock_locations where warehouse_id = $1 and active = true limit 1", label: "existem locais de estoque ativos vinculados a este armazém" },
     stockLocation: { query: "select 1 from public.stock_balances where stock_location_id = $1 and on_hand_quantity <> 0 limit 1", label: "existe saldo em estoque neste local" },
+    department: { query: "select 1 from public.employees where department_id = $1 and active = true limit 1", label: "existem funcionários ativos vinculados a este departamento" },
+    jobPosition: { query: "select 1 from public.employees where job_position_id = $1 and active = true limit 1", label: "existem funcionários ativos vinculados a este cargo" },
   };
   const check = checks[entity];
   const result = await getSupabasePool().query(check.query, [id]);
@@ -56,7 +58,7 @@ async function assertCanDeactivate(entity: CatalogEntity, id: string) {
 export async function listInventoryCatalog(identity: PortalIdentity) {
   await assertApplicationPermission(identity, "cadastros", "view");
   const database = getSupabasePool();
-  const [productTypes, orgUnits, costCenters, companies, branches, warehouses, stockLocations, products] = await Promise.all([
+  const [productTypes, orgUnits, costCenters, companies, branches, warehouses, stockLocations, products, departments, jobPositions] = await Promise.all([
     database.query<{ id: string; code: string; name: string; description: string | null; stock_controlled: boolean; active: boolean }>("select id, code, name, description, stock_controlled, active from public.product_types order by code"),
     database.query<{ id: string; code: string; name: string; active: boolean }>("select id, code, name, active from public.org_units order by code"),
     database.query<{ id: string; unit_id: string | null; unit_code: string | null; branch_id: string | null; branch_code: string | null; code: string; name: string; active: boolean }>("select center.id, center.unit_id, unit.code as unit_code, center.branch_id, branch.code as branch_code, center.code, center.name, center.active from public.cost_centers center left join public.org_units unit on unit.id = center.unit_id left join public.branches branch on branch.id = center.branch_id order by branch.code nulls last, center.code"),
@@ -65,6 +67,8 @@ export async function listInventoryCatalog(identity: PortalIdentity) {
     database.query<{ id: string; branch_id: string; company_code: string; branch_code: string; code: string; name: string; active: boolean }>("select warehouse.id, warehouse.branch_id, company.code as company_code, branch.code as branch_code, warehouse.code, warehouse.name, warehouse.active from public.warehouses warehouse join public.branches branch on branch.id = warehouse.branch_id join public.companies company on company.id = branch.company_id order by company.code, branch.code, warehouse.code"),
     database.query<{ id: string; warehouse_id: string; company_code: string; branch_code: string; warehouse_code: string; code: string; name: string; active: boolean }>("select location.id, location.warehouse_id, company.code as company_code, branch.code as branch_code, warehouse.code as warehouse_code, location.code, location.name, location.active from public.stock_locations location join public.warehouses warehouse on warehouse.id = location.warehouse_id join public.branches branch on branch.id = warehouse.branch_id join public.companies company on company.id = branch.company_id order by company.code, branch.code, warehouse.code, location.code"),
     database.query<{ id: string; product_code: string; name: string; product_type_id: string | null; product_type_code: string | null; inventory_control_category: string; unit_of_measure: string; requires_size: boolean; requires_lot: boolean; requires_expiration: boolean; requires_ca: boolean; active: boolean }>("select product.id, product.product_code, product.name, product.product_type_id, type.code as product_type_code, product.inventory_control_category, product.unit_of_measure, product.requires_size, product.requires_lot, product.requires_expiration, product.requires_ca, product.active from public.products product left join public.product_types type on type.id = product.product_type_id order by product.product_code"),
+    database.query<{ id: string; code: string; name: string; active: boolean }>("select id, code, name, active from public.departments order by code"),
+    database.query<{ id: string; code: string; name: string; active: boolean }>("select id, code, name, active from public.job_positions order by code"),
   ]);
   return {
     productTypes: productTypes.rows.map(row => ({ id: row.id, code: row.code, name: row.name, description: row.description, stockControlled: row.stock_controlled, active: row.active })),
@@ -75,7 +79,21 @@ export async function listInventoryCatalog(identity: PortalIdentity) {
     warehouses: warehouses.rows.map(row => ({ id: row.id, branchId: row.branch_id, companyCode: row.company_code, branchCode: row.branch_code, code: row.code, name: row.name, active: row.active })),
     stockLocations: stockLocations.rows.map(row => ({ id: row.id, warehouseId: row.warehouse_id, companyCode: row.company_code, branchCode: row.branch_code, warehouseCode: row.warehouse_code, code: row.code, name: row.name, active: row.active })),
     products: products.rows.map(row => ({ id: row.id, code: row.product_code, name: row.name, productTypeId: row.product_type_id, productTypeCode: row.product_type_code, inventoryControlCategory: row.inventory_control_category, unitOfMeasure: row.unit_of_measure, requiresSize: row.requires_size, requiresLot: row.requires_lot, requiresExpiration: row.requires_expiration, requiresCa: row.requires_ca, active: row.active })),
+    departments: departments.rows.map(row => ({ id: row.id, code: row.code, name: row.name, active: row.active })),
+    jobPositions: jobPositions.rows.map(row => ({ id: row.id, code: row.code, name: row.name, active: row.active })),
   };
+}
+
+export async function createDepartment(input: CatalogInput, identity: PortalIdentity) {
+  await assertCatalogManagement(identity, "cadastros-departamentos");
+  const code = trimRequired(input.code, "Código"); const name = trimRequired(input.name, "Nome");
+  try { const result = await getSupabasePool().query<{ id: string }>("insert into public.departments (code, name) values ($1, $2) returning id", [code, name]); await audit(identity, "department", result.rows[0].id, "created", { code, name }); return { id: result.rows[0].id }; } catch (error) { return rethrowDuplicate(error, "O departamento"); }
+}
+
+export async function createJobPosition(input: CatalogInput, identity: PortalIdentity) {
+  await assertCatalogManagement(identity, "cadastros-cargos");
+  const code = trimRequired(input.code, "Código"); const name = trimRequired(input.name, "Nome");
+  try { const result = await getSupabasePool().query<{ id: string }>("insert into public.job_positions (code, name) values ($1, $2) returning id", [code, name]); await audit(identity, "job_position", result.rows[0].id, "created", { code, name }); return { id: result.rows[0].id }; } catch (error) { return rethrowDuplicate(error, "O cargo"); }
 }
 
 export async function createProductType(input: CatalogInput & { description?: string; stockControlled: boolean }, identity: PortalIdentity) {
@@ -125,7 +143,7 @@ export async function updateCatalogEntry(input: CatalogEntryUpdate, identity: Po
 
 export async function setCatalogEntryActive(input: { entity: CatalogEntity; id: string; active: boolean }, identity: PortalIdentity) {
   await assertCatalogManagement(identity, catalogNodeKeys[input.entity]); if (!input.active) await assertCanDeactivate(input.entity, input.id);
-  const tables: Record<CatalogEntity, string> = { productType: "product_types", orgUnit: "org_units", costCenter: "cost_centers", company: "companies", branch: "branches", warehouse: "warehouses", stockLocation: "stock_locations" };
+  const tables: Record<CatalogEntity, string> = { productType: "product_types", orgUnit: "org_units", costCenter: "cost_centers", company: "companies", branch: "branches", warehouse: "warehouses", stockLocation: "stock_locations", department: "departments", jobPosition: "job_positions" };
   const result = await getSupabasePool().query(`update public.${tables[input.entity]} set active = $2, updated_at = now() where id = $1 returning id`, [input.id, input.active]);
   if (!result.rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Cadastro não encontrado." }); await audit(identity, input.entity, input.id, input.active ? "activated" : "deactivated", {}); return { id: input.id, active: input.active };
 }

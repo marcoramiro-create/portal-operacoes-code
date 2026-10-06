@@ -50,7 +50,7 @@ export function validateRegistrationRows(type: RegistrationType, rawRows: Import
   return { rows, issues, totalRows: rows.length, valid: issues.length === 0 };
 }
 
-async function resolveReference(client: PoolClient, table: "org_units" | "cost_centers", code: string) {
+async function resolveReference(client: PoolClient, table: "org_units" | "cost_centers" | "departments" | "job_positions", code: string) {
   if (!code) return null;
   const result = await client.query<{ id: string }>(`select id from public.${table} where code = $1 and active = true limit 1`, [code]);
   return result.rows[0]?.id ?? null;
@@ -86,8 +86,9 @@ async function validateReferences(type: RegistrationType, rows: ImportRow[]) {
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
       if (type === "employees") {
-        if (row.codigo_unidade && !(await resolveReference(client, "org_units", row.codigo_unidade))) issues.push({ row: index + 2, field: "Código da unidade", message: "Unidade ativa não encontrada." });
         if (row.codigo_centro_custo && !(await resolveReference(client, "cost_centers", row.codigo_centro_custo))) issues.push({ row: index + 2, field: "Código do centro de custo", message: "Centro de custo ativo não encontrado." });
+        if (row.departamento && !(await resolveReference(client, "departments", row.departamento))) issues.push({ row: index + 2, field: "Código do departamento", message: "Departamento ativo não encontrado." });
+        if (row.cargo && !(await resolveReference(client, "job_positions", row.cargo))) issues.push({ row: index + 2, field: "Código do cargo", message: "Cargo ativo não encontrado." });
         if (row.codigo_empresa && !(await resolveCompany(client, row.codigo_empresa))) issues.push({ row: index + 2, field: "Código da empresa", message: "Empresa ativa não encontrada." });
         if (row.codigo_filial && !row.codigo_empresa) issues.push({ row: index + 2, field: "Código da filial", message: "Informe também o código da empresa." });
         if (row.codigo_filial && row.codigo_empresa && !(await resolveBranch(client, row.codigo_empresa, row.codigo_filial))) issues.push({ row: index + 2, field: "Código da filial", message: "Filial ativa não encontrada na empresa informada." });
@@ -125,14 +126,15 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
     for (const row of preview.rows) {
       const active = parseActive(row.ativo).value;
       if (type === "employees") {
-        const unitId = await resolveReference(client, "org_units", row.codigo_unidade);
         const costCenterId = await resolveReference(client, "cost_centers", row.codigo_centro_custo);
+        const departmentId = await resolveReference(client, "departments", row.departamento);
+        const jobPositionId = await resolveReference(client, "job_positions", row.cargo);
         const companyId = await resolveCompany(client, row.codigo_empresa);
         const branchId = await resolveBranch(client, row.codigo_empresa, row.codigo_filial);
         const managerId = await resolveManager(client, row.codigo_gestor);
-        await client.query(`insert into public.employees (employee_code, full_name, email, company_id, branch_id, unit_id, cost_center_id, department, job_title, manager_employee_id, admission_date, is_inventory_requester, active)
-          values ($1, $2, nullif($3, ''), $4, $5, $6, $7, nullif($8, ''), nullif($9, ''), $10, nullif($11, '')::date, $12, $13)
-          on conflict (employee_code) do update set full_name = excluded.full_name, email = excluded.email, company_id = excluded.company_id, branch_id = excluded.branch_id, unit_id = excluded.unit_id, cost_center_id = excluded.cost_center_id, department = excluded.department, job_title = excluded.job_title, manager_employee_id = excluded.manager_employee_id, admission_date = excluded.admission_date, is_inventory_requester = excluded.is_inventory_requester, active = excluded.active, updated_at = now()`, [row.codigo_funcionario, row.nome_completo, row.email, companyId, branchId, unitId, costCenterId, row.departamento, row.cargo, managerId, row.data_admissao, parseYesNo(row.requisitante_almoxarifado).value, active]);
+        await client.query(`insert into public.employees (employee_code, full_name, email, company_id, branch_id, cost_center_id, department_id, job_position_id, department, job_title, manager_employee_id, admission_date, is_inventory_requester, active)
+          values ($1, $2, nullif($3, ''), $4, $5, $6, $7, $8, nullif($9, ''), nullif($10, ''), $11, nullif($12, '')::date, $13, $14)
+          on conflict (employee_code) do update set full_name = excluded.full_name, email = excluded.email, company_id = excluded.company_id, branch_id = excluded.branch_id, cost_center_id = excluded.cost_center_id, department_id = excluded.department_id, job_position_id = excluded.job_position_id, department = excluded.department, job_title = excluded.job_title, manager_employee_id = excluded.manager_employee_id, admission_date = excluded.admission_date, is_inventory_requester = excluded.is_inventory_requester, active = excluded.active, updated_at = now()`, [row.codigo_funcionario, row.nome_completo, row.email, companyId, branchId, costCenterId, departmentId, jobPositionId, row.departamento, row.cargo, managerId, row.data_admissao, parseYesNo(row.requisitante_almoxarifado).value, active]);
       }
       if (type === "suppliers") await client.query(`insert into public.suppliers (supplier_code, store_code, legal_name, trade_name, document_number, active)
         values ($1, $2, $3, nullif($4, ''), nullif($5, ''), $6)
@@ -165,8 +167,8 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
 export async function listRegistrationRecords(type: RegistrationType) {
   const database = getSupabasePool();
   if (type === "employees") {
-    const result = await database.query(`select employee.employee_code as code, employee.full_name as name, employee.email, company.code as codigo_empresa, branch.code as codigo_filial, unit.code as codigo_unidade, cost_center.code as codigo_centro_custo, employee.department as departamento, employee.job_title as cargo, manager.employee_code as codigo_gestor, employee.admission_date as data_admissao, employee.is_inventory_requester as requisitante_almoxarifado, employee.active, employee.updated_at as updated_at
-      from public.employees employee left join public.companies company on company.id = employee.company_id left join public.branches branch on branch.id = employee.branch_id left join public.org_units unit on unit.id = employee.unit_id left join public.cost_centers cost_center on cost_center.id = employee.cost_center_id left join public.employees manager on manager.id = employee.manager_employee_id order by employee.full_name limit 200`);
+    const result = await database.query(`select employee.employee_code as code, employee.full_name as name, employee.email, company.code as codigo_empresa, branch.code as codigo_filial, cost_center.code as codigo_centro_custo, department.code as departamento, job_position.code as cargo, manager.employee_code as codigo_gestor, employee.admission_date as data_admissao, employee.is_inventory_requester as requisitante_almoxarifado, employee.active, employee.updated_at as updated_at
+      from public.employees employee left join public.companies company on company.id = employee.company_id left join public.branches branch on branch.id = employee.branch_id left join public.cost_centers cost_center on cost_center.id = employee.cost_center_id left join public.departments department on department.id = employee.department_id left join public.job_positions job_position on job_position.id = employee.job_position_id left join public.employees manager on manager.id = employee.manager_employee_id order by employee.full_name limit 200`);
     return result.rows;
   }
   if (type === "suppliers") {
