@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { publicProcedure, router } from "../_core/trpc";
-import { READING_POINTS, createNfReceipt, listNfReceiptsForExport, listRecentNfReceipts, softDeleteNfReceipt, updateNfReceiptReadingPoint } from "../nfReceipts";
+import { FLOW_STATUSES, READING_POINTS, RECEIPT_TYPES, createNfReceipt, listNfReceiptsForExport, listRecentNfReceipts, softDeleteNfReceipt, updateNfReceiptReadingPoint } from "../nfReceipts";
 import { getPortalIdentity } from "../supabasePortal";
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 export const nfReceiptsRouter = router({
@@ -10,6 +10,8 @@ export const nfReceiptsRouter = router({
     accessKey: z.string().min(1).max(100),
     captureMethod: z.enum(["manual", "camera", "barcode_reader"]),
     readingPoint: z.enum(READING_POINTS),
+    receiptType: z.enum(RECEIPT_TYPES),
+    flowStatus: z.enum(FLOW_STATUSES),
     carrierId: z.string().uuid().nullable().optional(),
     carrierName: z.string().max(200).nullable().optional(),
     vehiclePlate: z.string().max(12).nullable().optional(),

@@ -9,6 +9,8 @@ import { toast } from "sonner";
 import * as XLSX from "xlsx";
 type CaptureMethod = "manual" | "camera" | "barcode_reader";
 type ReadingPoint = "descarga" | "recebimento" | "conferencia" | "envio_fiscal";
+type ReceiptType = "own_stock" | "redespacho";
+type FlowStatus = "captured" | "receiving" | "conference" | "completed" | "pending" | "redespached" | "closed";
 // 28/09/2026 — pontos de leitura com COR e SÍMBOLO para o operador identificar de imediato.
 const readingPoints: ReadingPoint[] = ["recebimento", "descarga", "conferencia", "envio_fiscal"];
 const readingPointMeta: Record<ReadingPoint, { label: string; icon: LucideIcon; selected: string; unselected: string; chip: string }> = {
@@ -27,6 +29,8 @@ const FILIAIS = [
 ];
 const clean = (value: string) => value.replace(/\D/g, "").slice(0, 44);
 const labels: Record<CaptureMethod, string> = { manual: "Digitação", camera: "Câmera", barcode_reader: "Leitor de mesa" };
+const receiptTypeLabels: Record<ReceiptType, string> = { own_stock: "Estoque próprio", redespacho: "Redespacho" };
+const flowStatusLabels: Record<FlowStatus, string> = { captured: "NF lida", receiving: "Recebimento iniciado", conference: "Conferência em andamento", completed: "Conferência concluída", pending: "Pendente", redespached: "Redespacho realizado", closed: "Fluxo encerrado" };
 // BLOCO 7: o modo Câmera se adapta ao SO — Android usa foto, iOS usa leitura ao vivo.
 const isAndroid = detectPlatform() === "android";
 const modeHelp: Record<CaptureMethod, string> = {
@@ -41,6 +45,8 @@ export default function NfReceipts() {
   const [accessKey, setAccessKey] = useState("");
   const [captureMethod, setCaptureMethod] = useState<CaptureMethod>("manual");
   const [readingPoint, setReadingPoint] = useState<ReadingPoint>("recebimento");
+  const [receiptType, setReceiptType] = useState<ReceiptType>("own_stock");
+  const [flowStatus, setFlowStatus] = useState<FlowStatus>("captured");
   const [activeView, setActiveView] = useState<"capture" | "history" | "carriers">("capture");
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -130,6 +136,8 @@ export default function NfReceipts() {
       accessKey,
       captureMethod,
       readingPoint,
+      receiptType,
+      flowStatus,
       carrierId: !useManualCarrier && carrierId ? carrierId : null,
       carrierName: useManualCarrier && carrierManualName.trim() ? carrierManualName.trim() : null,
       vehiclePlate: vehiclePlate || null,
@@ -203,12 +211,14 @@ export default function NfReceipts() {
           {/* 2º — DESTINO: filial (lista) + armazém + local (texto livre, cadastros futuros) */}
           <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="flex items-center gap-1.5 text-sm font-extrabold text-slate-800"><Building2 className="h-4 w-4" /> Para onde vai a mercadoria</p>
-            <div className="mt-3 grid gap-4 sm:grid-cols-3">
-              <div><label className="text-xs font-extrabold text-slate-700">Filial *</label><select className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800" value={filial} onChange={event => setFilial(event.target.value)}><option value="">Selecione a filial</option>{FILIAIS.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
+            <div className="mt-3 grid gap-4 sm:grid-cols-4">
+              <div><label className="text-xs font-extrabold text-slate-700">Tipo de recebimento *</label><select className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800" value={receiptType} onChange={event => setReceiptType(event.target.value as ReceiptType)}>{Object.entries(receiptTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+              <div><label className="text-xs font-extrabold text-slate-700">Etapa do fluxo *</label><select className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800" value={flowStatus} onChange={event => setFlowStatus(event.target.value as FlowStatus)}>{Object.entries(flowStatusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+              <div><label className="text-xs font-extrabold text-slate-700">{receiptType === "redespacho" ? "Filial destino *" : "Filial recebedora *"}</label><select className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-800" value={filial} onChange={event => setFilial(event.target.value)}><option value="">Selecione a filial</option>{FILIAIS.map(f => <option key={f} value={f}>{f}</option>)}</select></div>
               <div><label className="text-xs font-extrabold text-slate-700">Armazém</label><Input className="mt-1" placeholder="Ex.: 01-DISPONIVEL" value={armazem} onChange={event => setArmazem(event.target.value)} /></div>
               <div><label className="text-xs font-extrabold text-slate-700">Local de estoque</label><Input className="mt-1" placeholder="Ex.: SP" value={localEstoque} onChange={event => setLocalEstoque(event.target.value)} /></div>
             </div>
-            <p className="mt-3 text-xs font-semibold text-slate-500">A filial é obrigatória para o controle das consultas a vendedores e gestão.</p>
+            <p className="mt-3 text-xs font-semibold text-slate-500">O redespacho exige filial destino e poderá ser encerrado pela filial recebedora após a segunda leitura.</p>
           </div>
           {readingPoint === "recebimento" && (
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
