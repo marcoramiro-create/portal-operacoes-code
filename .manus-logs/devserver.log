@@ -1879,3 +1879,7 @@
 [2026-10-05T17:28:16.147Z] 5:28:16 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
 [2026-10-05T17:28:23.964Z] 5:28:23 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
 [2026-10-05T17:28:45.885Z] 5:28:45 PM [vite] (client) hmr update /src/pages/Dashboard.tsx, /src/index.css
+[2026-10-08T17:08:09.847Z] Starting dev server with command: pnpm run dev
+[2026-10-08T17:08:10.582Z] $ cross-env NODE_ENV=development tsx watch server/_core/standalone.ts
+[2026-10-08T17:08:13.572Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-08T17:08:13.946Z] Server running on http://localhost:3000/
