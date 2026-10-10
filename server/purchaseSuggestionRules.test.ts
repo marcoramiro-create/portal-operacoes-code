@@ -85,4 +85,15 @@ describe("purchase suggestion rules", () => {
     }));
     expect(result.suggestedQty % 10).toBe(0);
   });
+
+  it("bloqueia a sugestão quando o relatório de qualidade está bloqueado", () => {
+    const result = buildPurchaseSuggestion(base({
+      dataQualityStatus: "BLOQUEADO",
+      dataQualityIssues: ["SBZ_WITHOUT_SB1"],
+    }));
+    expect(result.decision).toBe("BLOQUEADO");
+    expect(result.confidence).toBe("BLOQUEADA");
+    expect(result.blockers).toContain("qualidade_de_dados_bloqueada");
+    expect(result.suggestedQty).toBe(0);
+  });
 });

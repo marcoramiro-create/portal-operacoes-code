@@ -42,6 +42,8 @@ export type PurchaseSuggestionInput = {
   hasBranchParameters: boolean;
   costVariationPercent?: number;
   openReceivingDiscrepancy?: boolean;
+  dataQualityStatus?: "OK" | "ATENCAO" | "BLOQUEADO";
+  dataQualityIssues?: string[];
 };
 
 export type PurchaseSuggestion = {
@@ -104,6 +106,7 @@ export function buildPurchaseSuggestion(input: PurchaseSuggestionInput): Purchas
   if (input.supplier?.ambiguousLink) blockers.push("SA5_ambigua");
   if (input.supplier && !input.supplier.active) blockers.push("fornecedor_inativo");
   if (input.costVariationPercent !== undefined && Math.abs(input.costVariationPercent) > 30) blockers.push("variacao_de_custo_acima_do_limite");
+  if (input.dataQualityStatus === "BLOQUEADO") blockers.push("qualidade_de_dados_bloqueada");
   if (input.leadTimeDays <= 0) blockers.push("lead_time_invalido");
   if (input.targetCoverageDays < 0 || input.safetyStockDays < 0) blockers.push("parametro_de_estoque_invalido");
 
@@ -117,6 +120,8 @@ export function buildPurchaseSuggestion(input: PurchaseSuggestionInput): Purchas
   if (input.curve === "SEM_CURVA") reasons.push("Produto sem curva ABC/ABCDE; confiança limitada.");
   if (!input.mrp) reasons.push("Produto marcado como MRP Não; recomendação depende de revisão operacional.");
   if (input.costVariationPercent !== undefined && Math.abs(input.costVariationPercent) > 15) reasons.push("Custo recente apresenta variação relevante.");
+  if (input.dataQualityStatus === "ATENCAO") reasons.push("A qualidade dos dados exige atenção antes da aprovação.");
+  if (input.dataQualityIssues?.length) reasons.push(`Pendências de qualidade: ${input.dataQualityIssues.slice(0, 3).join(", ")}.`);
 
   let decision: PurchaseDecision;
   if (blockers.length > 0) decision = "BLOQUEADO";
@@ -141,6 +146,7 @@ export function buildPurchaseSuggestion(input: PurchaseSuggestionInput): Purchas
     demandDaily > 0,
     input.leadTimeDays > 0,
     input.costVariationPercent === undefined || Math.abs(input.costVariationPercent) <= 30,
+    input.dataQualityStatus !== "BLOQUEADO",
   ].filter(Boolean).length;
   const confidence: Confidence = blockers.length > 0 ? "BLOQUEADA" : qualitySignals >= 6 ? "ALTA" : qualitySignals >= 4 ? "MEDIA" : "BAIXA";
 
