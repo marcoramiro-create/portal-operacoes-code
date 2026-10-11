@@ -1890,3 +1890,4 @@
 [2026-10-11T14:28:28.945Z] 2:28:28 PM [tsx] change in ./server/supabasePortal.ts Restarting...
 [2026-10-11T14:28:31.238Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-11T14:28:31.468Z] Server running on http://localhost:3000/
+[2026-10-11T14:40:04.326Z] 2:40:04 PM [vite] (client) hmr update /src/pages/UserManagement.tsx, /src/index.css
