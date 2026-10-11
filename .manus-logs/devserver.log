@@ -1884,3 +1884,9 @@
 [2026-10-08T17:08:13.572Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-08T17:08:13.946Z] Server running on http://localhost:3000/
 [2026-10-10T23:17:01.905Z] 11:17:01 PM [vite] (client) hmr update /src/components/DashboardLayout.tsx, /src/index.css
+[2026-10-11T14:28:11.390Z] 2:28:11 PM [tsx] change in ./server/routers/portal.ts Restarting...
+[2026-10-11T14:28:16.898Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-11T14:28:17.354Z] Server running on http://localhost:3000/
+[2026-10-11T14:28:28.945Z] 2:28:28 PM [tsx] change in ./server/supabasePortal.ts Restarting...
+[2026-10-11T14:28:31.238Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-11T14:28:31.468Z] Server running on http://localhost:3000/

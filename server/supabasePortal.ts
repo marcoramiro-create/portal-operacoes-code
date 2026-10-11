@@ -5,7 +5,7 @@ import { authenticatePortalSession } from "./portalAuthService";
 type ApplicationNodeRow = { id: string; node_key: string; label: string; parent_id: string | null; sort_order: number };
 type PortalUserRow = { id: string; auth_user_id: string | null; employee_id: string | null; email: string; display_name: string | null; status: "pending" | "active" | "inactive"; is_development_admin: boolean; can_fulfill_inventory_requests: boolean; profile_keys: string[] | null; profile_key?: string | null; own_password_configured?: boolean };
 type ProfileRow = { id: string; profile_key: string; name: string; description: string | null };
-type RequestRow = { id: string; requested_email: string; status: "pending" | "approved" | "rejected" | "cancelled"; reason: string | null; created_at: Date; display_name: string | null; active_user_exists?: boolean };
+type RequestRow = { id: string; requested_email: string; requested_display_name: string | null; person_type: "PF" | "PJ" | null; document_number: string | null; card_number: string | null; status: "pending" | "approved" | "rejected" | "cancelled"; reason: string | null; created_at: Date; display_name: string | null; active_user_exists?: boolean };
 type Permission = "view" | "manage" | "approve";
 type PermissionNodeRow = ApplicationNodeRow & { view: boolean; manage: boolean; approve: boolean };
 
@@ -353,7 +353,7 @@ export async function resendActivationInvite(userId: string) {
   throw new TRPCError({ code: "BAD_REQUEST", message: `Provisione a senha inicial de ${user.email} pelo procedimento seguro na VM; o envio de convite por e-mail foi descontinuado.` });
 }
 
-export async function createAccessRequest(input: { email: string; displayName: string; reason?: string }) {
+export async function createAccessRequest(input: { email: string; displayName: string; personType: "PF" | "PJ"; documentNumber: string; cardNumber?: string; reason?: string }) {
   const database = getSupabasePool();
   const existing = await database.query<{ active_user_exists: boolean; pending_request_exists: boolean }>(
     `select
@@ -364,34 +364,34 @@ export async function createAccessRequest(input: { email: string; displayName: s
   if (existing.rows[0]?.active_user_exists) throw new TRPCError({ code: "BAD_REQUEST", message: "Este e-mail já possui acesso ativo ao portal." });
   if (existing.rows[0]?.pending_request_exists) throw new TRPCError({ code: "BAD_REQUEST", message: "Já existe uma solicitação pendente para este e-mail." });
   await database.query(
-    `insert into public.user_access_requests (requested_email, reason)
-     values ($1, $2)`,
-    [input.email, input.reason ?? null],
+    `insert into public.user_access_requests (requested_email, requested_display_name, person_type, document_number, card_number, reason)
+     values ($1, $2, $3, $4, nullif($5, ''), $6)`,
+    [input.email.toLowerCase(), input.displayName.trim(), input.personType, input.documentNumber, input.cardNumber?.trim() ?? "", input.reason ?? null],
   );
-  await database.query("insert into public.audit_events (entity_type, action, details) values ('access_request', 'requested', jsonb_build_object('display_name', $1::text, 'email', $2::text))", [input.displayName, input.email]);
+  await database.query("insert into public.audit_events (entity_type, action, details) values ('access_request', 'requested', jsonb_build_object('display_name', $1::text, 'email', $2::text, 'person_type', $3::text))", [input.displayName, input.email, input.personType]);
   return { success: true } as const;
 }
 
 export async function listAccessRequests() {
   const result = await getSupabasePool().query<RequestRow>(
-    `select request.id, request.requested_email, request.status, request.reason, request.created_at, null::text as display_name,
+    `select request.id, request.requested_email, request.requested_display_name, request.person_type, request.document_number, request.card_number, request.status, request.reason, request.created_at, null::text as display_name,
        exists(select 1 from public.portal_users user_record where lower(user_record.email) = lower(request.requested_email) and user_record.status = 'active') as active_user_exists
      from public.user_access_requests request
      order by request.created_at desc`,
   );
-  return result.rows.map(row => ({ id: row.id, email: row.requested_email, status: row.status, reason: row.reason, createdAt: row.created_at, userAlreadyActive: row.active_user_exists ?? false }));
+  return result.rows.map(row => ({ id: row.id, email: row.requested_email, displayName: row.requested_display_name, personType: row.person_type, documentNumber: row.document_number, cardNumber: row.card_number, status: row.status, reason: row.reason, createdAt: row.created_at, userAlreadyActive: row.active_user_exists ?? false }));
 }
 
 export async function reviewAccessRequest(input: { requestId: string; decision: "approved" | "rejected"; profileKey?: string; displayName?: string }, actor: PortalIdentity) {
   const database = getSupabasePool();
-  const request = await database.query<RequestRow>("select id, requested_email, status, reason, created_at, null::text as display_name from public.user_access_requests where id = $1", [input.requestId]);
+  const request = await database.query<RequestRow>("select id, requested_email, requested_display_name, person_type, document_number, card_number, status, reason, created_at, null::text as display_name from public.user_access_requests where id = $1", [input.requestId]);
   const current = request.rows[0];
   if (!current || current.status !== "pending") throw new TRPCError({ code: "BAD_REQUEST", message: "Solicitação indisponível para revisão." });
   if (input.decision === "approved") {
-    if (!input.profileKey || !input.displayName) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o nome e perfil para aprovar a solicitação." });
+    if (!input.profileKey || !(input.displayName || current.requested_display_name)) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o nome e perfil para aprovar a solicitação." });
     const existingActiveUser = await database.query<{ id: string }>("select id from public.portal_users where lower(email) = lower($1) and status = 'active' limit 1", [current.requested_email]);
     if (existingActiveUser.rows[0]) throw new TRPCError({ code: "BAD_REQUEST", message: "Este e-mail já possui acesso ativo. Arquive a solicitação duplicada sem aprová-la." });
-    await createPortalUser({ email: current.requested_email, displayName: input.displayName, profileKey: input.profileKey }, actor);
+    await createPortalUser({ email: current.requested_email, displayName: input.displayName || current.requested_display_name!, profileKey: input.profileKey }, actor);
   }
   await database.query("update public.user_access_requests set status = $2, reviewed_by_user_id = $3, reviewed_at = now(), updated_at = now() where id = $1", [input.requestId, input.decision, actor.id]);
   return { success: true } as const;
