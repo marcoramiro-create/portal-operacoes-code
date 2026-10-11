@@ -1891,3 +1891,17 @@
 [2026-10-11T14:28:31.238Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-11T14:28:31.468Z] Server running on http://localhost:3000/
 [2026-10-11T14:40:04.326Z] 2:40:04 PM [vite] (client) hmr update /src/pages/UserManagement.tsx, /src/index.css
+[2026-10-11T15:03:57.948Z] [Auth] Missing session cookie
+[2026-10-11T15:03:59.948Z] [Auth] Missing session cookie
+[2026-10-11T15:04:01.416Z] [Auth] Missing session cookie
+[2026-10-11T15:04:27.719Z] [Auth] Missing session cookie
+[2026-10-11T15:04:34.095Z] [Auth] Missing session cookie
+[2026-10-11T15:05:34.265Z] 3:05:34 PM [tsx] change in ./server/supabasePortal.ts Restarting...
+[2026-10-11T15:05:36.520Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-11T15:05:36.784Z] Server running on http://localhost:3000/
+[2026-10-11T15:06:11.149Z] 3:06:11 PM [tsx] change in ./server/supabasePortal.ts Restarting...
+[2026-10-11T15:06:13.566Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-11T15:06:13.828Z] Server running on http://localhost:3000/
+[2026-10-11T15:06:36.144Z] 3:06:36 PM [tsx] change in ./server/supabasePortal.ts Restarting...
+[2026-10-11T15:06:38.373Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-11T15:06:38.602Z] Server running on http://localhost:3000/

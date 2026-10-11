@@ -291,14 +291,17 @@ export async function updateUserOperationalScope(input: { userId: string; branch
   return listUserOperationalScope(input.userId);
 }
 
-export async function createPortalUser(input: { email: string; displayName: string; profileKey: string }, actor: PortalIdentity) {
+export async function createPortalUser(input: { email: string; displayName: string; profileKey: string; personType?: "PF" | "PJ"; documentNumber?: string; cardNumber?: string }, actor: PortalIdentity) {
   const database = getSupabasePool();
   const portalUser = await database.query<{ id: string }>(
-    `insert into public.portal_users (email, display_name, status)
-     values ($1, $2, 'active')
-     on conflict (email) do update set display_name = excluded.display_name, status = 'active', updated_at = now()
+    `insert into public.portal_users (email, display_name, status, person_type, document_number, card_number)
+     values ($1, $2, 'active', $3, $4, nullif($5, ''))
+     on conflict (email) do update set display_name = excluded.display_name, status = 'active',
+       person_type = coalesce(excluded.person_type, public.portal_users.person_type),
+       document_number = coalesce(excluded.document_number, public.portal_users.document_number),
+       card_number = coalesce(excluded.card_number, public.portal_users.card_number), updated_at = now()
      returning id`,
-    [input.email, input.displayName],
+    [input.email, input.displayName, input.personType ?? null, input.documentNumber ?? null, input.cardNumber?.trim() ?? ""],
   );
   await assignProfile(portalUser.rows[0].id, input.profileKey, actor);
   await database.query("insert into public.audit_events (actor_user_id, entity_type, entity_id, action, details) values ($1, 'portal_user', $2, 'created', jsonb_build_object('email', $3::text))", [actor.id, portalUser.rows[0].id, input.email]);
@@ -355,14 +358,18 @@ export async function resendActivationInvite(userId: string) {
 
 export async function createAccessRequest(input: { email: string; displayName: string; personType: "PF" | "PJ"; documentNumber: string; cardNumber?: string; reason?: string }) {
   const database = getSupabasePool();
-  const existing = await database.query<{ active_user_exists: boolean; pending_request_exists: boolean }>(
+  const existing = await database.query<{ active_user_exists: boolean; pending_request_exists: boolean; active_document_exists: boolean; pending_document_exists: boolean }>(
     `select
        exists(select 1 from public.portal_users where lower(email) = lower($1) and status = 'active') as active_user_exists,
-       exists(select 1 from public.user_access_requests where lower(requested_email) = lower($1) and status = 'pending') as pending_request_exists`,
-    [input.email],
+       exists(select 1 from public.user_access_requests where lower(requested_email) = lower($1) and status = 'pending') as pending_request_exists,
+       exists(select 1 from public.portal_users where person_type = $2 and document_number = $3 and status = 'active') as active_document_exists,
+       exists(select 1 from public.user_access_requests where person_type = $2 and document_number = $3 and status = 'pending') as pending_document_exists`,
+    [input.email, input.personType, input.documentNumber],
   );
   if (existing.rows[0]?.active_user_exists) throw new TRPCError({ code: "BAD_REQUEST", message: "Este e-mail já possui acesso ativo ao portal." });
   if (existing.rows[0]?.pending_request_exists) throw new TRPCError({ code: "BAD_REQUEST", message: "Já existe uma solicitação pendente para este e-mail." });
+  if (existing.rows[0]?.active_document_exists) throw new TRPCError({ code: "BAD_REQUEST", message: "Este documento já está vinculado a um usuário ativo." });
+  if (existing.rows[0]?.pending_document_exists) throw new TRPCError({ code: "BAD_REQUEST", message: "Já existe uma solicitação pendente para este documento." });
   await database.query(
     `insert into public.user_access_requests (requested_email, requested_display_name, person_type, document_number, card_number, reason)
      values ($1, $2, $3, $4, nullif($5, ''), $6)`,
@@ -391,7 +398,7 @@ export async function reviewAccessRequest(input: { requestId: string; decision: 
     if (!input.profileKey || !(input.displayName || current.requested_display_name)) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o nome e perfil para aprovar a solicitação." });
     const existingActiveUser = await database.query<{ id: string }>("select id from public.portal_users where lower(email) = lower($1) and status = 'active' limit 1", [current.requested_email]);
     if (existingActiveUser.rows[0]) throw new TRPCError({ code: "BAD_REQUEST", message: "Este e-mail já possui acesso ativo. Arquive a solicitação duplicada sem aprová-la." });
-    await createPortalUser({ email: current.requested_email, displayName: input.displayName || current.requested_display_name!, profileKey: input.profileKey }, actor);
+    await createPortalUser({ email: current.requested_email, displayName: input.displayName || current.requested_display_name!, profileKey: input.profileKey, personType: current.person_type ?? undefined, documentNumber: current.document_number ?? undefined, cardNumber: current.card_number ?? undefined }, actor);
   }
   await database.query("update public.user_access_requests set status = $2, reviewed_by_user_id = $3, reviewed_at = now(), updated_at = now() where id = $1", [input.requestId, input.decision, actor.id]);
   return { success: true } as const;
