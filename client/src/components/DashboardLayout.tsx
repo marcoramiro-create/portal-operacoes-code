@@ -1,4 +1,4 @@
-import { LogOut, PackageCheck, PanelLeft, Home, ShoppingCart, FileText, TrendingUp, Boxes, Wrench, Users, ShieldCheck, Building2, MapPin, Package, Truck, ClipboardList, Warehouse, Settings, UploadCloud, Star, LayoutGrid, Coins, Database } from "lucide-react";
+import { LogOut, PackageCheck, PanelLeft, Home, ShoppingCart, FileText, TrendingUp, Boxes, Wrench, Users, ShieldCheck, Building2, MapPin, Package, Truck, ClipboardList, Warehouse, Settings, UploadCloud, Star, LayoutGrid, Coins, Database, Search, ChevronDown, X } from "lucide-react";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
@@ -94,6 +94,26 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
     try { const raw = localStorage.getItem(FAV_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
   });
   useEffect(() => { localStorage.setItem(FAV_KEY, JSON.stringify(favorites)); }, [favorites, FAV_KEY]);
+  const SECTION_KEY = `portal-menu-sections-${userId}`;
+  const [collapsedSections, setCollapsedSections] = useState<string[]>(() => {
+    try { const raw = localStorage.getItem(SECTION_KEY); return raw ? JSON.parse(raw) : []; } catch { return []; }
+  });
+  const [menuSearch, setMenuSearch] = useState("");
+  useEffect(() => { localStorage.setItem(SECTION_KEY, JSON.stringify(collapsedSections)); }, [collapsedSections, SECTION_KEY]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        document.getElementById("portal-menu-search")?.focus();
+      }
+      if (event.key === "Escape" && document.activeElement?.id === "portal-menu-search") {
+        setMenuSearch("");
+        (document.activeElement as HTMLElement).blur();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
   const toggleFavorite = (path: string) => {
     setFavorites((prev) => (prev.includes(path) ? prev.filter((p) => p !== path) : [...prev, path]));
   };
@@ -102,6 +122,16 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
     const allowed = visibleSections.flatMap((s) => s.items);
     return allowed.filter((i) => favorites.includes(i.path));
   }, [visibleSections, favorites]);
+  const filteredSections = useMemo(() => {
+    const term = menuSearch.trim().toLocaleLowerCase("pt-BR");
+    if (!term) return visibleSections;
+    return visibleSections
+      .map((section) => ({ ...section, items: section.items.filter((item) => item.label.toLocaleLowerCase("pt-BR").includes(term)) }))
+      .filter((section) => section.items.length > 0);
+  }, [menuSearch, visibleSections]);
+  const toggleSection = (title: string) => {
+    setCollapsedSections((prev) => prev.includes(title) ? prev.filter((item) => item !== title) : [...prev, title]);
+  };
   // ----- FIM DOS FAVORITOS -----
   useEffect(() => {
     const move = (event: MouseEvent) => {
@@ -127,30 +157,21 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
     setLocation(path);
   };
   const renderItem = (item: MenuItem) => {
-    const isActive = location === item.path;
+    const isActive = location === item.path || (item.path !== "/" && location.startsWith(`${item.path}/`));
     const isFav = favorites.includes(item.path);
     return (
-      <SidebarMenuItem key={item.path + item.label}>
+      <SidebarMenuItem key={item.path + item.label} className="group/item flex items-center gap-1">
         <SidebarMenuButton
           type="button"
           onClick={() => handleNavigate(item.path)}
           tooltip={item.label}
           data-active={isActive}
-          className={`${isActive ? "bg-slate-950 text-white hover:bg-slate-950 hover:text-white" : "text-slate-700 hover:bg-white hover:text-slate-950"}`}
+          className={`min-w-0 flex-1 ${isActive ? "bg-slate-950 text-white hover:bg-slate-950 hover:text-white" : "text-slate-700 hover:bg-white hover:text-slate-950"}`}
         >
           <item.icon className="h-4 w-4 shrink-0" />
-          <span className="flex-1 truncate">{item.label}</span>
-          <span
-            role="button"
-            tabIndex={0}
-            aria-label={isFav ? "Remover dos favoritos" : "Adicionar aos favoritos"}
-            onClick={(e) => { e.stopPropagation(); toggleFavorite(item.path); }}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); toggleFavorite(item.path); } }}
-            className={`shrink-0 rounded p-0.5 transition-colors hover:text-amber-500 ${isFav ? "text-amber-500" : "text-slate-400"}`}
-          >
-            <Star className={`h-3.5 w-3.5 ${isFav ? "fill-amber-500" : ""}`} />
-          </span>
+          <span className="truncate">{item.label}</span>
         </SidebarMenuButton>
+        {!isCollapsed && <button type="button" aria-label={isFav ? `Remover ${item.label} dos favoritos` : `Adicionar ${item.label} aos favoritos`} onClick={() => toggleFavorite(item.path)} className={`shrink-0 rounded-md p-1.5 transition-colors hover:bg-white hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${isFav ? "text-amber-500" : "text-slate-400 opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100"}`}><Star className={`h-3.5 w-3.5 ${isFav ? "fill-amber-500" : ""}`} /></button>}
       </SidebarMenuItem>
     );
   };
@@ -161,18 +182,26 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
         <SidebarContent className="gap-0 overflow-y-auto px-2 pt-3">
           {!authLoading && (isMobile || !isCollapsed) && (
             <>
+              <div className="mb-4 px-1">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input id="portal-menu-search" value={menuSearch} onChange={(event) => setMenuSearch(event.target.value)} placeholder="Buscar no menu" aria-label="Buscar no menu" className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs text-slate-800 outline-none transition-shadow placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-950/10" />
+                  {menuSearch ? <button type="button" aria-label="Limpar busca do menu" onClick={() => setMenuSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"><X className="h-3.5 w-3.5" /></button> : <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-slate-200 px-1 text-[9px] text-slate-400">⌘K</kbd>}
+                </div>
+              </div>
               {favoriteItems.length > 0 && (
                 <div className="mb-3">
                   <p className="flex items-center gap-1.5 px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-amber-600"><Star className="h-3 w-3 fill-amber-500" />Favoritos</p>
                   <SidebarMenu>{favoriteItems.map(renderItem)}</SidebarMenu>
                 </div>
               )}
-              {visibleSections.map((section) => (
+              {filteredSections.map((section) => (
                 <div key={section.title} className="mb-3">
-                  <p className="flex items-center gap-1.5 px-2 pb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400"><section.icon className="h-3 w-3" />{section.title}</p>
-                  <SidebarMenu>{section.items.map(renderItem)}</SidebarMenu>
+                  <button type="button" onClick={() => toggleSection(section.title)} aria-expanded={!collapsedSections.includes(section.title)} className="mb-1 flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 transition-colors hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"><section.icon className="h-3 w-3" /><span className="flex-1">{section.title}</span><ChevronDown className={`h-3 w-3 transition-transform ${collapsedSections.includes(section.title) ? "-rotate-90" : ""}`} /></button>
+                  {(!collapsedSections.includes(section.title) || Boolean(menuSearch)) && <SidebarMenu>{section.items.map(renderItem)}</SidebarMenu>}
                 </div>
               ))}
+              {menuSearch && filteredSections.length === 0 && <p className="px-3 py-6 text-center text-xs text-slate-500">Nenhum item encontrado.</p>}
             </>
           )}
           <div className="mt-auto border-t border-slate-200/70 px-1 py-3"><SidebarMenu><SidebarMenuItem><SidebarMenuButton type="button" onClick={() => { setOpen(false); if (isMobile) setOpenMobile(false); void handleSignOut(); }} disabled={isSigningOut} tooltip="Sair da aplicação" className="text-slate-700 hover:bg-white hover:text-slate-950"><LogOut className="h-4 w-4" /><span>{isSigningOut ? "Saindo…" : "Sair da aplicação"}</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu></div>
