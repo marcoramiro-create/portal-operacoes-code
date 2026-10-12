@@ -1905,3 +1905,5 @@
 [2026-10-11T15:06:36.144Z] 3:06:36 PM [tsx] change in ./server/supabasePortal.ts Restarting...
 [2026-10-11T15:06:38.373Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-11T15:06:38.602Z] Server running on http://localhost:3000/
+[2026-10-12T21:56:49.298Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-12T21:56:49.533Z] Server running on http://localhost:3000/

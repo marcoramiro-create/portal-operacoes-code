@@ -1,7 +1,8 @@
-﻿import { TRPCError } from "@trpc/server";
+import { TRPCError } from "@trpc/server";
 import { PoolClient } from "pg";
 import { normalizeCell, parseActive, parseYesNo, registrationLayouts, RegistrationType } from "../shared/registrationLayouts";
 import { getSupabasePool, type PortalIdentity } from "./supabasePortal";
+import { validatePersonDocument } from "./personDocumentValidation";
 
 export type ImportRow = Record<string, string>;
 export type ImportIssue = { row: number; field: string; message: string };
@@ -33,6 +34,17 @@ export function validateRegistrationRows(type: RegistrationType, rawRows: Import
     const rowNumber = index + 2;
     layout.columns.filter(column => column.required && !row[column.key]).forEach(column => issues.push({ row: rowNumber, field: column.label, message: "Campo obrigatório não preenchido." }));
     if (row.email && !/^\S+@\S+\.\S+$/.test(row.email)) issues.push({ row: rowNumber, field: "E-mail", message: "Informe um e-mail válido." });
+    if (type === "employees") {
+      const personType = (row.tipo_pessoa ?? "").trim().toUpperCase();
+      if (!["PF", "PJ"].includes(personType)) {
+        issues.push({ row: rowNumber, field: "Tipo de pessoa", message: "Use PF ou PJ." });
+      } else {
+        const document = validatePersonDocument(personType as "PF" | "PJ", row.documento ?? "");
+        if (!document.valid) issues.push({ row: rowNumber, field: personType === "PF" ? "CPF" : "CNPJ", message: document.message ?? "Documento inválido." });
+        else row.documento = document.normalized;
+        row.tipo_pessoa = personType;
+      }
+    }
     if (row.ativo && !parseActive(row.ativo).valid) issues.push({ row: rowNumber, field: "Ativo", message: "Use SIM ou NÃO." });
     if (type === "employees") {
       if (row.requisitante_almoxarifado && !parseYesNo(row.requisitante_almoxarifado).valid) issues.push({ row: rowNumber, field: "Pode requisitar almoxarifado", message: "Use SIM ou NÃO." });
@@ -98,6 +110,8 @@ async function validateReferences(type: RegistrationType, rows: ImportRow[]) {
           const existing = await client.query<{ employee_code: string }>("select employee_code from public.employees where lower(email) = lower($1) and employee_code <> $2", [row.email, row.codigo_funcionario]);
           if (existing.rows[0]) issues.push({ row: index + 2, field: "E-mail", message: "Este e-mail já pertence a outro código de funcionário." });
         }
+        const duplicateDocument = await client.query<{ employee_code: string }>("select employee_code from public.employees where person_type = $1 and document_number = $2 and employee_code <> $3 limit 1", [row.tipo_pessoa, row.documento, row.codigo_funcionario]);
+        if (duplicateDocument.rows[0]) issues.push({ row: index + 2, field: row.tipo_pessoa === "PF" ? "CPF" : "CNPJ", message: "Este documento já pertence a outro funcionário." });
       }
       if (type === "products" && !(await resolveProductType(client, row.codigo_tipo_produto))) issues.push({ row: index + 2, field: "Código do tipo de produto", message: "Tipo de produto ativo não encontrado." });
       if (type === "users") {
