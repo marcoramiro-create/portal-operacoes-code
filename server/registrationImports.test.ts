@@ -35,7 +35,23 @@ describe("validação de leiautes de cadastro", () => {
   it("valida a data e a liberação de requisição no cadastro de funcionário", () => {
     const invalid = validateRegistrationRows("employees", [{ codigo_funcionario: "0001", nome_completo: "Pessoa", email: "", codigo_empresa: "", codigo_filial: "", codigo_unidade: "", codigo_centro_custo: "", departamento: "", cargo: "", codigo_gestor: "", data_admissao: "01/01/2026", requisitante_almoxarifado: "TALVEZ", ativo: "SIM" }]);
     expect(invalid.valid).toBe(false);
-    expect(invalid.issues.map(issue => issue.field)).toEqual(expect.arrayContaining(["Data de admissão", "Pode requisitar almoxarifado"]));
+    expect(invalid.issues.map(issue => issue.field)).toEqual(expect.arrayContaining(["Tipo de pessoa", "Data de admissão", "Pode requisitar almoxarifado"]));
+  });
+
+  it("aceita CPF válido, normaliza a pontuação e preserva cartão opcional", () => {
+    const result = validateRegistrationRows("employees", [{ codigo_funcionario: "0002", nome_completo: "Pessoa Física", tipo_pessoa: "pf", documento: "529.982.247-25", numero_cartao: "CART-02", data_admissao: "2026-01-02", requisitante_almoxarifado: "SIM", ativo: "SIM" }]);
+    expect(result.valid).toBe(true);
+    expect(result.rows[0]?.tipo_pessoa).toBe("PF");
+    expect(result.rows[0]?.documento).toBe("52998224725");
+  });
+
+  it("rejeita CPF com dígito verificador incorreto e CNPJ inválido", () => {
+    const cpf = validateRegistrationRows("employees", [{ codigo_funcionario: "0003", nome_completo: "CPF Inválido", tipo_pessoa: "PF", documento: "52998224726", ativo: "SIM" }]);
+    const cnpj = validateRegistrationRows("employees", [{ codigo_funcionario: "0004", nome_completo: "CNPJ Inválido", tipo_pessoa: "PJ", documento: "11222333000182", ativo: "SIM" }]);
+    expect(cpf.valid).toBe(false);
+    expect(cpf.issues.some(issue => issue.field === "CPF")).toBe(true);
+    expect(cnpj.valid).toBe(false);
+    expect(cnpj.issues.some(issue => issue.field === "CNPJ")).toBe(true);
   });
 
   it("rejeita um perfil de usuário fora do catálogo permitido", () => {

@@ -1907,3 +1907,11 @@
 [2026-10-11T15:06:38.602Z] Server running on http://localhost:3000/
 [2026-10-12T21:56:49.298Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-12T21:56:49.533Z] Server running on http://localhost:3000/
+[2026-10-12T22:00:29.167Z] 10:00:29 PM [vite] (client) hmr update /src/pages/RegistrationImport.tsx, /src/components/RegistrationPermissions.tsx
+[2026-10-12T22:00:29.169Z] 10:00:29 PM [vite] (client) hmr update /src/pages/RegistrationImport.tsx, /src/index.css
+[2026-10-12T22:00:29.242Z] 10:00:29 PM [tsx] change in ./server/registrationImports.ts Restarting...
+[2026-10-12T22:00:31.474Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-12T22:00:31.722Z] Server running on http://localhost:3000/
+[2026-10-12T22:00:54.115Z] 10:00:54 PM [tsx] change in ./server/registrationImports.ts Restarting...
+[2026-10-12T22:00:56.280Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-12T22:00:56.518Z] Server running on http://localhost:3000/

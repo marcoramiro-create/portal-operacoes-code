@@ -1,4 +1,4 @@
-import { TRPCError } from "@trpc/server";
+﻿import { TRPCError } from "@trpc/server";
 import { PoolClient } from "pg";
 import { normalizeCell, parseActive, parseYesNo, registrationLayouts, RegistrationType } from "../shared/registrationLayouts";
 import { getSupabasePool, type PortalIdentity } from "./supabasePortal";
@@ -39,10 +39,12 @@ export function validateRegistrationRows(type: RegistrationType, rawRows: Import
       if (!["PF", "PJ"].includes(personType)) {
         issues.push({ row: rowNumber, field: "Tipo de pessoa", message: "Use PF ou PJ." });
       } else {
-        const document = validatePersonDocument(personType as "PF" | "PJ", row.documento ?? "");
-        if (!document.valid) issues.push({ row: rowNumber, field: personType === "PF" ? "CPF" : "CNPJ", message: document.message ?? "Documento inválido." });
-        else row.documento = document.normalized;
         row.tipo_pessoa = personType;
+        if (row.documento) {
+          const document = validatePersonDocument(personType as "PF" | "PJ", row.documento);
+          if (!document.valid) issues.push({ row: rowNumber, field: personType === "PF" ? "CPF" : "CNPJ", message: document.message ?? "Documento inválido." });
+          else row.documento = document.normalized;
+        }
       }
     }
     if (row.ativo && !parseActive(row.ativo).valid) issues.push({ row: rowNumber, field: "Ativo", message: "Use SIM ou NÃO." });
@@ -110,8 +112,6 @@ async function validateReferences(type: RegistrationType, rows: ImportRow[]) {
           const existing = await client.query<{ employee_code: string }>("select employee_code from public.employees where lower(email) = lower($1) and employee_code <> $2", [row.email, row.codigo_funcionario]);
           if (existing.rows[0]) issues.push({ row: index + 2, field: "E-mail", message: "Este e-mail já pertence a outro código de funcionário." });
         }
-        const duplicateDocument = await client.query<{ employee_code: string }>("select employee_code from public.employees where person_type = $1 and document_number = $2 and employee_code <> $3 limit 1", [row.tipo_pessoa, row.documento, row.codigo_funcionario]);
-        if (duplicateDocument.rows[0]) issues.push({ row: index + 2, field: row.tipo_pessoa === "PF" ? "CPF" : "CNPJ", message: "Este documento já pertence a outro funcionário." });
       }
       if (type === "products" && !(await resolveProductType(client, row.codigo_tipo_produto))) issues.push({ row: index + 2, field: "Código do tipo de produto", message: "Tipo de produto ativo não encontrado." });
       if (type === "users") {
@@ -146,9 +146,9 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
         const companyId = await resolveCompany(client, row.codigo_empresa);
         const branchId = await resolveBranch(client, row.codigo_empresa, row.codigo_filial);
         const managerId = await resolveManager(client, row.codigo_gestor);
-        await client.query(`insert into public.employees (employee_code, full_name, email, company_id, branch_id, cost_center_id, department_id, job_position_id, department, job_title, manager_employee_id, admission_date, is_inventory_requester, active)
-          values ($1, $2, nullif($3, ''), $4, $5, $6, $7, $8, nullif($9, ''), nullif($10, ''), $11, nullif($12, '')::date, $13, $14)
-          on conflict (employee_code) do update set full_name = excluded.full_name, email = excluded.email, company_id = excluded.company_id, branch_id = excluded.branch_id, cost_center_id = excluded.cost_center_id, department_id = excluded.department_id, job_position_id = excluded.job_position_id, department = excluded.department, job_title = excluded.job_title, manager_employee_id = excluded.manager_employee_id, admission_date = excluded.admission_date, is_inventory_requester = excluded.is_inventory_requester, active = excluded.active, updated_at = now()`, [row.codigo_funcionario, row.nome_completo, row.email, companyId, branchId, costCenterId, departmentId, jobPositionId, row.departamento, row.cargo, managerId, row.data_admissao, parseYesNo(row.requisitante_almoxarifado).value, active]);
+        await client.query(`insert into public.employees (employee_code, full_name, person_type, document_number, card_number, email, company_id, branch_id, cost_center_id, department_id, job_position_id, department, job_title, manager_employee_id, admission_date, is_inventory_requester, active)
+          values ($1, $2, upper(coalesce(nullif($3, ''), 'PF')), nullif($4, ''), nullif($5, ''), nullif($6, ''), $7, $8, $9, $10, $11, nullif($12, ''), nullif($13, ''), $14, nullif($15, '')::date, $16, $17)
+          on conflict (employee_code) do update set full_name = excluded.full_name, person_type = excluded.person_type, document_number = excluded.document_number, card_number = excluded.card_number, email = excluded.email, company_id = excluded.company_id, branch_id = excluded.branch_id, cost_center_id = excluded.cost_center_id, department_id = excluded.department_id, job_position_id = excluded.job_position_id, department = excluded.department, job_title = excluded.job_title, manager_employee_id = excluded.manager_employee_id, admission_date = coalesce(excluded.admission_date, employees.admission_date), is_inventory_requester = excluded.is_inventory_requester, active = excluded.active, updated_at = now()`, [row.codigo_funcionario, row.nome_completo, row.tipo_pessoa, row.documento, row.numero_cartao, row.email, companyId, branchId, costCenterId, departmentId, jobPositionId, row.departamento, row.cargo, managerId, row.data_admissao, parseYesNo(row.requisitante_almoxarifado).value, active]);
       }
       if (type === "suppliers") await client.query(`insert into public.suppliers (supplier_code, store_code, legal_name, trade_name, document_number, active)
         values ($1, $2, $3, nullif($4, ''), nullif($5, ''), $6)
@@ -181,7 +181,7 @@ export async function commitRegistrationImport(type: RegistrationType, rawRows: 
 export async function listRegistrationRecords(type: RegistrationType) {
   const database = getSupabasePool();
   if (type === "employees") {
-    const result = await database.query(`select employee.employee_code as code, employee.full_name as name, employee.email, company.code as codigo_empresa, branch.code as codigo_filial, cost_center.code as codigo_centro_custo, department.code as departamento, job_position.code as cargo, manager.employee_code as codigo_gestor, employee.admission_date as data_admissao, employee.is_inventory_requester as requisitante_almoxarifado, employee.active, employee.updated_at as updated_at
+    const result = await database.query(`select employee.employee_code as code, employee.full_name as name, employee.person_type as tipo_pessoa, employee.document_number as documento, employee.card_number as numero_cartao, employee.email, company.code as codigo_empresa, branch.code as codigo_filial, cost_center.code as codigo_centro_custo, department.code as departamento, job_position.code as cargo, manager.employee_code as codigo_gestor, to_char(employee.admission_date, 'YYYY-MM-DD') as data_admissao, employee.is_inventory_requester as requisitante_almoxarifado, employee.active, employee.updated_at as updated_at
       from public.employees employee left join public.companies company on company.id = employee.company_id left join public.branches branch on branch.id = employee.branch_id left join public.cost_centers cost_center on cost_center.id = employee.cost_center_id left join public.departments department on department.id = employee.department_id left join public.job_positions job_position on job_position.id = employee.job_position_id left join public.employees manager on manager.id = employee.manager_employee_id order by employee.full_name limit 200`);
     return result.rows;
   }

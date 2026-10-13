@@ -31,7 +31,10 @@ export const registrationLayouts: Record<RegistrationType, RegistrationLayout> =
     key: "employees", label: "Funcionários", sheetName: "Funcionarios", fileName: "leiaute-funcionarios", description: "Cadastro de pessoas e vínculos organizacionais utilizado por requisições, entregas, responsabilidades e demais operações do portal.",
     columns: [
       { key: "codigo_funcionario", label: "Código do funcionário", required: true, hint: "Código único da pessoa no ERP ou controle interno." },
-      { key: "nome_completo", label: "Nome completo", required: true, hint: "Nome completo do funcionário." },
+      { key: "nome_completo", label: "Nome completo", required: true, hint: "Nome completo da pessoa ou razão social do PJ." },
+      { key: "tipo_pessoa", label: "Tipo de pessoa", required: true, hint: "Selecione PF ou PJ." },
+      { key: "documento", label: "CPF ou CNPJ", hint: "Informe CPF para PF ou CNPJ para PJ, se disponível." },
+      { key: "numero_cartao", label: "Número do cartão", hint: "Número do cartão de identificação, se houver." },
       { key: "email", label: "E-mail", hint: "E-mail corporativo, se houver." },
       { key: "codigo_empresa", label: "Código da empresa", hint: "Empresa já cadastrada; deixe em branco se não se aplicar." },
       { key: "codigo_filial", label: "Código da filial", hint: "Filial já cadastrada na empresa informada; deixe em branco se não se aplicar." },
