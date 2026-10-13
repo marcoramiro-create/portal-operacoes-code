@@ -53,7 +53,10 @@ export function attachCostBenchmarkReport(
   for (const item of analysis.items ?? []) {
     const series = carryForward(item, periods).filter((value): value is number => value != null);
     if (series.length === 0) continue;
-    const curve = item.curve ?? curves[keyFor(item.filial, item.codigo)] ?? "SEM_CURVA";
+    const curve = item.curve
+      ?? curves[keyFor(item.filial, item.codigo)]
+      ?? (item.cod_agregado ? curves[keyFor(item.filial, item.cod_agregado)] : undefined)
+      ?? "SEM_CURVA";
     item.curve = curve;
     inputs.push({
       productCode: item.codigo,

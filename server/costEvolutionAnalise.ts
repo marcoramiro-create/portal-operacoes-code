@@ -21,6 +21,7 @@ async function getCurrentCurveLookup(
   segment: CostEvolutionSegment | undefined,
   branch: string | null,
 ) {
+  const rows: Array<{ code: string; branchCode: string; curve: string }> = [];
   try {
     const operation = segment === "industry" ? "INDUSTRIA" : "AUTOPECAS";
     const result = await pool.query<{ code: string; branchCode: string; curve: string }>(
@@ -35,12 +36,34 @@ async function getCurrentCurveLookup(
           and c.curve_code in ('A', 'B', 'C', 'D', 'E')`,
       [operation, branch],
     );
-    return buildCostCurveLookup(result.rows);
+    rows.push(...result.rows);
   } catch {
-    // A instalação antiga pode ainda não possuir a tabela de curvas. A evolução
-    // de custos continua funcionando com o payload legado, sem bloquear a tela.
-    return {};
+    // Instalações antigas podem ainda não possuir a tabela de curvas.
   }
+
+  // Autopeças tem sua curva ABCDE calculada na importação aprovada de Compras
+  // (inventoryAnalytics). A tabela sbz_product_curves é a fonte persistida da
+  // Curva ABC da Indústria e não deve ser usada como única fonte para Compras.
+  if (segment !== "industry") {
+    try {
+      const result = await pool.query<{ code: string; branchCode: string; curve: string }>(
+        `select trim(a.code) as code,
+                trim(a.branch) as "branchCode",
+                trim(a.curve) as curve
+           from public."inventoryAnalytics" a
+           join public."protheusImports" i on i.id = a."importId"
+          where i.status = 'approved'
+            and ($1::text is null or trim(a.branch) = $1)
+            and trim(a.curve) in ('A', 'B', 'C', 'D', 'E')`,
+        [branch],
+      );
+      rows.push(...result.rows);
+    } catch {
+      // A base sem o histórico de Compras continua exibindo SEM_CURVA.
+    }
+  }
+
+  return buildCostCurveLookup(rows);
 }
 
 // Retorna a evolução mês a mês de cada item (matriz item x mês)

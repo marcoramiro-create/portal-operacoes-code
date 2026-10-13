@@ -32,4 +32,19 @@ describe("cost evolution benchmark adapter", () => {
     expect(result.benchmarkReport.countsByCurve.SEM_CURVA).toBe(1);
     expect(result.benchmarkReport.items[0].reasons).toContain("item_sem_curva_abc");
   });
+
+  it("falls back to the aggregate code used by the Compras ABCDE import", () => {
+    const result = attachCostBenchmarkReport({
+      periodos: [{ period: "202501" }, { period: "202502" }],
+      items: [{
+        codigo: "PROD-01",
+        cod_agregado: "AGR-01",
+        filial: "0101",
+        meses: [{ period: "202501", custo_medio: 50 }, { period: "202502", custo_medio: 55 }],
+      }],
+    }, { "0101|AGR-01": "B" }, "auto_parts");
+
+    expect(result.items?.[0]).toMatchObject({ curve: "B" });
+    expect(result.benchmarkReport.countsByCurve.B).toBe(1);
+  });
 });
