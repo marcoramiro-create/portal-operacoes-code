@@ -9,6 +9,7 @@ import { previewCatalogImport } from "./operationalCatalogPreview";
 import { previewOperationalImport } from "./operationalSourcePreview";
 import { previewOperationMap } from "./operationMapPreview";
 import { obterCurvaIndustriaAtual, recalcularCurvaIndustria } from "./industryCurveService";
+import { listImportHistory } from "./importHistoryService";
 function auth(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 const fileInput = z.object({ fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1) });
 const catalogKind = z.enum(["SB1", "SBZ", "SB5", "SA2"]);
@@ -35,6 +36,7 @@ async function assertCurvaIndustriaPermission(identity: PortalIdentity, permissi
   if (!permissions[permission]) throw new TRPCError({ code: "FORBIDDEN", message: "Seu usuário não possui o nível de acesso necessário neste módulo." });
 }
 export const operationalImportRouter = router({
+  history: publicProcedure.query(async ({ ctx }) => { await admin(ctx); return listImportHistory(); }),
   previewOperationMap: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationMap(input.fileName, content); }),
   previewPurchaseOrders: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationalImport("PEDIDO_COMPRA", input.fileName, content); }),
   previewNfLegal: publicProcedure.input(fileInput.extend({ sourceKind: z.enum(["NF_LEGAL", "NF_NATIVA"]) })).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationalImport(input.sourceKind, input.fileName, content); }),

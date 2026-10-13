@@ -1948,3 +1948,6 @@
 [2026-10-13T14:08:15.406Z] Server running on http://localhost:3000/
 [2026-10-13T14:17:23.129Z] 2:17:23 PM [vite] (client) hmr update /src/App.tsx, /src/index.css
 [2026-10-13T14:17:26.423Z] 2:17:26 PM [vite] (client) hmr update /src/index.css, /src/components/DashboardLayout.tsx
+[2026-10-13T14:26:58.876Z] 2:26:58 PM [tsx] change in ./server/operationalImportRouter.ts Restarting...
+[2026-10-13T14:27:01.189Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-13T14:27:01.445Z] Server running on http://localhost:3000/

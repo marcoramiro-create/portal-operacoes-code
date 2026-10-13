@@ -26,6 +26,7 @@ import AssetImport from "./pages/AssetImport";
 import { CostEvolutionDashboard, CostEvolutionImport } from "./pages/CostEvolution";
 import MaterialEntryImport from "./pages/MaterialEntryImport";
 import IndustryOperationalImport from "./pages/IndustryOperationalImport";
+import ImportHistory from "./pages/ImportHistory";
 import { Route, Switch } from "wouter";
 import IndustryCurve from "./pages/IndustryCurve";
 
@@ -54,6 +55,7 @@ function Router() {
     <Route path="/importacoes/custos-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-custos-industria" level="manage"><CostEvolutionImport segment="industry" /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/entrada-materiais"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-entrada-materiais" level="manage"><MaterialEntryImport /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/importacoes/estoque-industria"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-estoque-industria" level="manage"><IndustryOperationalImport mode="stock" /></ApplicationRouteGuard></WithLayout></Route>
+    <Route path="/importacoes/historico"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-historico" level="view"><ImportHistory /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/industria/curva-abc"><WithLayout><IndustryCurve /></WithLayout></Route>
     <Route path="/importar"><WithLayout><ApplicationRouteGuard nodeKey="importacoes-compras-protheus" level="manage"><ImportData /></ApplicationRouteGuard></WithLayout></Route>
     <Route path="/administracao/auditoria-backlog"><WithLayout><ApplicationRouteGuard nodeKey="administracao"><AuditBacklog /></ApplicationRouteGuard></WithLayout></Route>

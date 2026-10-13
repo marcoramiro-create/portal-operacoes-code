@@ -30,6 +30,7 @@ export const MENU: MenuSection[] = [
     icon: UploadCloud,
     items: [
       { label: "Cadastros Protheus", path: "/importacoes/compras-protheus", icon: UploadCloud, nodeLabels: ["Importar · Análise de compras Protheus", "Importações"] },
+      { label: "Histórico de cargas", path: "/importacoes/historico", icon: FileText, nodeLabels: ["Histórico de importações", "Importações"] },
       { label: "Funcionários", path: "/importacoes/funcionarios", icon: UploadCloud, nodeLabels: ["Importar Funcionários", "Importações"] },
       { label: "Fornecedores", path: "/importacoes/fornecedores", icon: UploadCloud, nodeLabels: ["Importar Fornecedores", "Importações"] },
       { label: "Produtos", path: "/importacoes/produtos", icon: UploadCloud, nodeLabels: ["Importar Produtos", "Importações"] },
