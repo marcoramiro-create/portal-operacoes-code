@@ -1915,3 +1915,6 @@
 [2026-10-12T22:00:54.115Z] 10:00:54 PM [tsx] change in ./server/registrationImports.ts Restarting...
 [2026-10-12T22:00:56.280Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-12T22:00:56.518Z] Server running on http://localhost:3000/
+[2026-10-13T00:54:59.897Z] 12:54:59 AM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css
+[2026-10-13T00:55:07.191Z] 12:55:07 AM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css
+[2026-10-13T00:55:19.629Z] 12:55:19 AM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css

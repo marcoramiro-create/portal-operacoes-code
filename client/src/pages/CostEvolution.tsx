@@ -87,7 +87,21 @@ export function CostEvolutionImport({ segment }: { segment: Segment }) {
   </div>;
 }
 
-type ItemRow = { codigo: string; descricao: string; filial: string; cod_agregado: string | null; meses: { period: string; custo_medio: number | null }[] };
+type CurveCode = "A" | "B" | "C" | "D" | "E" | "SEM_CURVA";
+type CurveSummary = {
+  itemCount: number;
+  itemsWithBase: number;
+  averageVariationPercent: number | null;
+  estimatedImpact: number | null;
+  highAlerts: number;
+};
+type BenchmarkReport = {
+  internalInflationPercent?: number | null;
+  topIncreases?: { codigo: string; descricao: string; curve: CurveCode; costVariationPercent: number | null }[];
+  topReductions?: { codigo: string; descricao: string; curve: CurveCode; costVariationPercent: number | null }[];
+  byCurve?: Partial<Record<CurveCode, CurveSummary>>;
+};
+type ItemRow = { codigo: string; descricao: string; filial: string; cod_agregado: string | null; curve?: CurveCode; meses: { period: string; custo_medio: number | null }[] };
 type SearchType = "contem" | "inicia" | "termina";
 
 const FILIAL_UNICA_INDUSTRY = "0105";
@@ -146,6 +160,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     toast.success("Filtros aplicados.");
   };
   const items: ItemRow[] = useMemo(() => (analise.data?.items ?? []) as ItemRow[], [analise.data?.items]);
+  const benchmark = (analise.data as { benchmarkReport?: BenchmarkReport } | undefined)?.benchmarkReport;
   const periods: string[] = useMemo(() => (analise.data?.periodos ?? []).map((p: { period: string }) => p.period), [analise.data?.periodos]);
   const filteredItems = useMemo(() => {
     if (!applied.descricao) return items;
@@ -171,6 +186,9 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     });
     return { comCusto, alta, reducao, varMedia: nVar ? somaVar / nVar : null };
   }, [filteredItems, periods]);
+  const curveRows = useMemo(() => Object.entries(benchmark?.byCurve ?? {})
+    .filter((entry): entry is [CurveCode, CurveSummary] => Boolean(entry[1]))
+    .sort(([a], [b]) => a.localeCompare(b)), [benchmark?.byCurve]);
   const chartData = useMemo(() => {
     if (!filteredItems.length) return [];
     return periods.map(p => {
@@ -265,6 +283,11 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     <section className="sticky top-0 z-10 mt-5 grid gap-4 bg-[#f2f4f5] py-3 md:grid-cols-3 xl:grid-cols-6">
       {analyzing ? <div className="sc-surface col-span-full flex items-center gap-3 p-4 text-sm font-semibold text-slate-600"><LoaderCircle className="h-4 w-4 animate-spin" />Carregando análise…</div> : [["Custo total", money.format(0)], ["Variação vs mês anterior", cardData.varMedia == null ? "—" : `${cardData.varMedia > 0 ? "+" : ""}${number.format(cardData.varMedia)}%`], ["Itens com custo", cardData.comCusto.toLocaleString("pt-BR")], ["Itens com alta", cardData.alta.toLocaleString("pt-BR")], ["Itens com redução", cardData.reducao.toLocaleString("pt-BR")], ["Base de comparação", periods.length ? `${monthLabel(periods[0])} a ${monthLabel(periods[periods.length - 1])}` : "—"]].map(([label, value]) => <div key={label} className="sc-surface p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-500">{label}</p><p className="mt-2 text-lg font-extrabold tracking-tight text-slate-950">{value}</p></div>)}
     </section>
+    {runAnalysis && benchmark && <section className="sc-surface mt-5 overflow-hidden">
+      <div className="border-b border-slate-100 px-5 py-5 sm:px-7"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="eyebrow">Cruzamento gerencial</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">Curva ABC na evolução de custos</h2><p className="mt-1 text-sm font-medium text-slate-500">Prioriza as variações pelo peso econômico da curva, sem alterar a classificação original.</p></div>{benchmark.internalInflationPercent != null && <div className="rounded-xl bg-sky-50 px-4 py-3 text-right"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-sky-700">Inflação interna</p><p className="mt-1 text-xl font-extrabold text-sky-950">{benchmark.internalInflationPercent > 0 ? "+" : ""}{number.format(benchmark.internalInflationPercent)}%</p></div>}</div></div>
+      {curveRows.length > 0 && <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Curva</TableHead><TableHead>Itens</TableHead><TableHead>Com base</TableHead><TableHead>Variação média</TableHead><TableHead>Impacto estimado</TableHead><TableHead>Alertas altos</TableHead></TableRow></TableHeader><TableBody>{curveRows.map(([curve, summary]) => <TableRow key={curve}><TableCell><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-extrabold text-slate-800">{curve === "SEM_CURVA" ? "Sem curva" : curve}</span></TableCell><TableCell>{summary.itemCount.toLocaleString("pt-BR")}</TableCell><TableCell>{summary.itemsWithBase.toLocaleString("pt-BR")}</TableCell><TableCell>{summary.averageVariationPercent == null ? "—" : `${summary.averageVariationPercent > 0 ? "+" : ""}${number.format(summary.averageVariationPercent)}%`}</TableCell><TableCell>{summary.estimatedImpact == null ? "—" : money.format(summary.estimatedImpact)}</TableCell><TableCell>{summary.highAlerts.toLocaleString("pt-BR")}</TableCell></TableRow>)}</TableBody></Table></div>}
+      {curveRows.length === 0 && <div className="p-5 text-sm font-medium text-slate-500 sm:p-7">O cruzamento ABC ainda não foi retornado para este conjunto de filtros. A tela já está preparada para exibi-lo assim que a carga aprovada da Curva ABC estiver vinculada aos itens.</div>}
+    </section>}
     {runAnalysis && !analise.isLoading && !applied.codAgregado && filteredItems.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">Gráfico de evolução</h2><p className="mt-1 text-xs font-semibold text-slate-500">Selecione um <strong>Item agregado</strong> e clique em <strong>Filtrar</strong> para exibir o gráfico de evolução de custos. Sem filtro de agregado, o gráfico fica oculto para manter a página rápida — os dados completos estão na tabela abaixo.</p></div></div></section>}
     {applied.codAgregado && chartData.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">Evolução do agregado {applied.codAgregado}</h2><p className="mt-1 text-xs font-semibold text-slate-500">Uma linha por item{isIndustry ? "" : " e por filial"}. Meses sem preço usam o valor do mês anterior.</p></div></div><div className="mt-6 h-80"><ResponsiveContainer width="100%" height="100%"><LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="period" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={value => number.format(Number(value))} /><Tooltip formatter={value => money.format(Number(value))} />{filteredItems.map((item, idx) => <Line key={itemChartKey(item)} type="monotone" dataKey={itemChartKey(item)} name={`${item.codigo} · ${item.descricao}${item.filial && !isIndustry ? ` · Filial ${item.filial}` : ""}`} stroke={LINE_COLORS[idx % LINE_COLORS.length]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />)}</LineChart></ResponsiveContainer></div></section>}
     <section className="sc-surface mt-5 overflow-hidden">
