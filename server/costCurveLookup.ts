@@ -8,7 +8,13 @@ export type CurveLookupRow = {
 
 export type CurveLookup = Record<string, CurveCode>;
 
-const normalize = (value: string | null | undefined) => String(value ?? "").trim();
+const normalize = (value: string | null | undefined) => {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const [numeric, ...suffix] = text.split("-");
+  const normalizedNumeric = numeric.replace(/^0+(?=\d)/, "");
+  return suffix.length > 0 ? `${normalizedNumeric}-${suffix.join("-")}` : normalizedNumeric;
+};
 
 export const curveLookupKey = (branchCode: string | null | undefined, code: string) =>
   `${normalize(branchCode)}|${normalize(code)}`;

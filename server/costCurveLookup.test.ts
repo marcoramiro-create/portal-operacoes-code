@@ -21,4 +21,13 @@ describe("cost curve lookup", () => {
 
     expect(Object.keys(lookup)).toHaveLength(0);
   });
+
+  it("matches the industry aggregate even when zero padding differs", () => {
+    const lookup = buildCostCurveLookup([
+      { code: "03545", branchCode: "0105", curve: "A" },
+    ]);
+
+    expect(findCostCurve(lookup, "0105", "3545")).toBe("A");
+    expect(findCostCurve(lookup, "0105", "03545-MGT")).toBeUndefined();
+  });
 });

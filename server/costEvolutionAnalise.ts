@@ -32,7 +32,7 @@ async function getCurrentCurveLookup(
               trim(c.branch_code) as "branchCode",
               c.curve_code as curve
          from public.sbz_product_curves c
-         join public.products p on p.id = c.product_id
+         left join public.products p on p.id = c.product_id
         where c.operation = $1
           and c.is_current = true
           and ($2::text is null or c.branch_code = $2)
