@@ -1943,3 +1943,6 @@
 [2026-10-13T11:28:18.562Z] 11:28:18 AM [tsx] change in ./server/costEvolutionAnalise.ts Restarting...
 [2026-10-13T11:28:20.792Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-13T11:28:21.061Z] Server running on http://localhost:3000/
+[2026-10-13T14:08:13.190Z] 2:08:13 PM [tsx] change in ./server/costEvolutionAnalise.ts Restarting...
+[2026-10-13T14:08:15.179Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-13T14:08:15.406Z] Server running on http://localhost:3000/

@@ -1,30 +1,28 @@
 // ============================================================
 // costEvolutionAnalise.ts
 // Ponte entre o portal e as funções SQL de evolução de custos.
-// Chama as funções criadas no Supabase e devolve os dados
-// prontos para a página do dashboard.
 // ============================================================
-import { getBusinessPool } from "./supabasePortal";
+import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
 import { buildCostCurveLookup } from "./costCurveLookup";
 
 type CostEvolutionSegment = "auto_parts" | "industry";
-
-// A base cost_records guarda autopeças e indústria juntas, e a função
-// get_cost_evolution não recebe o segmento. A indústria tem filial única
-// 0105: quando o segmento for "industry" e nenhuma filial vier informada,
-// forçamos o filtro de filial para 0105 — isolando a base da indústria.
 const INDUSTRY_BRANCH = "0105";
 
 async function getCurrentCurveLookup(
-  pool: ReturnType<typeof getBusinessPool>,
+  businessPool: ReturnType<typeof getBusinessPool>,
+  portalPool: ReturnType<typeof getSupabasePool>,
   segment: CostEvolutionSegment | undefined,
   branch: string | null,
 ) {
   const rows: Array<{ code: string; branchCode: string; curve: string }> = [];
+
+  // A Curva ABC/Indústria é um cadastro operacional. Na Produção ela está
+  // em portal_operacoes_prod, enquanto cost_records fica em portal_negocio_prod.
+  // Em instalações legadas os dois pools podem apontar para o mesmo banco.
   try {
     const operation = segment === "industry" ? "INDUSTRIA" : "AUTOPECAS";
-    const result = await pool.query<{ code: string; branchCode: string; curve: string }>(
+    const result = await portalPool.query<{ code: string; branchCode: string; curve: string }>(
       `select coalesce(nullif(trim(p.source_product_code), ''), trim(p.product_code)) as code,
               trim(c.branch_code) as "branchCode",
               c.curve_code as curve
@@ -38,15 +36,14 @@ async function getCurrentCurveLookup(
     );
     rows.push(...result.rows);
   } catch {
-    // Instalações antigas podem ainda não possuir a tabela de curvas.
+    // Bases antigas podem não possuir a tabela de curvas.
   }
 
-  // Autopeças tem sua curva ABCDE calculada na importação aprovada de Compras
-  // (inventoryAnalytics). A tabela sbz_product_curves é a fonte persistida da
-  // Curva ABC da Indústria e não deve ser usada como única fonte para Compras.
+  // Autopeças usa a Curva ABCDE calculada na última importação aprovada de
+  // Compras. A fonte fica no banco de negócio, não em sbz_product_curves.
   if (segment !== "industry") {
     try {
-      const result = await pool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
+      const result = await businessPool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
         `select trim(a.code) as code,
                 nullif(trim(a."codeOriginal"), '') as "codeOriginal",
                 trim(a.branch) as "branchCode",
@@ -78,7 +75,6 @@ async function getCurrentCurveLookup(
   return buildCostCurveLookup(rows);
 }
 
-// Retorna a evolução mês a mês de cada item (matriz item x mês)
 export async function getCostEvolutionAnalise(params: {
   segment?: CostEvolutionSegment;
   periodoInicio?: string;
@@ -87,12 +83,13 @@ export async function getCostEvolutionAnalise(params: {
   codAgregado?: string;
   descricao?: string;
 }) {
-  const pool = getBusinessPool();
+  const businessPool = getBusinessPool();
+  const portalPool = getSupabasePool();
   const filial =
     params.segment === "industry" && !params.filial?.trim()
       ? INDUSTRY_BRANCH
       : (params.filial ?? null);
-  const { rows } = await pool.query(
+  const { rows } = await businessPool.query(
     `select get_cost_evolution($1, $2, $3, $4, $5) as result`,
     [
       params.periodoInicio ?? null,
@@ -103,26 +100,23 @@ export async function getCostEvolutionAnalise(params: {
     ],
   );
   const result = rows[0]?.result ?? { periodos: [], items: [] };
-  const curves = await getCurrentCurveLookup(pool, params.segment, filial);
+  const curves = await getCurrentCurveLookup(businessPool, portalPool, params.segment, filial);
   if (Object.keys(curves).length === 0) return result;
   return attachCostBenchmarkReport(result, curves, params.segment ?? "auto_parts");
 }
 
-// Retorna a lista de filiais (para o dropdown)
 export async function getFiliais() {
   const pool = getBusinessPool();
   const { rows } = await pool.query(`select get_filiais() as result`);
   return rows[0]?.result ?? [];
 }
 
-// Retorna a lista de itens agregados (para o dropdown)
 export async function getCodAgregados() {
   const pool = getBusinessPool();
   const { rows } = await pool.query(`select get_cod_agregados() as result`);
   return rows[0]?.result ?? [];
 }
 
-// Retorna a lista de períodos existentes (para os dropdowns de data)
 export async function getPeriodos() {
   const pool = getBusinessPool();
   const { rows } = await pool.query(`select get_periodos() as result`);
