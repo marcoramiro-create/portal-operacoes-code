@@ -1951,3 +1951,5 @@
 [2026-10-13T14:26:58.876Z] 2:26:58 PM [tsx] change in ./server/operationalImportRouter.ts Restarting...
 [2026-10-13T14:27:01.189Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-13T14:27:01.445Z] Server running on http://localhost:3000/
+[2026-10-13T14:47:52.836Z] 2:47:52 PM [vite] (client) hmr update /src/index.css, /src/components/DashboardLayout.tsx
+[2026-10-13T14:48:02.367Z] 2:48:02 PM [vite] (client) hmr update /src/components/DashboardLayout.tsx, /src/index.css

@@ -169,7 +169,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
           className={`min-w-0 flex-1 ${isActive ? "bg-slate-950 text-white hover:bg-slate-950 hover:text-white" : "text-slate-700 hover:bg-white hover:text-slate-950"}`}
         >
           <item.icon className="h-4 w-4 shrink-0" />
-          <span className="truncate">{item.label}</span>
+          <span className="min-w-0 truncate"><span className="block truncate">{item.label}</span>{item.description && !isCollapsed && <span className={`block truncate text-[10px] font-medium ${isActive ? "text-slate-300" : "text-slate-400"}`}>{item.description}</span>}</span>
         </SidebarMenuButton>
         {!isCollapsed && <button type="button" aria-label={isFav ? `Remover ${item.label} dos favoritos` : `Adicionar ${item.label} aos favoritos`} onClick={() => toggleFavorite(item.path)} className={`shrink-0 rounded-md p-1.5 transition-colors hover:bg-white hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${isFav ? "text-amber-500" : "text-slate-400 opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100"}`}><Star className={`h-3.5 w-3.5 ${isFav ? "fill-amber-500" : ""}`} /></button>}
       </SidebarMenuItem>
@@ -197,7 +197,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
               )}
               {filteredSections.map((section) => (
                 <div key={section.title} className="mb-3">
-                  <button type="button" onClick={() => toggleSection(section.title)} aria-expanded={!collapsedSections.includes(section.title)} className="mb-1 flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 transition-colors hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"><section.icon className="h-3 w-3" /><span className="flex-1">{section.title}</span><ChevronDown className={`h-3 w-3 transition-transform ${collapsedSections.includes(section.title) ? "-rotate-90" : ""}`} /></button>
+                  <button type="button" onClick={() => toggleSection(section.title)} aria-expanded={!collapsedSections.includes(section.title)} className="mb-1 flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400 transition-colors hover:bg-white hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950"><section.icon className="h-3 w-3" /><span className="min-w-0 flex-1"><span className="block">{section.title}</span>{section.description && <span className="block truncate text-[9px] font-medium normal-case tracking-normal text-slate-400">{section.description}</span>}</span><ChevronDown className={`h-3 w-3 transition-transform ${collapsedSections.includes(section.title) ? "-rotate-90" : ""}`} /></button>
                   {(!collapsedSections.includes(section.title) || Boolean(menuSearch)) && <SidebarMenu>{section.items.map(renderItem)}</SidebarMenu>}
                 </div>
               ))}
