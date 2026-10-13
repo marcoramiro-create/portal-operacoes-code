@@ -40,8 +40,8 @@
 - [x] Modelar usuários, grupos de acesso e permissões por aplicação e subaplicação.
 - [ ] Definir a priorização de reconstrução do painel Protheus, recebimentos e consumíveis, EPIs e uniformes.
 - [ ] Mapear fontes de dados e integrações para as aplicações de estoque, custos, fornecedores e manutenção.
-- [ ] Definir o fluxo próprio de solicitação, criação, aprovação, liberação e redefinição de senha de usuários.
-- [ ] Implementar cadastros e controles vinculados a funcionário, centro de custo e unidade.
+- [x] Definir o fluxo próprio de solicitação, criação, aprovação, liberação e redefinição de senha de usuários.
+- [x] Implementar cadastros e controles vinculados a funcionário, centro de custo e unidade.
 - [ ] Garantir a importação e a exportação por planilhas nos cadastros do portal.
 - [ ] Avaliar e definir o uso de OneDrive sob controle do usuário para arquivos e dados do portal.
 - [ ] Separar o administrador de desenvolvimento dos usuários operacionais configuráveis.
@@ -69,6 +69,8 @@
 - [x] Implementar tela administrativa de usuários para listar, consultar status, ativar ou inativar e atribuir perfis.
 - [x] Implementar reenvio de convite e solicitação de redefinição de senha para usuários homologados.
 - [ ] Implementar e testar o fluxo de solicitação de acesso e aprovação usando as tabelas externas existentes.
+- [ ] Validar em homologação o fluxo completo de solicitação: criar, revisar, aprovar, ativar e autenticar o usuário.
+- [ ] Adicionar teste automatizado do fluxo completo de solicitação/aprovação, incluindo duplicidade de e-mail/documento e vínculo do usuário aprovado.
 - [x] Corrigir o reconhecimento do retorno de redefinição de senha do Supabase para abrir a tela de definição de senha.
 - [x] Corrigir os comandos da área de Administração que não executam as ações de usuários e solicitações.
 - [x] Validar no portal publicado a tela de usuários com uma conta administradora, incluindo listagem, perfil, status e solicitações.
@@ -132,7 +134,7 @@
 - [x] Controlar a responsabilidade por ferramentas, EPIs e uniformes vinculados aos funcionários.
 - [x] Criar consultas e exportação Excel para posição e movimentações do novo controle.
 - [x] Criar cadastros em tabela para empresa, filial, armazém e múltiplos locais de estoque.
-- [ ] Ampliar o cadastro de funcionários para identificar requisitantes e dados operacionais reutilizáveis nos próximos módulos.
+- [x] Ampliar o cadastro de funcionários para identificar requisitantes e dados operacionais reutilizáveis nos próximos módulos.
 - [ ] Controlar tamanho, CA, lote, validade e demais atributos aplicáveis a EPIs e uniformes.
 - [x] Registrar para ferramentas o funcionário responsável, datas, atendente e estado de entrega e devolução.
 - [ ] Implementar requisição por usuário requisitante e atendimento pelo usuário do almoxarifado, sem aprovação inicial.
@@ -181,10 +183,10 @@
 - [x] Substituir a prévia prevista para locais pelo processo de prévia do AGRA045 para Armazéns.
 - [x] Adotar o CSV exportado do Protheus como fonte operacional de atualização de Fornecedores, mantendo o XML original apenas para conferência.
 - [x] Reconhecer e mapear automaticamente os cabeçalhos dos arquivos do Protheus já integrados, sem tratamento manual de colunas pelo usuário.
-- [ ] Importar o AGRA045 como cadastro de Armazéns do Protheus após confirmação explícita do usuário.
+- [x] Importar o AGRA045 como cadastro de Armazéns do Protheus após confirmação explícita do usuário.
 - [x] Manter Locais de estoque como referências internas do portal, vinculadas a armazém e independentes do Protheus.
-- [ ] Analisar e mapear automaticamente o CSV SI3 para Centros de custo, preservando seus vínculos organizacionais quando informados.
-- [ ] Mostrar prévia de inclusões e alterações do CSV SI3 antes de gravar centros de custo na homologação.
+- [x] Analisar e mapear automaticamente o CSV SI3 para Centros de custo, preservando seus vínculos organizacionais quando informados.
+- [x] Mostrar prévia de inclusões e alterações do CSV SI3 antes de gravar centros de custo na homologação.
 - [x] Exibir erro orientado na tela de Cadastros quando as permissões ou registros não puderem ser carregados, evitando conteúdo vazio.
 - [x] Processar a carga confirmada de fornecedores da MATA020 em lote, mantendo validação e auditoria da atualização recorrente.
 - [x] Adaptar Centros de custo para identificação por filial e código, permitindo códigos repetidos entre filiais sem perder histórico.
