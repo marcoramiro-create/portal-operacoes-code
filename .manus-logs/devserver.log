@@ -1968,3 +1968,9 @@
 [2026-10-13T20:36:43.661Z] 8:36:43 PM [tsx] change in ./server/costEvolutionAnalise.ts Restarting...
 [2026-10-13T20:36:45.981Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-13T20:36:46.232Z] Server running on http://localhost:3000/
+[2026-10-13T20:42:17.048Z] 8:42:17 PM [tsx] change in ./server/protheusImport.ts Restarting...
+[2026-10-13T20:42:20.028Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-13T20:42:20.364Z] Server running on http://localhost:3000/
+[2026-10-13T20:42:28.552Z] 8:42:28 PM [tsx] change in ./server/protheusCalculations.ts Restarting...
+[2026-10-13T20:42:30.645Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-13T20:42:30.868Z] Server running on http://localhost:3000/

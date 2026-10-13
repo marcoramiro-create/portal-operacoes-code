@@ -262,8 +262,8 @@ export function parseProtheusWorkbook(linhasBrutas: unknown[][], emissao?: Date 
 }
 /**
  * Cruza os registros de Compras com SB1, SBZ, Famílias e SubFamílias.
- * SB1 procura primeiro pelo Codigo; se não achar, procura pelo Cod Agregado
- * (regra da fórmula original =SEERRO(PROCV(...);PROCV(...))).
+ * A Compras usa o código agregado como código gerencial. Por isso a SB1
+ * procura primeiro pelo Cod Agregado; o código individual é fallback legado.
  * // REGRA DE NEGÓCIO (09/09/2026): SBZ NÃO tem coluna "cod agregado" — o
  * //   Código da Compras (cod agregado da SB1) aponta para o Código da SBZ,
  * //   pela chave (código normalizado + filial 4 dígitos).
@@ -276,9 +276,10 @@ export function enriquecerCompras(
   subFamilias: FamiliasMap,
 ): PurchaseRow[] {
   return registros.map((r) => {
-    // 1) SB1 pelas DUAS chaves: Codigo primeiro, depois Cod Agregado
-    const porCodigo = sb1.porCodigo.get(r.codigo);
-    const sb1Row = porCodigo ?? sb1.porCodAgregado.get(r.codigo);
+    // 1) Regra gerencial: filial + código agregado; produto individual só
+    // entra como fallback quando a fonte legada não trouxe o agregado.
+    const porAgregado = sb1.porCodAgregado.get(r.codigo);
+    const sb1Row = porAgregado ?? sb1.porCodigo.get(r.codigo);
     let familia = '';
     let subFamilia = '';
     let tipo = '';

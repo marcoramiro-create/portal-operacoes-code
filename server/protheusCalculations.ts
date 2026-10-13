@@ -96,6 +96,15 @@ export function normalizeCode(codigo: string | null | undefined): string {
   }
   return numero;
 }
+
+/**
+ * Chave gerencial da Curva ABC de Compras.
+ * Nesta fonte, PurchaseRow.codigo representa o código agregado; o vínculo
+ * nunca deve ser global, pois a classificação pode variar por filial.
+ */
+export function purchaseAggregateKey(filial: string, codigoAgregado: string): string {
+  return `${String(filial ?? '').trim()}|${normalizeCode(codigoAgregado)}`;
+}
 // ===========================================================================
 // Tipos
 // ===========================================================================
@@ -300,14 +309,14 @@ export function calcularCurvasAbcde(rows: PurchaseRow[], emissao?: Date | null):
           curva = 'C';
         }
       }
-      const chaveItem = `${r.codigo}|${r.filial}`;
+      const chaveItem = purchaseAggregateKey(r.filial, r.codigo);
       classeMacroPorItem.set(chaveItem, classe);
       curvaPorItem.set(chaveItem, curva);
     }
   }
   // 3) Aplica classe, curva, excedente e giro em cada linha.
   return rows.map((r) => {
-    const chaveItem = `${r.codigo}|${r.filial}`;
+    const chaveItem = purchaseAggregateKey(r.filial, r.codigo);
     const classeMacro = classeMacroPorItem.get(chaveItem) ?? 'C';
     const curva = curvaPorItem.get(chaveItem) ?? 'C';
     // Excedente CORRIGIDO (09/09/2026): usa CD real da planilha e alvos A/B/C/D/E.
