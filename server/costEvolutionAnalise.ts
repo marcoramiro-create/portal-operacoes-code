@@ -101,7 +101,8 @@ export async function getCostEvolutionAnalise(params: {
   );
   const result = rows[0]?.result ?? { periodos: [], items: [] };
   const curves = await getCurrentCurveLookup(businessPool, portalPool, params.segment, filial);
-  if (Object.keys(curves).length === 0) return result;
+  // Mesmo sem curvas encontradas, anexa o relatório para que a interface
+  // mostre a coluna/diagnóstico "Sem curva" em vez de ocultar o painel.
   return attachCostBenchmarkReport(result, curves, params.segment ?? "auto_parts");
 }
 
