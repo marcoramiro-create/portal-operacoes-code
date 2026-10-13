@@ -12,6 +12,7 @@ export type CostBenchmarkInput = {
   curve: "A" | "B" | "C" | "D" | "E" | "SEM_CURVA";
   costStart: number;
   costEnd: number;
+  quantity?: number;
   weight?: number;
 };
 

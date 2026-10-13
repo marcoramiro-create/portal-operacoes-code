@@ -8,7 +8,7 @@ describe("costBenchmarkReport", () => {
       benchmarks: { IPCA: 4 },
       topN: 2,
       items: [
-        { productCode: "A", curve: "A", costStart: 100, costEnd: 130 },
+        { productCode: "A", curve: "A", costStart: 100, costEnd: 130, quantity: 10 },
         { productCode: "B", curve: "B", costStart: 200, costEnd: 180 },
         { productCode: "C", curve: "C", costStart: 0, costEnd: 10 },
       ],
@@ -18,6 +18,8 @@ describe("costBenchmarkReport", () => {
     expect(report.topReductions.map((item) => item.productCode)).toEqual(["B", "A"]);
     expect(report.countsByAlert.SEM_BASE).toBe(1);
     expect(report.countsByCurve.A).toBe(1);
+    expect(report.byCurve.A.estimatedImpact).toBe(300);
+    expect(report.byCurve.A.highAlerts).toBe(1);
     expect(report.internalInflationPercent).toBe(3.3333);
   });
 
