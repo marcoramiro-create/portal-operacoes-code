@@ -1924,3 +1924,9 @@
 [2026-10-13T00:58:39.134Z] 12:58:39 AM [tsx] change in ./server/costEvolutionAnalise.ts Restarting...
 [2026-10-13T00:58:41.231Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-13T00:58:41.497Z] Server running on http://localhost:3000/
+[2026-10-13T01:07:06.385Z] [Auth] Missing session cookie
+[2026-10-13T01:07:08.411Z] [Auth] Missing session cookie
+[2026-10-13T01:11:57.594Z] 1:11:57 AM [tsx] change in ./server/costEvolutionAnalise.ts Restarting...
+[2026-10-13T01:11:59.502Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-13T01:11:59.730Z] Server running on http://localhost:3000/
+[2026-10-13T01:12:15.799Z] 1:12:15 AM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css

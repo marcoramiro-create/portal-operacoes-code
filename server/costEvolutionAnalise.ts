@@ -6,6 +6,7 @@
 // ============================================================
 import { getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
+import { buildCostCurveLookup } from "./costCurveLookup";
 
 type CostEvolutionSegment = "auto_parts" | "industry";
 
@@ -22,8 +23,9 @@ async function getCurrentCurveLookup(
 ) {
   try {
     const operation = segment === "industry" ? "INDUSTRIA" : "AUTOPECAS";
-    const result = await pool.query<{ code: string; curve: string }>(
+    const result = await pool.query<{ code: string; branchCode: string; curve: string }>(
       `select coalesce(nullif(trim(p.source_product_code), ''), trim(p.product_code)) as code,
+              trim(c.branch_code) as "branchCode",
               c.curve_code as curve
          from public.sbz_product_curves c
          join public.products p on p.id = c.product_id
@@ -33,10 +35,7 @@ async function getCurrentCurveLookup(
           and c.curve_code in ('A', 'B', 'C', 'D', 'E')`,
       [operation, branch],
     );
-    return Object.fromEntries(result.rows.filter(row => row.code).map(row => [
-      `${branch ?? ""}|${row.code}`,
-      row.curve as "A" | "B" | "C" | "D" | "E",
-    ]));
+    return buildCostCurveLookup(result.rows);
   } catch {
     // A instalação antiga pode ainda não possuir a tabela de curvas. A evolução
     // de custos continua funcionando com o payload legado, sem bloquear a tela.
