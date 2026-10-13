@@ -47,4 +47,23 @@ describe("cost evolution benchmark adapter", () => {
     expect(result.items?.[0]).toMatchObject({ curve: "B" });
     expect(result.benchmarkReport.countsByCurve.B).toBe(1);
   });
+
+  it("prioritizes the branch plus aggregate code over the individual product code", () => {
+    const result = attachCostBenchmarkReport({
+      periodos: [{ period: "202501" }, { period: "202502" }],
+      items: [{
+        codigo: "PROD-01",
+        cod_agregado: "AGR-01",
+        filial: "0101",
+        meses: [{ period: "202501", custo_medio: 50 }, { period: "202502", custo_medio: 55 }],
+      }],
+    }, {
+      "0101|PROD-01": "D",
+      "0101|AGR-01": "A",
+    }, "auto_parts");
+
+    expect(result.items?.[0]).toMatchObject({ curve: "A" });
+    expect(result.benchmarkReport.countsByCurve.A).toBe(1);
+    expect(result.benchmarkReport.countsByCurve.D).toBe(0);
+  });
 });

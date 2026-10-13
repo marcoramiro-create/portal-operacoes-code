@@ -53,9 +53,11 @@ export function attachCostBenchmarkReport(
   for (const item of analysis.items ?? []) {
     const series = carryForward(item, periods).filter((value): value is number => value != null);
     if (series.length === 0) continue;
+    // A classificação gerencial é do agregado. O código individual só é
+    // fallback para fontes legadas que não trazem o agregado.
     const curve = item.curve
-      ?? curves[keyFor(item.filial, item.codigo)]
       ?? (item.cod_agregado ? curves[keyFor(item.filial, item.cod_agregado)] : undefined)
+      ?? curves[keyFor(item.filial, item.codigo)]
       ?? "SEM_CURVA";
     item.curve = curve;
     inputs.push({

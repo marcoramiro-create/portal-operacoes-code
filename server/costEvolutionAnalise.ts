@@ -15,15 +15,20 @@ async function getCurrentCurveLookup(
   segment: CostEvolutionSegment | undefined,
   branch: string | null,
 ) {
-  const rows: Array<{ code: string; branchCode: string; curve: string }> = [];
+  const rows: Array<{ code: string; codeOriginal?: string | null; branchCode: string; curve: string }> = [];
 
   // A Curva ABC/Indústria é um cadastro operacional. Na Produção ela está
   // em portal_operacoes_prod, enquanto cost_records fica em portal_negocio_prod.
   // Em instalações legadas os dois pools podem apontar para o mesmo banco.
   try {
     const operation = segment === "industry" ? "INDUSTRIA" : "AUTOPECAS";
-    const result = await portalPool.query<{ code: string; branchCode: string; curve: string }>(
-      `select coalesce(nullif(trim(p.source_product_code), ''), trim(p.product_code)) as code,
+    const result = await portalPool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
+      `select coalesce(
+                nullif(trim(c.metadata->>'aggregateCode'), ''),
+                nullif(trim(p.source_product_code), ''),
+                trim(p.product_code)
+              ) as code,
+              nullif(trim(p.source_product_code), '') as "codeOriginal",
               trim(c.branch_code) as "branchCode",
               c.curve_code as curve
          from public.sbz_product_curves c
@@ -34,7 +39,12 @@ async function getCurrentCurveLookup(
           and c.curve_code in ('A', 'B', 'C', 'D', 'E')`,
       [operation, branch],
     );
-    rows.push(...result.rows);
+    for (const row of result.rows) {
+      rows.push(row);
+      if (row.codeOriginal && row.codeOriginal !== row.code) {
+        rows.push({ code: row.codeOriginal, branchCode: row.branchCode, curve: row.curve });
+      }
+    }
   } catch {
     // Bases antigas podem não possuir a tabela de curvas.
   }
