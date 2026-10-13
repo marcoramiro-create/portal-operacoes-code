@@ -35,6 +35,7 @@ export const MENU: MenuSection[] = [
       { label: "Produtos", path: "/importacoes/produtos", icon: UploadCloud, nodeLabels: ["Importar Produtos", "Importações"] },
       { label: "Evolução de Custos · Autopeças", path: "/importacoes/custos-autopecas", icon: UploadCloud, nodeLabels: ["Importar · Evolução de custos de autopeças", "Importações"] },
       { label: "Evolução de Custos · Indústria", path: "/importacoes/custos-industria", icon: UploadCloud, nodeLabels: ["Importar · Evolução de custos da indústria", "Importações"] },
+      { label: "Evolução de Estoque · Indústria", path: "/importacoes/estoque-industria", icon: UploadCloud, nodeLabels: ["Importar · Evolução de estoque da indústria", "Importações"] },
       { label: "Entrada de Materiais", path: "/importacoes/entrada-materiais", icon: UploadCloud, nodeLabels: ["Importar · Entrada de materiais", "Importações"] },
     ],
   },
