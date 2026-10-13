@@ -23,6 +23,7 @@ export type ApplicationTreeNode = { id: string; key: string; label: string; chil
 export type PortalIdentity = { id: string; email: string; displayName: string | null; isDevelopmentAdmin: boolean; profiles: string[] };
 
 let pool: Pool | null = null;
+let businessPool: Pool | null = null;
 
 export function getSupabasePool() {
   if (!pool) {
@@ -40,6 +41,31 @@ export function getSupabasePool() {
     });
   }
   return pool;
+}
+
+/**
+ * Conexão dos dados pesados do negócio (Compras, custos e análises).
+ * Em homologação/produção ela pode estar separada do banco de autenticação.
+ * O fallback mantém compatibilidade com instalações legadas de banco único.
+ */
+export function getBusinessPool() {
+  if (!businessPool) {
+    const connectionString = process.env.BUSINESS_DATABASE_URL
+      ?? process.env.PORTAL_DATABASE_URL
+      ?? process.env.SUPABASE_DATABASE_URL;
+    if (!connectionString) throw new Error("A conexão do banco de negócio não está configurada.");
+    businessPool = new Pool({
+      connectionString,
+      ssl: { rejectUnauthorized: false },
+      max: 2,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 10000,
+    });
+    businessPool.on('error', (err) => {
+      console.error('[BusinessDatabase] Unexpected error on idle client:', err);
+    });
+  }
+  return businessPool;
 }
 
 function getAccessToken(authorizationHeader?: string) {

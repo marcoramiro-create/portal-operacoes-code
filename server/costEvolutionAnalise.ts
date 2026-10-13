@@ -4,7 +4,7 @@
 // Chama as funções criadas no Supabase e devolve os dados
 // prontos para a página do dashboard.
 // ============================================================
-import { getSupabasePool } from "./supabasePortal";
+import { getBusinessPool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
 import { buildCostCurveLookup } from "./costCurveLookup";
 
@@ -17,7 +17,7 @@ type CostEvolutionSegment = "auto_parts" | "industry";
 const INDUSTRY_BRANCH = "0105";
 
 async function getCurrentCurveLookup(
-  pool: ReturnType<typeof getSupabasePool>,
+  pool: ReturnType<typeof getBusinessPool>,
   segment: CostEvolutionSegment | undefined,
   branch: string | null,
 ) {
@@ -46,20 +46,32 @@ async function getCurrentCurveLookup(
   // Curva ABC da Indústria e não deve ser usada como única fonte para Compras.
   if (segment !== "industry") {
     try {
-      const result = await pool.query<{ code: string; branchCode: string; curve: string }>(
+      const result = await pool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
         `select trim(a.code) as code,
+                nullif(trim(a."codeOriginal"), '') as "codeOriginal",
                 trim(a.branch) as "branchCode",
                 trim(a.curve) as curve
            from public."inventoryAnalytics" a
            join public."protheusImports" i on i.id = a."importId"
-          where i.status = 'approved'
+          where i.id = (
+            select latest.id
+              from public."protheusImports" latest
+             where latest.status = 'approved'
+             order by latest."importedAt" desc, latest.id desc
+             limit 1
+          )
             and ($1::text is null or trim(a.branch) = $1)
             and trim(a.curve) in ('A', 'B', 'C', 'D', 'E')`,
         [branch],
       );
-      rows.push(...result.rows);
+      for (const row of result.rows) {
+        rows.push(row);
+        if (row.codeOriginal && row.codeOriginal !== row.code) {
+          rows.push({ code: row.codeOriginal, branchCode: row.branchCode, curve: row.curve });
+        }
+      }
     } catch {
-      // A base sem o histórico de Compras continua exibindo SEM_CURVA.
+      // Uma base sem o histórico de Compras continua exibindo SEM_CURVA.
     }
   }
 
@@ -75,7 +87,7 @@ export async function getCostEvolutionAnalise(params: {
   codAgregado?: string;
   descricao?: string;
 }) {
-  const pool = getSupabasePool();
+  const pool = getBusinessPool();
   const filial =
     params.segment === "industry" && !params.filial?.trim()
       ? INDUSTRY_BRANCH
@@ -98,21 +110,21 @@ export async function getCostEvolutionAnalise(params: {
 
 // Retorna a lista de filiais (para o dropdown)
 export async function getFiliais() {
-  const pool = getSupabasePool();
+  const pool = getBusinessPool();
   const { rows } = await pool.query(`select get_filiais() as result`);
   return rows[0]?.result ?? [];
 }
 
 // Retorna a lista de itens agregados (para o dropdown)
 export async function getCodAgregados() {
-  const pool = getSupabasePool();
+  const pool = getBusinessPool();
   const { rows } = await pool.query(`select get_cod_agregados() as result`);
   return rows[0]?.result ?? [];
 }
 
 // Retorna a lista de períodos existentes (para os dropdowns de data)
 export async function getPeriodos() {
-  const pool = getSupabasePool();
+  const pool = getBusinessPool();
   const { rows } = await pool.query(`select get_periodos() as result`);
   return rows[0]?.result ?? [];
 }
