@@ -5,6 +5,7 @@
 // prontos para a página do dashboard.
 // ============================================================
 import { getSupabasePool } from "./supabasePortal";
+import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
 
 type CostEvolutionSegment = "auto_parts" | "industry";
 
@@ -13,6 +14,35 @@ type CostEvolutionSegment = "auto_parts" | "industry";
 // 0105: quando o segmento for "industry" e nenhuma filial vier informada,
 // forçamos o filtro de filial para 0105 — isolando a base da indústria.
 const INDUSTRY_BRANCH = "0105";
+
+async function getCurrentCurveLookup(
+  pool: ReturnType<typeof getSupabasePool>,
+  segment: CostEvolutionSegment | undefined,
+  branch: string | null,
+) {
+  try {
+    const operation = segment === "industry" ? "INDUSTRIA" : "AUTOPECAS";
+    const result = await pool.query<{ code: string; curve: string }>(
+      `select coalesce(nullif(trim(p.source_product_code), ''), trim(p.product_code)) as code,
+              c.curve_code as curve
+         from public.sbz_product_curves c
+         join public.products p on p.id = c.product_id
+        where c.operation = $1
+          and c.is_current = true
+          and ($2::text is null or c.branch_code = $2)
+          and c.curve_code in ('A', 'B', 'C', 'D', 'E')`,
+      [operation, branch],
+    );
+    return Object.fromEntries(result.rows.filter(row => row.code).map(row => [
+      `${branch ?? ""}|${row.code}`,
+      row.curve as "A" | "B" | "C" | "D" | "E",
+    ]));
+  } catch {
+    // A instalação antiga pode ainda não possuir a tabela de curvas. A evolução
+    // de custos continua funcionando com o payload legado, sem bloquear a tela.
+    return {};
+  }
+}
 
 // Retorna a evolução mês a mês de cada item (matriz item x mês)
 export async function getCostEvolutionAnalise(params: {
@@ -38,7 +68,10 @@ export async function getCostEvolutionAnalise(params: {
       params.descricao ?? null,
     ],
   );
-  return rows[0]?.result ?? { periodos: [], items: [] };
+  const result = rows[0]?.result ?? { periodos: [], items: [] };
+  const curves = await getCurrentCurveLookup(pool, params.segment, filial);
+  if (Object.keys(curves).length === 0) return result;
+  return attachCostBenchmarkReport(result, curves, params.segment ?? "auto_parts");
 }
 
 // Retorna a lista de filiais (para o dropdown)

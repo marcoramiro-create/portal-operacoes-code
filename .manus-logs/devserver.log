@@ -1918,3 +1918,9 @@
 [2026-10-13T00:54:59.897Z] 12:54:59 AM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css
 [2026-10-13T00:55:07.191Z] 12:55:07 AM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css
 [2026-10-13T00:55:19.629Z] 12:55:19 AM [vite] (client) hmr update /src/pages/CostEvolution.tsx, /src/index.css
+[2026-10-13T00:58:31.808Z] 12:58:31 AM [tsx] change in ./server/costEvolutionAnalise.ts Restarting...
+[2026-10-13T00:58:33.828Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-13T00:58:34.067Z] Server running on http://localhost:3000/
+[2026-10-13T00:58:39.134Z] 12:58:39 AM [tsx] change in ./server/costEvolutionAnalise.ts Restarting...
+[2026-10-13T00:58:41.231Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-13T00:58:41.497Z] Server running on http://localhost:3000/
