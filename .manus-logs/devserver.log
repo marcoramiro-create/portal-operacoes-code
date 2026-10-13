@@ -1974,3 +1974,4 @@
 [2026-10-13T20:42:28.552Z] 8:42:28 PM [tsx] change in ./server/protheusCalculations.ts Restarting...
 [2026-10-13T20:42:30.645Z] [OAuth] Initialized with baseURL: https://api.manus.im
 [2026-10-13T20:42:30.868Z] Server running on http://localhost:3000/
+[2026-10-13T20:52:08.129Z] 8:52:08 PM [vite] (client) hmr update /src/components/DashboardLayout.tsx, /src/index.css
