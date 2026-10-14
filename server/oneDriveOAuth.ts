@@ -240,10 +240,7 @@ export async function readOneDriveContent(req: Request, itemId: string): Promise
   const content = location ? await fetch(location, {signal:AbortSignal.timeout(60000)}) : response;
   if (!content.ok || !content.body) throw new Error("Não foi possível ler o CSV do OneDrive.");
   const parts: Buffer[] = [];
-  let bytes=0;
   for await (const part of content.body as any) {
-    bytes += part.length;
-    if (bytes > 40 * 1024 * 1024) { await content.body.cancel().catch(() => {}); throw new Error("CSV excede 40 MB."); }
     parts.push(Buffer.from(part));
   }
   return Buffer.concat(parts);

@@ -16,7 +16,6 @@ export async function syncOneDriveReferences(req: Request) {
   const prepared: (ReturnType<typeof prepareReference> & {file: SourceFile})[] = [];
   for (const kind of ["SB1", "SBZ"] as ReferenceKind[]) {
     const file = selectReferenceFile(listing.files, kind);
-    if (file.size > 40 * 1024 * 1024) throw new Error(`${kind}: arquivo excede 40 MB.`);
     const content = await readOneDriveContent(req, file.id);
     prepared.push({ file, ...prepareReference(kind, content) });
   }
