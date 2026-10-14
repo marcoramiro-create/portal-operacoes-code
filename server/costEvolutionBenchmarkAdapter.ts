@@ -1,5 +1,6 @@
 import { buildCostBenchmarkReport, type CostBenchmarkReport } from "./costBenchmarkReport";
 import type { CostBenchmarkInput } from "./costBenchmarkRules";
+import { curveLookupKey } from "./costCurveLookup";
 
 type Curve = CostBenchmarkInput["curve"];
 
@@ -11,6 +12,7 @@ type EvolutionItem = {
   filial?: string;
   cod_agregado?: string | null;
   curve?: Curve;
+  costStatus?: "COM_BASE" | "SEM_BASE_CUSTO" | "CURVA_NAO_VINCULADA";
   meses: MonthlyCost[];
   quantidade?: number | null;
 };
@@ -25,7 +27,9 @@ type EvolutionAnalysis = {
 
 type CostSegment = "auto_parts" | "industry";
 
-const keyFor = (branch: string | undefined, code: string) => `${branch ?? ""}|${code}`;
+const keyFor = curveLookupKey;
+const findCurve = (curves: CurveLookup, branch: string | undefined, code: string) =>
+  curves[keyFor(branch, code)] ?? curves[`${branch ?? ""}|${code}`];
 
 function carryForward(item: EvolutionItem, periods: string[]) {
   const values = new Map(item.meses.map(entry => [entry.period, entry.custo_medio]));
@@ -49,17 +53,26 @@ export function attachCostBenchmarkReport(
 ): EvolutionAnalysis & { benchmarkReport: CostBenchmarkReport } {
   const periods = (analysis.periodos ?? []).map(entry => entry.period).sort();
   const inputs: CostBenchmarkInput[] = [];
+  const eligibleItems: EvolutionItem[] = [];
 
   for (const item of analysis.items ?? []) {
     const series = carryForward(item, periods).filter((value): value is number => value != null);
-    if (series.length === 0) continue;
+    if (series.length === 0) {
+      item.costStatus = "SEM_BASE_CUSTO";
+      continue;
+    }
     // A classificação gerencial é do agregado. O código individual só é
     // fallback para fontes legadas que não trazem o agregado.
-    const curve = item.curve
-      ?? (item.cod_agregado ? curves[keyFor(item.filial, item.cod_agregado)] : undefined)
-      ?? curves[keyFor(item.filial, item.codigo)]
+    const curve = (item.cod_agregado ? findCurve(curves, item.filial, item.cod_agregado) : undefined)
+      ?? findCurve(curves, item.filial, item.codigo)
       ?? "SEM_CURVA";
+    if (curve === "SEM_CURVA") {
+      item.costStatus = "CURVA_NAO_VINCULADA";
+      continue;
+    }
+    item.costStatus = "COM_BASE";
     item.curve = curve;
+    eligibleItems.push(item);
     inputs.push({
       productCode: item.codigo,
       description: item.descricao,
@@ -77,5 +90,8 @@ export function attachCostBenchmarkReport(
     items: inputs,
     benchmarks,
   });
-  return { ...analysis, benchmarkReport };
+  // Impacto e inflação interna aguardam uma base financeira homologada.
+  benchmarkReport.internalInflationPercent = 0;
+  for (const summary of Object.values(benchmarkReport.byCurve)) summary.estimatedImpact = 0;
+  return { ...analysis, items: eligibleItems, benchmarkReport };
 }
