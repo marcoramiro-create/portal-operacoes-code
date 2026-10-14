@@ -89,7 +89,7 @@ async function currentOAuthAdmin(req: Request): Promise<PortalIdentity> {
   }
 }
 async function exchangeCode(code: string, verifier: string): Promise<TokenResponse> {
-  const response = await fetch(`${AUTHORITY}/oauth2/v2.0/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: ENV.onedriveClientId, grant_type: "authorization_code", code, redirect_uri: ENV.onedriveRedirectUri, code_verifier: verifier, scope: SCOPES }) });
+  const response = await fetch(`${AUTHORITY}/oauth2/v2.0/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: ENV.onedriveClientId, client_secret: ENV.onedriveClientSecret, grant_type: "authorization_code", code, redirect_uri: ENV.onedriveRedirectUri, code_verifier: verifier, scope: SCOPES }) });
   if (!response.ok) {
     const raw = await response.text();
     let detail = `HTTP ${response.status}`;
@@ -106,7 +106,7 @@ async function exchangeCode(code: string, verifier: string): Promise<TokenRespon
 }
 async function refreshToken(connection: ActiveConnection): Promise<ActiveConnection> {
   if (!connection.refresh_token) throw new Error("OneDrive precisa ser conectado novamente.");
-  const response = await fetch(`${AUTHORITY}/oauth2/v2.0/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: ENV.onedriveClientId, grant_type: "refresh_token", refresh_token: connection.refresh_token, scope: SCOPES }) });
+  const response = await fetch(`${AUTHORITY}/oauth2/v2.0/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: ENV.onedriveClientId, client_secret: ENV.onedriveClientSecret, grant_type: "refresh_token", refresh_token: connection.refresh_token, scope: SCOPES }) });
   if (!response.ok) throw new Error("Não foi possível renovar a autorização do OneDrive.");
   const token = await response.json() as TokenResponse;
   const next = { ...connection, access_token: token.access_token, refresh_token: token.refresh_token ?? connection.refresh_token, expires_at: new Date(Date.now() + token.expires_in * 1000) };
@@ -157,22 +157,60 @@ export async function finishOneDrive(req: Request, res: Response) {
   res.clearCookie("onedrive_oauth_state", options);
   res.clearCookie("onedrive_oauth_verifier", options);
   res.clearCookie(OAUTH_USER_COOKIE, options);
-  return res.redirect("/importacoes/fontes-protheus?onedrive=connected");
+  return res.redirect("/importacoes/compras-protheus?onedrive=connected");
 }
 export async function oneDriveStatus(req: Request) {
   const identity = await currentAdmin(req);
   const connection = await getConnection(identity.id);
   return { connected: Boolean(connection), folderPath: ENV.onedriveFolderPath };
 }
+async function resolveImportFolderId(accessToken: string) {
+  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase().trim();
+  const segments = ENV.onedriveFolderPath.split("/").filter(Boolean).filter(segment => normalize(segment) !== "documents");
+  let parentId: string | null = null;
+  for (const segment of segments) {
+    const endpoint = parentId
+      ? `${GRAPH}/me/drive/items/${encodeURIComponent(parentId)}/children?$select=id,name,folder`
+      : `${GRAPH}/me/drive/root/children?$select=id,name,folder`;
+    const response = await fetch(endpoint, { headers: { authorization: `Bearer ${accessToken}` } });
+    if (!response.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível navegar pela pasta do OneDrive." });
+    const data = await response.json() as { value: Array<{ id: string; name: string; folder?: unknown }> };
+    const folder = data.value.find(item => Boolean(item.folder) && normalize(item.name) === normalize(segment));
+    if (!folder) throw new TRPCError({ code: "NOT_FOUND", message: `A pasta ${segment} não foi encontrada no OneDrive autorizado.` });
+    parentId = folder.id;
+  }
+  if (!parentId) throw new TRPCError({ code: "NOT_FOUND", message: "Caminho da pasta de importação não configurado." });
+  return parentId;
+}
 export async function listOneDriveFiles(req: Request) {
   const identity = await currentAdmin(req);
   const connection = await usableConnection(identity.id);
   if (!connection) return { connected: false, files: [] };
-  const path = encodeURIComponent(ENV.onedriveFolderPath).replace(/%2F/g, "/");
-  const response = await fetch(`${GRAPH}/me/drive/root:/${path}:/children?$select=id,name,size,lastModifiedDateTime,file,webUrl&$orderby=lastModifiedDateTime desc`, { headers: { authorization: `Bearer ${connection.access_token}` } });
-  if (!response.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível ler a pasta do OneDrive." });
-  const data = await response.json() as { value: Array<{ id: string; name: string; size: number; lastModifiedDateTime: string; file?: { mimeType?: string }; webUrl?: string }> };
-  return { connected: true, files: data.value.filter(item => item.file).map(item => ({ id: item.id, name: item.name, size: item.size, modifiedAt: item.lastModifiedDateTime, mimeType: item.file?.mimeType ?? "application/octet-stream", webUrl: item.webUrl ?? null })) };
+  const folderId = await resolveImportFolderId(connection.access_token);
+  type DriveItem = { id: string; name: string; size: number; lastModifiedDateTime: string; file?: { mimeType?: string }; folder?: unknown; webUrl?: string };
+  const readChildren = async (itemId: string): Promise<DriveItem[]> => {
+    const result: DriveItem[] = [];
+    let next: string | null = `${GRAPH}/me/drive/items/${encodeURIComponent(itemId)}/children?$select=id,name,size,lastModifiedDateTime,file,folder,webUrl&$orderby=name`;
+    while (next) {
+      const response = await fetch(next, { headers: { authorization: `Bearer ${connection.access_token}` } });
+      if (!response.ok) throw new TRPCError({ code: "BAD_GATEWAY", message: "Não foi possível ler os arquivos da pasta Cadastros no OneDrive." });
+      const data = await response.json() as { value?: DriveItem[]; [key: string]: unknown };
+      result.push(...(data.value ?? []));
+      next = typeof data["@odata.nextLink"] === "string" ? data["@odata.nextLink"] : null;
+    }
+    return result;
+  };
+  const rootItems = await readChildren(folderId);
+  const files: Array<{ id: string; name: string; folderName: string; size: number; modifiedAt: string; mimeType: string; webUrl: string | null }> = [];
+  const visit = async (items: DriveItem[], path: string): Promise<void> => {
+    for (const item of items) {
+      if (item.file) files.push({ id: item.id, name: item.name, folderName: path, size: item.size, modifiedAt: item.lastModifiedDateTime, mimeType: item.file.mimeType ?? "application/octet-stream", webUrl: item.webUrl ?? null });
+      else if (item.folder) await visit(await readChildren(item.id), path ? `${path}/${item.name}` : item.name);
+    }
+  };
+  await visit(rootItems, "");
+  console.info("[OneDrive] arquivos encontrados em Cadastros", { rootItems: rootItems.length, files: files.length });
+  return { connected: true, files };
 }
 export async function downloadOneDriveFile(req: Request, res: Response) {
   const identity = await currentAdmin(req);
@@ -190,4 +228,23 @@ export async function downloadOneDriveFile(req: Request, res: Response) {
   res.setHeader("content-disposition", disposition);
   for await (const chunk of file.body as any) res.write(chunk);
   res.end();
+}
+
+export async function readOneDriveContent(req: Request, itemId: string): Promise<Buffer> {
+  const identity = await currentAdmin(req);
+  const connection = await usableConnection(identity.id);
+  if (!connection) throw new Error("OneDrive não conectado.");
+  const response = await fetch(`${GRAPH}/me/drive/items/${encodeURIComponent(itemId)}/content`, { headers: { authorization: `Bearer ${connection.access_token}` }, redirect: "manual", signal: AbortSignal.timeout(60000) });
+  const location = response.headers.get("location");
+  // Graph pode entregar 200 diretamente ou redirecionar para URL temporária.
+  const content = location ? await fetch(location, {signal:AbortSignal.timeout(60000)}) : response;
+  if (!content.ok || !content.body) throw new Error("Não foi possível ler o CSV do OneDrive.");
+  const parts: Buffer[] = [];
+  let bytes=0;
+  for await (const part of content.body as any) {
+    bytes += part.length;
+    if (bytes > 40 * 1024 * 1024) { await content.body.cancel().catch(() => {}); throw new Error("CSV excede 40 MB."); }
+    parts.push(Buffer.from(part));
+  }
+  return Buffer.concat(parts);
 }

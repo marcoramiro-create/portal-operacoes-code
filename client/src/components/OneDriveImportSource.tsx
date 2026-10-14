@@ -1,9 +1,13 @@
-import { Download, ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
+import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { supabase } from "@/lib/supabase";
 
 export default function OneDriveImportSource() {
+  const utils = trpc.useUtils();
+  const sync = trpc.portal.syncOneDriveReferences.useMutation({ onSuccess: async () => {
+    await utils.analytics.invalidate();
+  } });
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const source = trpc.portal.oneDriveSource.useQuery(undefined, { retry: false });
@@ -38,9 +42,9 @@ export default function OneDriveImportSource() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="eyebrow text-sky-800">Origem semiassistida</p>
-          <h2 className="mt-1 text-lg font-extrabold tracking-tight text-slate-950">OneDrive · 01_Importacoes_Originais</h2>
+          <h2 className="mt-1 text-lg font-extrabold tracking-tight text-slate-950">OneDrive · Cadastros</h2>
           <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">
-            {source.isLoading ? "Verificando a pasta compartilhada…" : source.data?.message ?? "Conecte o OneDrive corporativo para consultar os arquivos disponíveis e validar cada importação antes de gravar."}
+            Leitura direta dos CSVs de SB1 e SBZ. Nenhum download ou upload manual é necessário.
           </p>
         </div>
         {source.isLoading ? (
@@ -63,7 +67,12 @@ export default function OneDriveImportSource() {
       {connection.data?.connected && (
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-slate-950">Arquivos disponíveis</p><p className="text-xs text-slate-500">Leitura somente de {connection.data.folderPath}.</p></div><button type="button" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700" onClick={() => files.refetch()}><RefreshCw className="h-3.5 w-3.5" />Atualizar</button></div>
-          {files.isLoading ? <p className="mt-3 text-sm text-slate-500">Lendo arquivos…</p> : files.data?.files.length ? <ul className="mt-3 divide-y divide-slate-100">{files.data.files.map(file => <li key={file.id} className="flex items-center justify-between gap-3 py-2 text-sm"><span className="min-w-0 truncate font-semibold text-slate-700">{file.name}</span><a className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-bold text-white" href={`/api/onedrive/file?itemId=${encodeURIComponent(file.id)}&name=${encodeURIComponent(file.name)}`}><Download className="h-3.5 w-3.5" />Baixar</a></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">Nenhum arquivo encontrado nessa pasta.</p>}
+          <button type="button" disabled={sync.isPending} onClick={() => sync.mutate()} className="mt-4 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{sync.isPending ? "Atualizando SB1 e SBZ…" : "Atualizar bases do OneDrive"}</button>
+          <p className="mt-2 text-xs text-slate-500">Atualiza somente SB1 e SBZ, usando o CSV mais recentemente modificado de cada subpasta. As demais fontes não serão processadas.</p>
+          {sync.error && <p role="alert" className="mt-3 text-sm text-rose-700">{sync.error.message}</p>}
+          {sync.data && <div role="status" className="mt-3 text-sm">{sync.data.results.map(r => <p key={r.kind}>{r.kind} · {r.status} · {r.count.toLocaleString("pt-BR")} registros · {r.fileName}</p>)}<p>{sync.data.reenriquecidos.toLocaleString("pt-BR")} itens de Compras reprocessados.</p>{sync.data.warning && <p className="text-amber-700">{sync.data.warning}</p>}</div>}
+          {files.error && <p role="alert" className="mt-3 text-sm text-rose-700">{files.error.message}</p>}
+          {files.isLoading ? <p className="mt-3 text-sm text-slate-500">Lendo exportações…</p> : files.data?.files.length ? <ul className="mt-3 divide-y divide-slate-100">{files.data.files.map(file => <li key={file.id} className="py-2 text-sm"><span className="mr-2 font-bold">{file.folderName}</span>{file.name}<span className="ml-2 text-xs text-slate-500">{new Date(file.modifiedAt).toLocaleString("pt-BR")}</span></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">Nenhuma exportação encontrada nas subpastas.</p>}
         </div>
       )}
     </section>

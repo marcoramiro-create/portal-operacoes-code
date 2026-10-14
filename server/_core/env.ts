@@ -9,8 +9,9 @@ export const ENV = {
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
   onedriveImportsLink: process.env.ONEDRIVE_IMPORTS_LINK ?? "",
   onedriveClientId: process.env.ONEDRIVE_CLIENT_ID ?? "",
+  onedriveClientSecret: process.env.ONEDRIVE_CLIENT_SECRET ?? "",
   onedriveTenantId: process.env.ONEDRIVE_TENANT_ID ?? "common",
   onedriveRedirectUri: process.env.ONEDRIVE_REDIRECT_URI ?? "",
-  onedriveFolderPath: process.env.ONEDRIVE_FOLDER_PATH ?? "Documents/Email attachments from Power Automate",
+  onedriveFolderPath: process.env.ONEDRIVE_FOLDER_PATH ?? "Documents/Documentos/Portal de Operações/Cadastros",
   onedriveTokenKey: process.env.ONEDRIVE_TOKEN_KEY ?? "",
 };
