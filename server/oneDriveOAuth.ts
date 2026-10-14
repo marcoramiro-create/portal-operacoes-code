@@ -90,7 +90,18 @@ async function currentOAuthAdmin(req: Request): Promise<PortalIdentity> {
 }
 async function exchangeCode(code: string, verifier: string): Promise<TokenResponse> {
   const response = await fetch(`${AUTHORITY}/oauth2/v2.0/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: ENV.onedriveClientId, grant_type: "authorization_code", code, redirect_uri: ENV.onedriveRedirectUri, code_verifier: verifier, scope: SCOPES }) });
-  if (!response.ok) throw new Error(`Microsoft token exchange failed: ${response.status}`);
+  if (!response.ok) {
+    const raw = await response.text();
+    let detail = `HTTP ${response.status}`;
+    try {
+      const payload = JSON.parse(raw) as { error?: string; error_description?: string };
+      detail = [payload.error, payload.error_description].filter(Boolean).join(": ") || detail;
+    } catch {
+      // Mantém o erro seguro mesmo se a Microsoft retornar HTML/texto inválido.
+    }
+    console.error("[OneDrive] Microsoft token exchange rejected", { status: response.status, detail });
+    throw new Error(`Microsoft token exchange failed: ${detail}`);
+  }
   return response.json() as Promise<TokenResponse>;
 }
 async function refreshToken(connection: ActiveConnection): Promise<ActiveConnection> {
