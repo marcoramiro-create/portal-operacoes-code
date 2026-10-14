@@ -15,9 +15,13 @@ export default function OneDriveImportSource() {
     setConnectError(null);
     try {
       const { data } = await supabase.auth.getSession();
-      if (!data.session?.access_token) throw new Error("Sua sessão expirou. Entre novamente no portal.");
+      const headers: Record<string, string> = { Accept: "application/json" };
+      // A Homologação também usa a sessão própria por cookie. Quando houver
+      // sessão Supabase, o Bearer continua sendo enviado; caso contrário, o
+      // backend resolve app_session_id via credentials: include.
+      if (data.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`;
       const response = await fetch("/api/onedrive/connect", {
-        headers: { Authorization: `Bearer ${data.session.access_token}`, Accept: "application/json" },
+        headers,
         credentials: "same-origin",
       });
       const payload = await response.json().catch(() => null) as { url?: string; message?: string } | null;
