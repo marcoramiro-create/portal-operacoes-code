@@ -16,6 +16,7 @@ export type CostBenchmarkReportInput = {
 export type CostBenchmarkReport = {
   segment: CostBenchmarkReportInput["segment"];
   internalInflationPercent: number | null;
+  weightedMonthlyVariationPercent: number | null;
   items: CostBenchmarkResult[];
   topIncreases: CostBenchmarkResult[];
   topReductions: CostBenchmarkResult[];
@@ -28,6 +29,9 @@ export type CurveCostSummary = {
   itemCount: number;
   itemsWithBase: number;
   averageVariationPercent: number | null;
+  weightedVariationPercent: number | null;
+  weight: number;
+  weightedAggregates: number;
   totalCostStart: number;
   totalCostEnd: number;
   estimatedImpact: number | null;
@@ -50,6 +54,9 @@ export function buildCostBenchmarkReport(input: CostBenchmarkReportInput): CostB
     itemCount: 0,
     itemsWithBase: 0,
     averageVariationPercent: null,
+    weightedVariationPercent: null,
+    weight: 0,
+    weightedAggregates: 0,
     totalCostStart: 0,
     totalCostEnd: 0,
     estimatedImpact: null,
@@ -84,6 +91,7 @@ export function buildCostBenchmarkReport(input: CostBenchmarkReportInput): CostB
   return {
     segment: input.segment,
     internalInflationPercent: calculateInternalInflation(input.items),
+    weightedMonthlyVariationPercent: null,
     items,
     topIncreases,
     topReductions,
