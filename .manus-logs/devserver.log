@@ -2289,3 +2289,25 @@
 [2026-10-16T13:27:33.549Z] at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:547:26)
 [2026-10-16T13:27:33.549Z] at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5)
 [2026-10-16T13:27:33.549Z] Node.js v22.13.0
+[2026-10-16T14:05:11.144Z] 2:05:11 PM [tsx] change in ./server/costBenchmarkReport.ts Rerunning...
+[2026-10-16T14:05:14.458Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-16T14:05:14.496Z] /home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14
+[2026-10-16T14:05:14.497Z] if (!ENV.onedriveTokenKey) throw new Error("ONEDRIVE_TOKEN_KEY não configurada.");
+[2026-10-16T14:05:14.497Z] ^
+[2026-10-16T14:05:14.497Z] Error: ONEDRIVE_TOKEN_KEY não configurada.
+[2026-10-16T14:05:14.497Z] at <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14:34)
+[2026-10-16T14:05:14.497Z] at ModuleJob.run (node:internal/modules/esm/module_job:271:25)
+[2026-10-16T14:05:14.497Z] at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:547:26)
+[2026-10-16T14:05:14.497Z] at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5)
+[2026-10-16T14:05:14.497Z] Node.js v22.13.0
+[2026-10-16T14:05:17.697Z] 2:05:17 PM [tsx] change in ./server/costBenchmarkReport.ts Rerunning...
+[2026-10-16T14:05:19.639Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-16T14:05:19.670Z] /home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14
+[2026-10-16T14:05:19.670Z] if (!ENV.onedriveTokenKey) throw new Error("ONEDRIVE_TOKEN_KEY não configurada.");
+[2026-10-16T14:05:19.670Z] ^
+[2026-10-16T14:05:19.670Z] Error: ONEDRIVE_TOKEN_KEY não configurada.
+[2026-10-16T14:05:19.670Z] at <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14:34)
+[2026-10-16T14:05:19.670Z] at ModuleJob.run (node:internal/modules/esm/module_job:271:25)
+[2026-10-16T14:05:19.670Z] at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:547:26)
+[2026-10-16T14:05:19.671Z] at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5)
+[2026-10-16T14:05:19.671Z] Node.js v22.13.0

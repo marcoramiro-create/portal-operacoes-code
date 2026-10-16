@@ -23,7 +23,7 @@ describe("costBenchmarkReport", () => {
     expect(report.internalInflationPercent).toBe(3.3333);
   });
 
-  it("limita o ranking e preserva o item sem curva", () => {
+  it("exclui da Indústria itens sem curva e curvas fora de ABC", () => {
     const report = buildCostBenchmarkReport({
       segment: "industry",
       benchmarks: {},
@@ -33,8 +33,10 @@ describe("costBenchmarkReport", () => {
         { productCode: "Y", curve: "D", costStart: 100, costEnd: 90 },
       ],
     });
-    expect(report.topIncreases).toHaveLength(1);
-    expect(report.topReductions).toHaveLength(1);
-    expect(report.items[0].reasons).toContain("item_sem_curva_abc");
+    expect(report.topIncreases).toHaveLength(0);
+    expect(report.topReductions).toHaveLength(0);
+    expect(report.items).toHaveLength(0);
+    expect(report.countsByCurve.SEM_CURVA).toBe(0);
+    expect(report.countsByCurve.D).toBe(0);
   });
 });

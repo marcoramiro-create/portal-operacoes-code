@@ -39,7 +39,12 @@ export type CurveCostSummary = {
 };
 
 export function buildCostBenchmarkReport(input: CostBenchmarkReportInput): CostBenchmarkReport {
-  const items = input.items.map((item) => enrichCostWithBenchmarks(item, input.benchmarks));
+  const allowedCurves: CostBenchmarkInput["curve"][] = input.segment === "industry"
+    ? ["A", "B", "C"]
+    : ["A", "B", "C", "D", "E"];
+  const items = input.items
+    .filter((item) => allowedCurves.includes(item.curve))
+    .map((item) => enrichCostWithBenchmarks(item, input.benchmarks));
   const ranked = items.filter((item) => item.costVariationPercent !== null);
   const topN = Math.max(1, Math.min(100, input.topN ?? 10));
   const topIncreases = [...ranked]
@@ -65,6 +70,7 @@ export function buildCostBenchmarkReport(input: CostBenchmarkReportInput): CostB
   const variationSums = Object.fromEntries(Object.keys(countsByCurve).map((curve) => [curve, 0])) as Record<CostBenchmarkInput["curve"], number>;
   for (const item of items) {
     countsByAlert[item.alert] += 1;
+    if (!countsByCurve[item.curve]) countsByCurve[item.curve] = 0;
     countsByCurve[item.curve] += 1;
     const summary = byCurve[item.curve];
     summary.itemCount += 1;
