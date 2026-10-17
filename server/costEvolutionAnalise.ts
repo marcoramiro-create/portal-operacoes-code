@@ -18,6 +18,7 @@ const MONTH_NAMES: Record<string, string> = {
 
 function normalizeSalesPeriod(value: string): string | null {
   const text = value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/^\d{6}$/.test(text) && Number(text.slice(4, 6)) >= 1 && Number(text.slice(4, 6)) <= 12) return text;
   const numeric = text.match(/^(\d{1,2})[\/-](\d{4})$/) ?? text.match(/^(\d{4})[\/-](\d{1,2})$/);
   if (numeric) {
     const year = numeric[1].length === 4 ? numeric[1] : numeric[2];
@@ -76,6 +77,109 @@ async function attachAutoPartsMonthlySales(
     for (const month of item.meses) {
       const period = normalizeSalesPeriod(String(month.period ?? ""));
       if (period && month.quantidade_vendida == null) month.quantidade_vendida = monthly[period] ?? null;
+    }
+  }
+}
+
+function previousPeriod(period: string): string {
+  const year = Number(period.slice(0, 4));
+  const month = Number(period.slice(4, 6));
+  return month === 1 ? `${year - 1}12` : `${year}${String(month - 1).padStart(2, "0")}`;
+}
+
+function monthRange(start: string, end: string): string[] {
+  const result: string[] = [];
+  let current = start;
+  while (current <= end) {
+    result.push(current);
+    const year = Number(current.slice(0, 4));
+    const month = Number(current.slice(4, 6));
+    current = month === 12 ? `${year + 1}01` : `${year}${String(month + 1).padStart(2, "0")}`;
+  }
+  return result;
+}
+
+async function attachIndustryMonthlyConsumption(
+  portalPool: ReturnType<typeof getSupabasePool>,
+  result: { periodos?: Array<{ period: string }>; items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; meses: Array<Record<string, unknown>> }> },
+) {
+  const periods = (result.periodos ?? []).map(item => normalizeSalesPeriod(item.period)).filter((item): item is string => item != null).sort();
+  if (!periods.length) return;
+  const batches = await portalPool.query<{ id: string; source_kind: string }>(
+    `select distinct on (source_kind) id, source_kind
+       from public.operational_import_batches
+      where status = 'processed' and source_kind in ('ENTRADA_NF', 'FECHAMENTO_ESTOQUE')
+      order by source_kind, imported_at desc, id desc`,
+  );
+  const batchIds = batches.rows.map(row => row.id);
+  if (!batchIds.length) return;
+  const sourceRows = await portalPool.query<{
+    sourceKind: string;
+    productCode: string | null;
+    aggregateCode: string | null;
+    branch: string | null;
+    normalizedPayload: Record<string, unknown>;
+  }>(
+    `select b.source_kind as "sourceKind",
+            r.product_code as "productCode",
+            r.aggregate_product_code as "aggregateCode",
+            r.branch_code as branch,
+            r.normalized_payload as "normalizedPayload"
+       from public.operational_source_rows r
+       join public.operational_import_batches b on b.id = r.batch_id
+      where r.batch_id = any($1::uuid[])`,
+    [batchIds],
+  );
+  const stock = new Map<string, number>();
+  const entries = new Map<string, number>();
+  const aggregateByProduct = new Map<string, string>();
+  const start = previousPeriod(periods[0]);
+  const allPeriods = monthRange(start, periods[periods.length - 1]);
+  const add = (target: Map<string, number>, key: string, value: number) => target.set(key, (target.get(key) ?? 0) + value);
+  for (const row of sourceRows.rows) {
+    const payload = row.normalizedPayload ?? {};
+    const product = String(row.productCode ?? payload.productCode ?? "").trim();
+    const aggregate = String(row.aggregateCode ?? payload.aggregateProductCode ?? product).trim();
+    const branch = String(row.branch ?? payload.branch ?? INDUSTRY_BRANCH).trim();
+    const productKey = `${branch}|${product}`;
+    if (product && aggregate) {
+      for (const productVariant of codeVariants(product)) {
+        for (const aggregateVariant of codeVariants(aggregate)) {
+          aggregateByProduct.set(`${branch}|${productVariant}`, aggregateVariant);
+        }
+      }
+    }
+    if (row.sourceKind === "FECHAMENTO_ESTOQUE") {
+      const year = Number(payload.year);
+      const month = Number(payload.month);
+      const period = year && month ? `${year}${String(month).padStart(2, "0")}` : null;
+      const value = Number(payload.totalValue);
+      if (period && Number.isFinite(value)) add(stock, `${productKey}|${period}`, value);
+    } else {
+      const period = normalizeSalesPeriod(String(payload.entryDate ?? ""));
+      const quantity = Number(payload.quantity);
+      const unitValue = Number(payload.itemValue);
+      if (period && Number.isFinite(quantity) && Number.isFinite(unitValue)) add(entries, `${productKey}|${period}`, quantity * unitValue);
+    }
+  }
+  const consumption = new Map<string, number>();
+  for (const [productKey, aggregate] of aggregateByProduct) {
+    let previousStock = stock.get(`${productKey}|${allPeriods[0]}`) ?? 0;
+    for (const period of allPeriods) {
+      const currentStock = stock.get(`${productKey}|${period}`) ?? 0;
+      const value = Math.max(0, previousStock + (entries.get(`${productKey}|${period}`) ?? 0) - currentStock);
+      if (period >= periods[0]) add(consumption, `${productKey.split("|")[0]}|${aggregate}|${period}`, value);
+      previousStock = currentStock;
+    }
+  }
+  for (const item of result.items ?? []) {
+    const branch = item.filial ?? INDUSTRY_BRANCH;
+    const aggregateVariants = [...codeVariants(item.cod_agregado), ...codeVariants(item.codigo)];
+    for (const month of item.meses) {
+      const period = normalizeSalesPeriod(String(month.period ?? ""));
+      if (!period || month.valor_consumo != null) continue;
+      const value = aggregateVariants.map(aggregate => consumption.get(`${branch}|${aggregate}|${period}`)).find(item => item != null);
+      month.valor_consumo = value ?? null;
     }
   }
 }
@@ -181,7 +285,8 @@ export async function getCostEvolutionAnalise(params: {
     ],
   );
   const result = rows[0]?.result ?? { periodos: [], items: [] };
-  if (params.segment !== "industry") await attachAutoPartsMonthlySales(businessPool, result);
+  if (params.segment === "industry") await attachIndustryMonthlyConsumption(portalPool, result);
+  else await attachAutoPartsMonthlySales(businessPool, result);
   const curves = await getCurrentCurveLookup(businessPool, portalPool, params.segment, filial);
   // Mesmo sem curvas encontradas, anexa o relatório para que a interface
   // mostre a coluna/diagnóstico "Sem curva" em vez de ocultar o painel.
