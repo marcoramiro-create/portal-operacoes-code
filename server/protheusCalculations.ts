@@ -119,6 +119,8 @@ export interface PurchaseRow {
   mrp: string;
   tipo: string;
   valores: number[];      // 13 meses, numéricos
+  /** Meses da exportação, na mesma ordem de valores. */
+  periodosVendas?: string[];
   total: number;          // soma dos 13 meses
   // Campos lidos da exportação crua (09/09/2026)
   ultimaCompra: string;   // data (ISO YYYY-MM-DD) – coluna K

@@ -68,6 +68,39 @@ describe("cost evolution benchmark adapter", () => {
     expect(result.benchmarkReport.countsByCurve.D).toBe(0);
   });
 
+  it("uses monthly sold quantity for Autopeças", () => {
+    const result = attachCostBenchmarkReport({
+      periodos: [{ period: "202501" }, { period: "202502" }, { period: "202503" }],
+      items: [{
+        codigo: "AGR-PECA",
+        filial: "0101",
+        meses: [
+          { period: "202501", custo_medio: 100, quantidade_vendida: 10 },
+          { period: "202502", custo_medio: 110, quantidade_vendida: 20 },
+          { period: "202503", custo_medio: 110, quantidade_vendida: 30 },
+        ],
+      }],
+    }, { "0101|AGR-PECA": "A" }, "auto_parts");
+
+    expect(result.benchmarkReport.weightedMonthlyVariationPercent).toBe(4);
+  });
+
+  it("uses monthly consumption value for Indústria and accepts the camelCase source field", () => {
+    const result = attachCostBenchmarkReport({
+      periodos: [{ period: "202501" }, { period: "202502" }],
+      items: [{
+        codigo: "03545",
+        filial: "0105",
+        meses: [
+          { period: "202501", custo_medio: 100, valorConsumo: 1000 },
+          { period: "202502", custo_medio: 120, valorConsumo: 500 },
+        ],
+      }],
+    }, { "0105|03545": "A" }, "industry");
+
+    expect(result.benchmarkReport.weightedMonthlyVariationPercent).toBe(20);
+  });
+
   it("marks zero-only items as sem base and excludes them from ABC alerts", () => {
     const result = attachCostBenchmarkReport({
       periodos: [{ period: "202501" }, { period: "202502" }],

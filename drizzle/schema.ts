@@ -1,4 +1,4 @@
-import { date, decimal, integer, pgEnum, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { date, decimal, integer, jsonb, pgEnum, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]);
 export const stockMovementTypeEnum = pgEnum("stock_movement_type", ["entrada", "saida"]);
@@ -94,6 +94,9 @@ export const inventoryAnalytics = pgTable(
     subfamily: varchar("subfamily", { length: 255 }).notNull().default(""),
     curve: curveEnum("curve").notNull(),
     sales13M: decimal("sales13M", { precision: 20, scale: 3 }).notNull(),
+    // Série mensal da exportação Protheus, preservada para análises que
+    // precisam do mês real e não do total agregado de 13 meses.
+    salesMonths: jsonb("salesMonths").$type<Record<string, number>>().notNull().default({}),
     salesValue13M: decimal("salesValue13M", { precision: 20, scale: 2 }).notNull().default("0"),
     stock: decimal("stock", { precision: 20, scale: 3 }).notNull(),
     stockValue: decimal("stockValue", { precision: 20, scale: 2 }).notNull().default("0"),

@@ -338,6 +338,9 @@ export async function importProtheusWorkbook(fileName: string, fileBuffer: Buffe
           subfamily: r.subFamilia || "",
           curve: r.curva,
           sales13M: r.total.toString(),
+          salesMonths: Object.fromEntries(
+            (r.periodosVendas ?? []).map((period, index) => [period, r.valores[index] ?? 0]),
+          ),
           salesValue13M: r.custoTot13M.toString(),
           stock: r.estoque.toString(),
           stockValue: r.stockValue.toString(),
