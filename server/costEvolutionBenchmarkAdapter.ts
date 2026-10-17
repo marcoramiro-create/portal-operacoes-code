@@ -2,9 +2,7 @@ import { buildCostBenchmarkReport, type CostBenchmarkReport } from "./costBenchm
 import { calculateWeightedMonthlyCost, type WeightedCostAggregate } from "./costWeightedMonthly";
 import type { CostBenchmarkInput } from "./costBenchmarkRules";
 import { curveLookupKey } from "./costCurveLookup";
-
 type Curve = CostBenchmarkInput["curve"];
-
 type MonthlyCost = {
   period: string;
   custo_medio: number | null;
@@ -13,7 +11,6 @@ type MonthlyCost = {
   /** Indústria: valor consumido do agregado no mês. */
   valor_consumo?: number | null;
 };
-
 type EvolutionItem = {
   codigo: string;
   descricao?: string;
@@ -24,21 +21,16 @@ type EvolutionItem = {
   meses: MonthlyCost[];
   quantidade?: number | null;
 };
-
 type CurveLookup = Record<string, Curve>;
-
 type EvolutionAnalysis = {
   periodos?: { period: string }[];
   items?: EvolutionItem[];
   [key: string]: unknown;
 };
-
 type CostSegment = "auto_parts" | "industry";
-
 const keyFor = curveLookupKey;
 const findCurve = (curves: CurveLookup, branch: string | undefined, code: string) =>
   curves[keyFor(branch, code)] ?? curves[`${branch ?? ""}|${code}`];
-
 function carryForward(item: EvolutionItem, periods: string[]) {
   const values = new Map(item.meses.map(entry => [entry.period, entry.custo_medio]));
   let previous: number | null = null;
@@ -48,14 +40,12 @@ function carryForward(item: EvolutionItem, periods: string[]) {
     return previous;
   });
 }
-
 function toCalendarPeriod(period: string): string | null {
   const normalized = period.replace(/[^0-9]/g, "");
   if (/^\d{6}$/.test(normalized)) return normalized;
   if (/^\d{8}$/.test(normalized)) return normalized.slice(0, 6);
   return null;
 }
-
 function buildWeightedAggregate(item: EvolutionItem, curve: Exclude<Curve, "SEM_CURVA">, segment: CostSegment): WeightedCostAggregate {
   const monthlyCosts: Record<string, number | null> = {};
   const monthlyWeights: Record<string, number | null> = {};
@@ -77,7 +67,6 @@ function buildWeightedAggregate(item: EvolutionItem, curve: Exclude<Curve, "SEM_
     monthlyWeights,
   };
 }
-
 /**
  * Cruza a resposta mensal da evolução com a curva ABC já carregada.
  * A função não consulta banco, não altera registros e mantém o payload original.
@@ -92,7 +81,6 @@ export function attachCostBenchmarkReport(
   const inputs: CostBenchmarkInput[] = [];
   const eligibleItems: EvolutionItem[] = [];
   const weightedAggregates: WeightedCostAggregate[] = [];
-
   for (const item of analysis.items ?? []) {
     const series = carryForward(item, periods).filter((value): value is number => value != null);
     if (series.length === 0) {
@@ -123,7 +111,6 @@ export function attachCostBenchmarkReport(
     });
     weightedAggregates.push(buildWeightedAggregate(item, curve, segment));
   }
-
   const benchmarkReport = buildCostBenchmarkReport({ segment, items: inputs, benchmarks });
   const weighted = calculateWeightedMonthlyCost({
     segment,
@@ -144,5 +131,9 @@ export function attachCostBenchmarkReport(
   // Impacto e inflação interna aguardam uma base financeira homologada.
   benchmarkReport.internalInflationPercent = 0;
   for (const summary of Object.values(benchmarkReport.byCurve)) summary.estimatedImpact = 0;
-  return { ...analysis, items: eligibleItems, benchmarkReport };
+  // MUDANÇA (17/10/2026): devolve TODOS os itens da análise, mantendo os
+  // marcadores COM_BASE / SEM_BASE_CUSTO / CURVA_NAO_VINCULADA gravados acima.
+  // Antes só os elegíveis voltavam — itens sem curva/sem base desapareciam
+  // da tabela "Evolução mês a mês por item" (na Indústria, esvaziava tudo).
+  return { ...analysis, benchmarkReport };
 }

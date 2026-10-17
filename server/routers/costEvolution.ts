@@ -4,12 +4,10 @@ import { previewCostEvolutionWorkbook } from "../costEvolution";
 import { commitCostEvolutionImport, getCostEvolutionFilterOptions, getCostEvolutionItems, getCostEvolutionSummary, listCostEvolutionImports, updateCostEvolutionImportStatus } from "../costEvolutionService";
 import { assertApplicationPermission, getPortalIdentity, listObservacoes, recordPortalAudit, upsertObservacao } from "../supabasePortal";
 import { getCodAgregados, getCostEvolutionAnalise, getFiliais, getPeriodos } from "../costEvolutionAnalise";
-
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) {
   const value = headers.authorization;
   return Array.isArray(value) ? value[0] : value;
 }
-
 const segment = z.enum(["auto_parts", "industry"]);
 const importerNode = (value: "auto_parts" | "industry") => value === "auto_parts" ? "importacoes-custos-autopecas" : "importacoes-custos-industria";
 const dashboardNode = (value: "auto_parts" | "industry") => value === "auto_parts" ? "custos-autopecas" : "custos-industria";
@@ -30,7 +28,6 @@ const analiseFilters = z.object({
   codAgregado: z.string().trim().max(120).optional(),
   descricao: z.string().trim().max(255).optional(),
 });
-
 export const costEvolutionRouter = router({
   preview: publicProcedure.input(z.object({ segment, fileName: z.string().trim().min(1).max(255), contentBase64: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
@@ -84,6 +81,9 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCostEvolutionAnalise({
+      // MUDANÇA (17/10/2026): o segmento agora é repassado — sem isso a Indústria
+      // buscava curvas como AUTOPECAS e todos os itens caíam em "Curva não vinculada".
+      segment: input.segment,
       periodoInicio: input.periodoInicio,
       periodoFim: input.periodoFim,
       // MUDANÇA: a Indústria usa SEMPRE a filial 0105 — forçado aqui no servidor.
