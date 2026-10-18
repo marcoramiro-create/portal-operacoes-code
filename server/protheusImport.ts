@@ -233,6 +233,7 @@ export function parseRegistrosCompras(linhasBrutas: unknown[][]): { registros: P
       mrp: '',
       tipo: '',
       valores,
+      periodosVendas: cabecalho.slice(inicioMeses, inicioMeses + QTD_COLUNAS_MESES),
       total: valores.reduce((acc, v) => acc + v, 0),
       ultimaCompra: lerData(linha[colunas.ultimaCompra]),
       qtd13M: num(linha[colunas.qtd13M]),

@@ -8,8 +8,10 @@ type MonthlyCost = {
   custo_medio: number | null;
   /** Autopeças: quantidade vendida do agregado no mês. */
   quantidade_vendida?: number | null;
+  quantidadeVendida?: number | null;
   /** Indústria: valor consumido do agregado no mês. */
   valor_consumo?: number | null;
+  valorConsumo?: number | null;
 };
 type EvolutionItem = {
   codigo: string;
@@ -56,8 +58,8 @@ function buildWeightedAggregate(item: EvolutionItem, curve: Exclude<Curve, "SEM_
     // Não usar quantidade do cadastro nem qualquer total genérico como peso.
     // Os pesos aprovados são mensais e específicos de cada segmento.
     monthlyWeights[period] = segment === "auto_parts"
-      ? month.quantidade_vendida ?? null
-      : month.valor_consumo ?? null;
+      ? month.quantidade_vendida ?? month.quantidadeVendida ?? null
+      : month.valor_consumo ?? month.valorConsumo ?? null;
   }
   return {
     branch: item.filial ?? "",
