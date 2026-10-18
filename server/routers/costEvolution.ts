@@ -43,8 +43,7 @@ const itensFilters = z.object({
   ...baseAnalise,
   searchType: z.enum(["contem", "inicia", "termina"]).optional(),
   limitesAlerta,
-  // B-v3 (18/10/2026): eixo Curva independente do Critério — itens de outra
-  // curva jamais aparecem no grid paginado.
+  // Eixo Curva independente do Critério — itens de outra curva jamais aparecem.
   curvaFiltro: z.enum(["A", "B", "C", "D", "E"]).optional(),
   pagina: z.number().int().min(1).optional(),
   itensPorPagina: z.number().int().min(10).max(200).optional(),
@@ -147,16 +146,19 @@ export const costEvolutionRouter = router({
     });
   }),
   // Botão "Atualizar índices" — completa os meses faltantes nas APIs oficiais
-  // (IBGE/SIDRA e BCB/PTAX). Escrita apenas no cache; a análise nunca quebra.
+  // (IBGE/SIDRA e BCB/PTAX). B-v5: o toast passa a exibir o ERRO REAL da fonte.
   atualizarIndices: publicProcedure.mutation(async ({ ctx }) => {
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode("auto_parts"), "view");
     const status = await garantirIndicesEconomicos(getSupabasePool(), ultimosPeriodos(24));
-    const falhas = Object.entries(status).filter(([, valor]) => valor === "indisponivel").map(([indice]) => indice);
+    const falhas = (["IPCA", "DOLAR"] as const).filter(indice => status[indice] === "indisponivel");
+    const detalhe = falhas.map(indice => `${indice}${status.detalhes[indice] ? ` (${status.detalhes[indice]})` : ""}`).join(" · ");
     return {
-      ...status,
+      IPCA: status.IPCA,
+      DOLAR: status.DOLAR,
+      detalhes: status.detalhes,
       mensagem: falhas.length
-        ? `Completados os meses disponíveis. ${falhas.join(" e ")}: fonte oficial indisponível agora — a análise segue com o último valor gravado.`
+        ? `Completados os meses disponíveis. Fonte(s) indisponível(is): ${detalhe}. A análise segue com o último valor gravado — copie esta mensagem para o diagnóstico.`
         : "Índices oficiais atualizados: meses faltantes completados nas fontes IBGE (IPCA) e Banco Central (PTAX).",
     };
   }),
