@@ -1,13 +1,14 @@
 // ============================================================
 // costEvolutionAnalise.ts
-// B-v5 (18/10/2026): (1) impacto = variação % do período × consumo TOTAL do
-// período — a fórmula antiga misturava unidades na Indústria (Δ preço por
-// unidade × consumo em reais) e gerou impacto de -372 milhões contra custo
-// total de 7,2 milhões; (2) contagem "Itens acima do limite" do painel usa o
-// MESMO campo variacaoPercent do filtro do grid (bit a bit); (3) detalhes do
-// erro das fontes de índices vão para o relatório. Mantém: leitura de TODOS os
-// batches, cast a.curve::text, consumo só com fotografia dos dois meses,
-// eixo curvaFiltro, busca multi-termo, IPCA/PTAX.
+// B-v9 (18/10/2026): UM ÚNICO MOTOR para cards e painel ABC, sobre o MESMO
+// conjunto filtrado — o triângulo fecha: Variação ponderada × Custo total =
+// Impacto estimado (prova do item isolado: -47.323,66 ÷ 1.445.924,96 =
+// -3,2729%, e não -0,4778% herdado do adapter). "Interna" removida (mesmo
+// conceito); curvas sem itens ocultas do painel. Inclui o B-v8: consumo da
+// Indústria agregado INTEIRO no Postgres (CTE com LAG) + cache de memória
+// TTL 10 min (fim do timeout nos itens paginados). Mantém: impacto = variação
+// % × consumo TOTAL, cast a.curve::text, TODOS os batches, eixo curvaFiltro,
+// busca multi-termo, IPCA/PTAX em cascata.
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
@@ -48,17 +49,6 @@ function previousPeriod(period: string): string {
   const year = Number(period.slice(0, 4));
   const month = Number(period.slice(4, 6));
   return month === 1 ? `${year - 1}12` : `${year}${String(month - 1).padStart(2, "0")}`;
-}
-function monthRange(start: string, end: string): string[] {
-  const result: string[] = [];
-  let current = start;
-  while (current <= end) {
-    result.push(current);
-    const year = Number(current.slice(0, 4));
-    const month = Number(current.slice(4, 6));
-    current = month === 12 ? `${year + 1}01` : `${year}${String(month + 1).padStart(2, "0")}`;
-  }
-  return result;
 }
 // ————— Limites de alerta configuráveis —————
 export type LimitesAlerta = { A: number; B: number; C: number; D: number; E: number };
@@ -135,10 +125,8 @@ function enriquecerItens(items: ItemInterno[], segment: CostEvolutionSegment): v
     const consumoMedioMensal = consumoMedioDoItem(item, segment);
     const consumoTotal = consumoTotalDoItem(item, segment);
     let impactoEstimado: number | null = null;
-    // B-v5 (18/10/2026): impacto = variação % do período × consumo TOTAL do período.
-    // Interpretável como "quanto do gasto do período é efeito da variação de preço",
-    // consistente nos dois segmentos — o impacto deixa de superar o custo total em
-    // cenários normais (só superaria com variação acima de 100%).
+    // Impacto = variação % do período × consumo TOTAL do período —
+    // "quanto do gasto do período é efeito da variação de preço".
     if (variacaoPercent != null && consumoTotal != null) {
       impactoEstimado = consumoTotal * (variacaoPercent / 100);
     }
@@ -221,108 +209,116 @@ async function attachAutoPartsEstoque(
     if (achado) { item.estoque = achado.stock; item.estoqueValor = achado.valor; }
   }
 }
+// ————— B-v8: consumo da Indústria — AGREGAÇÃO NO POSTGRES + CACHE —————
+// CTE lê fotos de saldo (FECHAMENTO_ESTOQUE) e entradas (ENTRADA_NF) de TODOS
+// os batches processados, soma por agregado, aplica LAG (saldo do mês anterior)
+// e devolve o consumo final por filial|agregado|período — ~30 mil linhas leves
+// em vez das ~370 mil linhas de JSON bruto que o JS reprocessava por chamada
+// (causa do timeout nos itens paginados). CASE/regex protegem o cast ::numeric.
+type ConsumoIndustria = { consumo: Map<string, number>; estoqueAgregado: Map<string, number>; gravadoEm: number };
+const CACHE_CONSUMO_TTL_MS = 10 * 60 * 1000;
+const cacheConsumoIndustria = new Map<string, ConsumoIndustria>();
+const NUM = (campo: string) => `CASE WHEN r.normalized_payload->>'${campo}' ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (r.normalized_payload->>'${campo}')::numeric ELSE 0 END`;
+
+async function obterConsumoIndustria(
+  portalPool: ReturnType<typeof getSupabasePool>,
+  periods: string[],
+): Promise<{ consumo: Map<string, number>; estoqueAgregado: Map<string, number> }> {
+  const chave = `${periods[0]}:${periods[periods.length - 1]}`;
+  const existente = cacheConsumoIndustria.get(chave);
+  if (existente && Date.now() - existente.gravadoEm < CACHE_CONSUMO_TTL_MS) {
+    return { consumo: existente.consumo, estoqueAgregado: existente.estoqueAgregado };
+  }
+  const inicio = previousPeriod(periods[0]);
+  const fim = periods[periods.length - 1];
+  const consumoRows = await portalPool.query<{ branch: string; agregado: string; period: string; consumo: string }>(
+    `WITH fotos AS (
+        SELECT r.branch_code,
+               COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
+               (r.normalized_payload->>'year') || lpad(r.normalized_payload->>'month', 2, '0') AS period,
+               SUM(${NUM("totalValue")}) AS saldo
+          FROM public.operational_source_rows r
+          JOIN public.operational_import_batches b ON b.id = r.batch_id
+         WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
+           AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
+         GROUP BY 1, 2, 3
+     ),
+     entradas AS (
+        SELECT r.branch_code,
+               COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
+               replace(substring(r.normalized_payload->>'entryDate' from 1 for 7), '-', '') AS period,
+               SUM(${NUM("quantity")} * ${NUM("itemValue")}) AS valor
+          FROM public.operational_source_rows r
+          JOIN public.operational_import_batches b ON b.id = r.batch_id
+         WHERE b.status = 'processed' AND b.source_kind = 'ENTRADA_NF'
+           AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
+         GROUP BY 1, 2, 3
+     ),
+     serie AS (
+        SELECT f.branch_code, f.agregado, f.period, f.saldo,
+               LAG(f.saldo) OVER (PARTITION BY f.branch_code, f.agregado ORDER BY f.period) AS saldo_anterior
+          FROM fotos f
+     )
+     SELECT s.branch_code, s.agregado, s.period,
+            GREATEST(0, s.saldo_anterior + COALESCE(e.valor, 0) - s.saldo) AS consumo
+       FROM serie s
+       LEFT JOIN entradas e
+         ON e.branch_code = s.branch_code AND e.agregado = s.agregado AND e.period = s.period
+      WHERE s.saldo_anterior IS NOT NULL
+        AND s.period BETWEEN $1 AND $2`,
+    [inicio, fim],
+  );
+  const consumo = new Map<string, number>();
+  for (const row of consumoRows.rows) {
+    const valor = Number(row.consumo);
+    if (Number.isFinite(valor)) consumo.set(`${row.branch}|${row.agregado}|${row.period}`, valor);
+  }
+  // Estoque da Indústria = SOMA das fotos do último período com fotografia.
+  const estoqueRows = await portalPool.query<{ branch: string; agregado: string; saldo: string }>(
+    `WITH fotos AS (
+        SELECT r.branch_code,
+               COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
+               (r.normalized_payload->>'year') || lpad(r.normalized_payload->>'month', 2, '0') AS period,
+               SUM(${NUM("totalValue")}) AS saldo
+          FROM public.operational_source_rows r
+          JOIN public.operational_import_batches b ON b.id = r.batch_id
+         WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
+           AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
+         GROUP BY 1, 2, 3
+     ),
+     ultimo AS (SELECT max(period) AS period FROM fotos)
+     SELECT f.branch_code, f.agregado, f.saldo
+       FROM fotos f JOIN ultimo u ON f.period = u.period`,
+  );
+  const estoqueAgregado = new Map<string, number>();
+  for (const row of estoqueRows.rows) {
+    const valor = Number(row.saldo);
+    if (Number.isFinite(valor)) estoqueAgregado.set(`${row.branch}|${row.agregado}`, valor);
+  }
+  cacheConsumoIndustria.set(chave, { consumo, estoqueAgregado, gravadoEm: Date.now() });
+  return { consumo, estoqueAgregado };
+}
+
+// Anexa o consumo por agregado aos meses dos itens da Indústria e devolve o
+// estoque agregado da última fotografia para o chamador.
 async function attachIndustryMonthlyConsumption(
   portalPool: ReturnType<typeof getSupabasePool>,
   result: { periodos?: Array<{ period: string }>; items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; meses: Array<Record<string, unknown>> }> },
-  estoqueOut?: Map<string, number>,
-) {
+): Promise<Map<string, number>> {
   const periods = (result.periodos ?? []).map(item => normalizeSalesPeriod(item.period)).filter((item): item is string => item != null).sort();
-  if (!periods.length) return;
-  // B-v4: lê TODOS os batches processados — antes, distinct on (source_kind)
-  // descartava os fechamentos e entradas das cargas mensais anteriores.
-  const batches = await portalPool.query<{ id: string; source_kind: string }>(
-    `select id, source_kind
-       from public.operational_import_batches
-      where status = 'processed' and source_kind in ('ENTRADA_NF', 'FECHAMENTO_ESTOQUE')`,
-  );
-  const batchIds = batches.rows.map(row => row.id);
-  if (!batchIds.length) return;
-  const sourceRows = await portalPool.query<{
-    sourceKind: string;
-    productCode: string | null;
-    aggregateCode: string | null;
-    branch: string | null;
-    normalizedPayload: Record<string, unknown>;
-  }>(
-    `select b.source_kind as "sourceKind",
-            r.product_code as "productCode",
-            r.aggregate_product_code as "aggregateCode",
-            r.branch_code as branch,
-            r.normalized_payload as "normalizedPayload"
-       from public.operational_source_rows r
-       join public.operational_import_batches b on b.id = r.batch_id
-      where r.batch_id = any($1::uuid[])`,
-    [batchIds],
-  );
-  const stock = new Map<string, number>();
-  const entries = new Map<string, number>();
-  const aggregateByProduct = new Map<string, string>();
-  const start = previousPeriod(periods[0]);
-  const allPeriods = monthRange(start, periods[periods.length - 1]);
-  const add = (target: Map<string, number>, key: string, value: number) => target.set(key, (target.get(key) ?? 0) + value);
-  for (const row of sourceRows.rows) {
-    const payload = row.normalizedPayload ?? {};
-    const product = String(row.productCode ?? payload.productCode ?? "").trim();
-    const aggregate = String(row.aggregateCode ?? payload.aggregateProductCode ?? product).trim();
-    const branch = String(row.branch ?? payload.branch ?? INDUSTRY_BRANCH).trim();
-    const productKey = `${branch}|${product}`;
-    if (product && aggregate) {
-      for (const productVariant of codeVariants(product)) {
-        for (const aggregateVariant of codeVariants(aggregate)) {
-          aggregateByProduct.set(`${branch}|${productVariant}`, aggregateVariant);
-        }
-      }
-    }
-    if (row.sourceKind === "FECHAMENTO_ESTOQUE") {
-      const year = Number(payload.year);
-      const month = Number(payload.month);
-      const period = year && month ? `${year}${String(month).padStart(2, "0")}` : null;
-      const value = Number(payload.totalValue);
-      if (period && Number.isFinite(value)) add(stock, `${productKey}|${period}`, value);
-    } else {
-      const period = normalizeSalesPeriod(String(payload.entryDate ?? ""));
-      const quantity = Number(payload.quantity);
-      const unitValue = Number(payload.itemValue);
-      if (period && Number.isFinite(quantity) && Number.isFinite(unitValue)) add(entries, `${productKey}|${period}`, quantity * unitValue);
-    }
-  }
-  // REGRA DO CONSUMO (validada): fórmula da Curva ABC — saldo_anterior + entradas −
-  // saldo_atual, SOMENTE quando existe fotografia de saldo dos DOIS meses. Sem foto
-  // → sem consumo real (nunca inventar base; o "—" na tela é honesto).
-  const consumption = new Map<string, number>();
-  for (const [productKey, aggregate] of aggregateByProduct) {
-    for (let idx = 1; idx < allPeriods.length; idx++) {
-      const prevPeriod = allPeriods[idx - 1];
-      const period = allPeriods[idx];
-      const prevStock = stock.get(`${productKey}|${prevPeriod}`);
-      const curStock = stock.get(`${productKey}|${period}`);
-      if (prevStock == null || curStock == null) continue;
-      const value = Math.max(0, prevStock + (entries.get(`${productKey}|${period}`) ?? 0) - curStock);
-      if (period >= periods[0]) add(consumption, `${productKey.split("|")[0]}|${aggregate}|${period}`, value);
-    }
-  }
+  if (!periods.length) return new Map();
+  const { consumo, estoqueAgregado } = await obterConsumoIndustria(portalPool, periods);
   for (const item of result.items ?? []) {
     const branch = item.filial ?? INDUSTRY_BRANCH;
     const aggregateVariants = [...codeVariants(item.cod_agregado), ...codeVariants(item.codigo)];
     for (const month of item.meses) {
       const period = normalizeSalesPeriod(String(month.period ?? ""));
       if (!period || month.valor_consumo != null) continue;
-      const value = aggregateVariants.map(aggregate => consumption.get(`${branch}|${aggregate}|${period}`)).find(item => item != null);
+      const value = aggregateVariants.map(aggregate => consumo.get(`${branch}|${aggregate}|${period}`)).find(item => item != null);
       month.valor_consumo = value ?? null;
     }
   }
-  // Estoque da Indústria = ÚLTIMA fotografia de FECHAMENTO_ESTOQUE, somada por agregado.
-  if (estoqueOut) {
-    const periodsStock = Array.from(stock.keys()).map(key => key.split("|")[2]).filter((period): period is string => period != null).sort();
-    const ultimaFotografia = periodsStock[periodsStock.length - 1];
-    if (ultimaFotografia) {
-      for (const [productKey, aggregate] of aggregateByProduct) {
-        const branch = productKey.split("|")[0];
-        const valor = stock.get(`${productKey}|${ultimaFotografia}`);
-        if (valor != null) estoqueOut.set(`${branch}|${aggregate}`, (estoqueOut.get(`${branch}|${aggregate}`) ?? 0) + valor);
-      }
-    }
-  }
+  return estoqueAgregado;
 }
 async function getCurrentCurveLookup(
   businessPool: ReturnType<typeof getBusinessPool>,
@@ -361,8 +357,8 @@ async function getCurrentCurveLookup(
   }
   if (segment !== "industry") {
     try {
-      // CORREÇÃO DA CURVA DO AUTOPEÇAS: a coluna a.curve é o enum inventory_curve;
-      // cast ::text obrigatório (o trim sobre enum lançava erro engolido).
+      // A coluna a.curve é o enum inventory_curve; cast ::text obrigatório
+      // (o trim sobre enum lançava erro que o try/catch engolia).
       const result = await businessPool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
         `select trim(a.code) as code,
                 nullif(trim(a."codeOriginal"), '') as "codeOriginal",
@@ -411,9 +407,10 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     [params.periodoInicio ?? null, params.periodoFim ?? null, filial, params.codAgregado ?? null, params.descricao ?? null],
   );
   const result = rows[0]?.result ?? { periodos: [], items: [] };
-  const estoqueIndustria = new Map<string, number>();
-  if (params.segment === "industry") await attachIndustryMonthlyConsumption(portalPool, result, estoqueIndustria);
-  else {
+  const estoqueIndustria = params.segment === "industry"
+    ? await attachIndustryMonthlyConsumption(portalPool, result)
+    : null;
+  if (params.segment !== "industry") {
     await attachAutoPartsMonthlySales(businessPool, result);
     await attachAutoPartsEstoque(businessPool, result);
   }
@@ -446,7 +443,7 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   const analisado = attachCostBenchmarkReport(result, curves, params.segment ?? "auto_parts", benchmarks);
   const items = (analisado.items ?? []) as ItemInterno[];
   enriquecerItens(items, params.segment ?? "auto_parts");
-  if (params.segment === "industry") {
+  if (params.segment === "industry" && estoqueIndustria) {
     for (const item of items) {
       const branch = item.filial ?? INDUSTRY_BRANCH;
       const variants = [...codeVariants(item.cod_agregado), ...codeVariants(item.codigo)];
@@ -454,30 +451,9 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
       if (achado != null) item.estoqueAgregado = achado;
     }
   }
-  // B-v3/B-v5: por curva, "Itens acima do limite" usa a régua do usuário E
-  // "Impacto estimado" é a SOMA dos impactos reais dos itens da curva.
-  // B-v5: a contagem usa o MESMO campo (variacaoPercent, já arredondado) que o
-  // filtro do grid usa — contagem do painel e filtro do grid ficam idênticos.
-  const byCurve = (analisado.benchmarkReport.byCurve ?? {}) as Record<string, { highAlerts?: number; estimatedImpact?: number | null } | undefined>;
-  const contagem: Record<string, number> = {};
-  const impactoPorCurva: Record<string, number> = {};
-  for (const item of items) {
-    if (!item.curve || item.costStatus === "SEM_BASE_CUSTO") continue;
-    const variacao = item.variacaoPercent;
-    if (variacao != null) {
-      const limite = limites[item.curve as keyof LimitesAlerta] ?? LIMITES_PADRAO[item.curve as keyof LimitesAlerta];
-      if (Math.abs(variacao) >= limite) contagem[item.curve] = (contagem[item.curve] ?? 0) + 1;
-    }
-    if (item.impactoEstimado != null) {
-      impactoPorCurva[item.curve] = (impactoPorCurva[item.curve] ?? 0) + item.impactoEstimado;
-    }
-  }
-  for (const curve of Object.keys(byCurve)) {
-    if (byCurve[curve]) {
-      byCurve[curve]!.highAlerts = contagem[curve] ?? 0;
-      byCurve[curve]!.estimatedImpact = Number((impactoPorCurva[curve] ?? 0).toFixed(2));
-    }
-  }
+  // B-v9: o cruzamento por curva (contagens, impacto e variação ponderada) é
+  // recalculado na API consolidada SOBRE o conjunto FILTRADO — um único motor
+  // para cards e painel. Aqui ficam apenas os comparativos oficiais.
   const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
   relatorio.ipcaPercent = ipcaPercent;
   relatorio.dolarVariationPercent = dolarVariationPercent;
@@ -520,23 +496,73 @@ function calcularCustoTotal(items: ItemInterno[], segment: CostEvolutionSegment)
 export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?: string; limitesAlerta?: Partial<LimitesAlerta> | null }) {
   const limites = sanitizarLimites(params.limitesAlerta);
   const { analisado, items, periods, limites: limitesAplicados } = await obterBase(params, limites);
+  const segment = params.segment ?? "auto_parts";
   const filtrados = filtrarPorDescricao(items, params.descricao, params.searchType);
+  const custoTotal = calcularCustoTotal(filtrados, segment);
   let comCusto = 0, alta = 0, reducao = 0;
+  let somaImpacto = 0;
+  const contagemAcima: Record<string, number> = {};
+  const impactoPorCurva: Record<string, number> = {};
+  const consumoPorCurva: Record<string, number> = {};
+  const chavesConsumoCurva: Record<string, Set<string>> = {};
+  const itensPorCurva: Record<string, number> = {};
   for (const item of filtrados) {
     const valores = serieCusto(item, periods).filter((valor): valor is number => valor != null);
-    if (!valores.length) continue;
-    comCusto += 1;
-    if (valores[valores.length - 1] > valores[0]) alta += 1;
-    else if (valores[valores.length - 1] < valores[0]) reducao += 1;
+    if (valores.length) {
+      comCusto += 1;
+      if (valores[valores.length - 1] > valores[0]) alta += 1;
+      else if (valores[valores.length - 1] < valores[0]) reducao += 1;
+    }
+    if (!item.curve || item.costStatus === "SEM_BASE_CUSTO") continue;
+    itensPorCurva[item.curve] = (itensPorCurva[item.curve] ?? 0) + 1;
+    const variacao = item.variacaoPercent;
+    if (variacao != null) {
+      const limite = limites[item.curve as keyof LimitesAlerta] ?? LIMITES_PADRAO[item.curve as keyof LimitesAlerta];
+      if (Math.abs(variacao) >= limite) contagemAcima[item.curve] = (contagemAcima[item.curve] ?? 0) + 1;
+    }
+    if (item.impactoEstimado != null) {
+      impactoPorCurva[item.curve] = (impactoPorCurva[item.curve] ?? 0) + item.impactoEstimado;
+      somaImpacto += item.impactoEstimado;
+    }
+    // Consumo da curva, deduplicado por filial|agregado|mês (mesma régua do
+    // custo total) — base da variação ponderada por curva.
+    const chaves = chavesConsumoCurva[item.curve] ?? (chavesConsumoCurva[item.curve] = new Set());
+    const chaveItem = `${item.filial ?? ""}|${(item.cod_agregado ?? item.codigo).trim()}`;
+    for (const mes of item.meses) {
+      const valor = consumoMensalEmReais(mes, segment);
+      if (valor == null) continue;
+      const chave = `${chaveItem}|${mes.period}`;
+      if (!chaves.has(chave)) {
+        chaves.add(chave);
+        consumoPorCurva[item.curve] = (consumoPorCurva[item.curve] ?? 0) + valor;
+      }
+    }
   }
+  // B-v9: triângulo que fecha — Variação ponderada × Custo total = Impacto
+  // estimado, calculados do MESMO motor sobre o MESMO conjunto filtrado.
+  const variacaoPonderada = custoTotal > 0 ? Number(((somaImpacto / custoTotal) * 100).toFixed(4)) : null;
+  const byCurveNovo: Record<string, { itemCount: number; itemsWithBase: number; averageVariationPercent: number | null; weightedVariationPercent?: number | null; estimatedImpact: number | null; highAlerts: number }> = {};
+  for (const curve of Object.keys(itensPorCurva)) {
+    const consumo = consumoPorCurva[curve] ?? 0;
+    const impacto = impactoPorCurva[curve] ?? 0;
+    byCurveNovo[curve] = {
+      itemCount: itensPorCurva[curve],
+      itemsWithBase: itensPorCurva[curve],
+      averageVariationPercent: null,
+      weightedVariationPercent: consumo > 0 ? Number(((impacto / consumo) * 100).toFixed(4)) : null,
+      estimatedImpact: Number(impacto.toFixed(2)),
+      highAlerts: contagemAcima[curve] ?? 0,
+    };
+  }
+  const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
+  relatorio.byCurve = byCurveNovo; // só curvas com itens — fim das linhas 0,00
+  relatorio.weightedMonthlyVariationPercent = variacaoPonderada;
+  relatorio.internalInflationPercent = null; // pílula "Interna" removida (mesmo conceito da variação ponderada)
   return {
     periodos: analisado.periodos ?? [],
     periodoEfetivoInicio: periods[0] ?? null,
     periodoEfetivoFim: periods[periods.length - 1] ?? null,
-    cards: {
-      custoTotal: calcularCustoTotal(filtrados, params.segment ?? "auto_parts"),
-      comCusto, alta, reducao,
-    },
+    cards: { custoTotal, comCusto, alta, reducao },
     benchmarkReport: analisado.benchmarkReport,
     limites: limitesAplicados,
   };
