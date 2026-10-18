@@ -7,26 +7,21 @@ import { BarChart3, CheckCircle2, Download, Filter, LoaderCircle, Search, Upload
 import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
-
 type Segment = "auto_parts" | "industry";
-
 const config = {
   auto_parts: { label: "Autopeças", importNode: "importacoes-custos-autopecas", description: "Peças das unidades de autopeças" },
   industry: { label: "Indústria", importNode: "importacoes-custos-industria", description: "Materiais e peças da indústria" },
 } as const;
-
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 });
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 4 });
 const dateOnly = (value: Date | string | null | undefined) => value ? new Date(value).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "—";
 const dateTime = (value: Date | string | null | undefined) => value ? new Date(value).toLocaleString("pt-BR") : "—";
 const monthLabel = (period: string) => period ? `${period.slice(4, 6)}/${period.slice(0, 4)}` : "—";
 const LINE_COLORS = ["#0f172a", "#2563eb", "#16a34a", "#dc2626", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d", "#4f46e5", "#ea580c", "#0d9488"];
-
 function variationPct(current: number | null | undefined, previous: number | null | undefined) {
   if (current == null || previous == null || previous === 0) return null;
   return ((current - previous) * 100) / previous;
 }
-
 async function fileAsBase64(file: File) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   let binary = "";
@@ -34,11 +29,9 @@ async function fileAsBase64(file: File) {
   for (let index = 0; index < bytes.length; index += chunk) binary += String.fromCharCode(...Array.from(bytes.subarray(index, index + chunk)));
   return btoa(binary);
 }
-
 function PageHeader({ eyebrow, title, description }: { eyebrow: string; title: string; description: string }) {
   return <header className="mb-7"><p className="eyebrow">{eyebrow}</p><h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">{title}</h1><p className="mt-3 max-w-3xl text-sm font-medium leading-6 text-slate-500">{description}</p></header>;
 }
-
 export function CostEvolutionImport({ segment }: { segment: Segment }) {
   const details = config[segment];
   const [file, setFile] = useState<File | null>(null);
@@ -86,7 +79,6 @@ export function CostEvolutionImport({ segment }: { segment: Segment }) {
     </section>
   </div>;
 }
-
 type CurveCode = "A" | "B" | "C" | "D" | "E" | "SEM_CURVA";
 type CurveSummary = {
   itemCount: number;
@@ -105,11 +97,8 @@ type BenchmarkReport = {
 };
 type ItemRow = { codigo: string; descricao: string; filial: string; cod_agregado: string | null; curve?: CurveCode; costStatus?: "COM_BASE" | "SEM_BASE_CUSTO" | "CURVA_NAO_VINCULADA"; meses: { period: string; custo_medio: number | null }[] };
 type SearchType = "contem" | "inicia" | "termina";
-
 const FILIAL_UNICA_INDUSTRY = "0105";
-
 const itemChartKey = (item: ItemRow) => `${item.filial ?? ""}|${item.codigo}`;
-
 function buildSeries(item: ItemRow, periods: string[]) {
   const byPeriod = new Map(item.meses.map(m => [m.period, m.custo_medio]));
   const series: (number | null)[] = [];
@@ -121,7 +110,6 @@ function buildSeries(item: ItemRow, periods: string[]) {
   }
   return series;
 }
-
 function suggestAction(item: ItemRow, periods: string[]) {
   const values = buildSeries(item, periods).filter((v): v is number => v != null);
   if (!values.length) return "Sem histórico de custo no período.";
@@ -132,7 +120,6 @@ function suggestAction(item: ItemRow, periods: string[]) {
   if (v < -10) return `Redução de ${number.format(Math.abs(v))}% no período. Sugestão: manter fornecedor atual.`;
   return `Variação de ${number.format(v)}% no período. Sem ação imediata.`;
 }
-
 export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const details = config[segment];
   const isIndustry = segment === "industry";
@@ -294,7 +281,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     <section className="sc-surface mt-5 overflow-hidden">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-5 sm:px-7"><div><h2 className="text-lg font-extrabold text-slate-950">Evolução mês a mês por item</h2><p className="mt-1 text-sm font-medium text-slate-500">{runAnalysis ? `${filteredItems.length.toLocaleString("pt-BR")} itens · meses sem preço usam o valor do mês anterior` : "Defina os filtros acima e clique em Filtrar para carregar a análise."}</p></div></div>
       <div className="overflow-x-auto">
-        <Table><TableHeader><TableRow><TableHead>Filial</TableHead><TableHead>Código</TableHead><TableHead>Descrição</TableHead><TableHead>Curva ABC</TableHead>{periods.map((p, i) => <TableHead key={p}>{monthLabel(p)}{i < periods.length - 1 && <span className="block text-[10px] font-semibold text-slate-400">var → {monthLabel(periods[i + 1])}</span>}</TableHead>)}<TableHead>Sugestão de ação</TableHead></TableRow></TableHeader><TableBody>{!runAnalysis ? <TableRow><TableCell colSpan={5 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500">Defina os filtros acima e clique em <strong>Filtrar</strong> para carregar a análise de custos.</TableCell></TableRow> : analise.isLoading && !filteredItems.length ? <TableRow><TableCell colSpan={5 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500"><LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />Carregando análise…</TableCell></TableRow> : filteredItems.length ? filteredItems.map(item => { const series = buildSeries(item, periods); return <TableRow key={`${item.codigo}-${item.filial}`}><TableCell>{item.filial}</TableCell><TableCell className="font-bold text-slate-950">{item.codigo}</TableCell><TableCell className="max-w-xs">{item.descricao}</TableCell><TableCell>{item.costStatus === "SEM_BASE_CUSTO" ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">Sem base de custo</span> : item.curve ? <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-800">{item.curve}</span> : <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">Curva não vinculada</span>}</TableCell>{periods.map((p, i) => { const val = series[i]; const v = variationPct(series[i + 1], series[i]); return <TableCell key={p}><p className="whitespace-nowrap">{val == null ? "—" : money.format(val)}</p>{i < periods.length - 1 && <p className={`whitespace-nowrap text-xs font-semibold ${v == null ? "text-slate-400" : v > 0 ? "text-rose-700" : v < 0 ? "text-emerald-700" : "text-slate-600"}`}>{v == null ? "—" : `${v > 0 ? "+" : ""}${number.format(v)}%`}</p>}</TableCell>; })}<TableCell className="max-w-xs text-xs font-medium text-slate-600">{item.costStatus === "SEM_BASE_CUSTO" ? "Sem base de custo no período." : suggestAction(item, periods)}</TableCell></TableRow>; }) : <TableRow><TableCell colSpan={5 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500">Nenhum item encontrado para os filtros.</TableCell></TableRow>}</TableBody></Table>
+        <Table><TableHeader><TableRow><TableHead>Filial</TableHead><TableHead>Código</TableHead><TableHead>Descrição</TableHead><TableHead>Curva ABC</TableHead>{periods.map((p, i) => <TableHead key={p}>{monthLabel(p)}{i < periods.length - 1 && <span className="block text-[10px] font-semibold text-slate-400">var → {monthLabel(periods[i + 1])}</span>}</TableHead>)}<TableHead>Sugestão de ação</TableHead></TableRow></TableHeader><TableBody>{!runAnalysis ? <TableRow><TableCell colSpan={5 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500">Defina os filtros acima e clique em <strong>Filtrar</strong> para carregar a análise de custos.</TableCell></TableRow> : analise.isLoading && !filteredItems.length ? <TableRow><TableCell colSpan={5 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500"><LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />Carregando análise…</TableCell></TableRow> : filteredItems.length ? filteredItems.map(item => { const series = buildSeries(item, periods); return <TableRow key={`${item.codigo}-${item.filial}`}><TableCell>{item.filial}</TableCell><TableCell className="font-bold text-slate-950">{item.codigo}</TableCell><TableCell className="max-w-xs">{item.descricao}</TableCell><TableCell className="whitespace-nowrap">{item.costStatus === "SEM_BASE_CUSTO" ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600" title="Item sem custo nos meses do período selecionado">Sem base de custo</span> : item.curve ? <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-800" title={`Curva ABC ${item.curve} vinculada por filial + código agregado`}>{item.curve}</span> : <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800" title="Item sem vínculo com a Curva ABC carregada">Sem curva</span>}</TableCell>{periods.map((p, i) => { const val = series[i]; const v = variationPct(series[i + 1], series[i]); return <TableCell key={p}><p className="whitespace-nowrap">{val == null ? "—" : money.format(val)}</p>{i < periods.length - 1 && <p className={`whitespace-nowrap text-xs font-semibold ${v == null ? "text-slate-400" : v > 0 ? "text-rose-700" : v < 0 ? "text-emerald-700" : "text-slate-600"}`}>{v == null ? "—" : `${v > 0 ? "+" : ""}${number.format(v)}%`}</p>}</TableCell>; })}<TableCell className="max-w-xs text-xs font-medium text-slate-600">{item.costStatus === "SEM_BASE_CUSTO" ? "Sem base de custo no período." : suggestAction(item, periods)}</TableCell></TableRow>; }) : <TableRow><TableCell colSpan={5 + periods.length} className="h-24 text-center text-sm font-medium text-slate-500">Nenhum item encontrado para os filtros.</TableCell></TableRow>}</TableBody></Table>
       </div>
     </section>
   </div>;

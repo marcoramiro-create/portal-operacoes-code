@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
-
 describe("cost evolution benchmark adapter", () => {
   it("carries the last valid cost and groups the item by its ABC curve", () => {
     const result = attachCostBenchmarkReport({
@@ -16,24 +15,25 @@ describe("cost evolution benchmark adapter", () => {
         ],
       }],
     }, { "0101|P-1": "A" }, "auto_parts", { IPCA: 5 });
-
     expect(result.items?.[0]).toMatchObject({ codigo: "P-1", curve: "A" });
     expect(result.benchmarkReport.countsByCurve.A).toBe(1);
     expect(result.benchmarkReport.items[0]).toMatchObject({ costStart: 100, costEnd: 120, curve: "A" });
     expect(result.benchmarkReport.items[0].benchmarkVariationPercent.IPCA).toBe(5);
   });
-
-  it("excludes items without a matching ABC record", () => {
+  it("keeps items without a matching ABC record marked and out of the report", () => {
     const result = attachCostBenchmarkReport({
       periodos: [{ period: "202501" }, { period: "202502" }],
       items: [{ codigo: "P-2", filial: "0102", meses: [{ period: "202501", custo_medio: 50 }, { period: "202502", custo_medio: 55 }] }],
     }, {}, "industry");
-
-    expect(result.items).toHaveLength(0);
+    // Regra 17/10/2026: o item PERMANECE na resposta com o marcador "Curva não vinculada",
+    // mas NÃO entra no relatório ABC (que calcula apenas itens com curva vinculada).
+    expect(result.items).toHaveLength(1);
+    expect(result.items?.[0].codigo).toBe("P-2");
+    expect(result.items?.[0].costStatus).toBe("CURVA_NAO_VINCULADA");
+    expect(result.items?.[0].curve).toBeUndefined();
     expect(result.benchmarkReport.countsByCurve.SEM_CURVA).toBe(0);
     expect(result.benchmarkReport.items).toHaveLength(0);
   });
-
   it("falls back to the aggregate code used by the Compras ABCDE import", () => {
     const result = attachCostBenchmarkReport({
       periodos: [{ period: "202501" }, { period: "202502" }],
@@ -44,11 +44,9 @@ describe("cost evolution benchmark adapter", () => {
         meses: [{ period: "202501", custo_medio: 50 }, { period: "202502", custo_medio: 55 }],
       }],
     }, { "0101|AGR-01": "B" }, "auto_parts");
-
     expect(result.items?.[0]).toMatchObject({ curve: "B" });
     expect(result.benchmarkReport.countsByCurve.B).toBe(1);
   });
-
   it("prioritizes the branch plus aggregate code over the individual product code", () => {
     const result = attachCostBenchmarkReport({
       periodos: [{ period: "202501" }, { period: "202502" }],
@@ -62,12 +60,10 @@ describe("cost evolution benchmark adapter", () => {
       "0101|PROD-01": "D",
       "0101|AGR-01": "A",
     }, "auto_parts");
-
     expect(result.items?.[0]).toMatchObject({ curve: "A" });
     expect(result.benchmarkReport.countsByCurve.A).toBe(1);
     expect(result.benchmarkReport.countsByCurve.D).toBe(0);
   });
-
   it("uses monthly sold quantity for Autopeças", () => {
     const result = attachCostBenchmarkReport({
       periodos: [{ period: "202501" }, { period: "202502" }, { period: "202503" }],
@@ -81,10 +77,8 @@ describe("cost evolution benchmark adapter", () => {
         ],
       }],
     }, { "0101|AGR-PECA": "A" }, "auto_parts");
-
     expect(result.benchmarkReport.weightedMonthlyVariationPercent).toBe(4);
   });
-
   it("uses monthly consumption value for Indústria and accepts the camelCase source field", () => {
     const result = attachCostBenchmarkReport({
       periodos: [{ period: "202501" }, { period: "202502" }],
@@ -97,11 +91,9 @@ describe("cost evolution benchmark adapter", () => {
         ],
       }],
     }, { "0105|03545": "A" }, "industry");
-
     expect(result.benchmarkReport.weightedMonthlyVariationPercent).toBe(20);
   });
-
-  it("marks zero-only items as sem base and excludes them from ABC alerts", () => {
+  it("marks zero-only items as sem base and keeps them out of ABC alerts", () => {
     const result = attachCostBenchmarkReport({
       periodos: [{ period: "202501" }, { period: "202502" }],
       items: [{
@@ -111,8 +103,11 @@ describe("cost evolution benchmark adapter", () => {
         meses: [{ period: "202501", custo_medio: 0 }, { period: "202502", custo_medio: null }],
       }],
     }, { "0105|07387": "A" }, "industry");
-
-    expect(result.items).toHaveLength(0);
+    // Regra 17/10/2026: item PERMANECE na resposta com o marcador "Sem base de custo",
+    // mas NÃO entra no relatório ABC nem nos alertas.
+    expect(result.items).toHaveLength(1);
+    expect(result.items?.[0].costStatus).toBe("SEM_BASE_CUSTO");
+    expect(result.items?.[0].curve).toBeUndefined();
     expect(result.benchmarkReport.items).toHaveLength(0);
     expect(result.benchmarkReport.countsByCurve.A).toBe(0);
     expect(result.benchmarkReport.countsByAlert.SEM_BASE).toBe(0);
