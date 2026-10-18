@@ -22,7 +22,7 @@ const filters = z.object({
   page: z.number().int().min(1).optional(),
   pageSize: z.number().int().min(10).max(100).optional(),
 });
-// B1 (18/10/2026): limites de alerta configuráveis pelo usuário no filtro.
+// Limites de alerta configuráveis pelo usuário no filtro.
 const limitesAlerta = z.object({
   A: z.number().min(0).max(100).optional(),
   B: z.number().min(0).max(100).optional(),
@@ -43,13 +43,16 @@ const itensFilters = z.object({
   ...baseAnalise,
   searchType: z.enum(["contem", "inicia", "termina"]).optional(),
   limitesAlerta,
+  // B-v3 (18/10/2026): eixo Curva independente do Critério — itens de outra
+  // curva jamais aparecem no grid paginado.
+  curvaFiltro: z.enum(["A", "B", "C", "D", "E"]).optional(),
   pagina: z.number().int().min(1).optional(),
   itensPorPagina: z.number().int().min(10).max(200).optional(),
   ordenacao: z.enum(["impacto", "variacao", "codigo", "descricao"]).optional(),
   criterio: z.enum(["todos", "acima-limite", "alta", "reducao", "sem-base", "sem-curva", "curva-A", "curva-B", "curva-C", "curva-D", "curva-E"]).optional(),
 });
-// B1: janela dos últimos 24 meses para o botão "Atualizar índices" (completa
-// apenas os meses faltantes no cache; índices de mês fechado não mudam).
+// Janela dos últimos 24 meses para o botão "Atualizar índices" (completa apenas
+// os meses faltantes no cache; índices de mês fechado não mudam).
 function ultimosPeriodos(qtde: number): string[] {
   const base = new Date();
   const lista: string[] = [];
@@ -69,11 +72,10 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, importerNode(input.segment), "manage");
     const result = await commitCostEvolutionImport({ ...input, importedBy: identity.email });
-    // MUDANÇA: o registro de auditoria é opcional — se falhar, NÃO bloqueia a importação.
     try {
       await recordPortalAudit(identity, "cost_evolution_import", identity.id, "created", { costImportId: result.id, segment: input.segment, fileName: input.fileName, itemCount: result.itemCount, observationCount: result.observationCount });
     } catch {
-      // auditoria falhou (ex.: tipo de coluna) — a importação já foi concluída com sucesso.
+      // auditoria opcional — não bloqueia a importação.
     }
     return result;
   }),
@@ -112,22 +114,19 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCostEvolutionAnalise({
-      // MUDANÇA (17/10/2026): o segmento é repassado — sem isso a Indústria
-      // buscava curvas como AUTOPECAS e todos os itens caíam em "Curva não vinculada".
       segment: input.segment,
       periodoInicio: input.periodoInicio,
       periodoFim: input.periodoFim,
-      // MUDANÇA: a Indústria usa SEMPRE a filial 0105 — forçado aqui no servidor.
+      // A Indústria usa SEMPRE a filial 0105 — forçado aqui no servidor.
       filial: input.segment === "industry" ? "0105" : (input.filial ?? undefined),
       codAgregado: input.codAgregado,
       descricao: input.descricao,
-      // B1: tipo de busca e limites de alerta definidos pelo usuário.
       searchType: input.searchType,
       limitesAlerta: input.limitesAlerta,
     });
   }),
-  // B1: grid sob demanda — itens paginados (50/página). Resposta em KBs em vez
-  // dos ~5 MB de antes: é esta separação que elimina o timeout de forma definitiva.
+  // Grid sob demanda — itens paginados (50/página). Resposta em KBs em vez dos
+  // ~5 MB de antes: esta separação elimina o timeout de forma definitiva.
   itensEvolutivos: publicProcedure.input(itensFilters).query(async ({ ctx, input }) => {
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
@@ -140,17 +139,17 @@ export const costEvolutionRouter = router({
       descricao: input.descricao,
       searchType: input.searchType,
       limitesAlerta: input.limitesAlerta,
+      curvaFiltro: input.curvaFiltro,
       pagina: input.pagina,
       itensPorPagina: input.itensPorPagina,
       ordenacao: input.ordenacao,
       criterio: input.criterio,
     });
   }),
-  // B1: botão "Atualizar índices" — completa os meses faltantes nas APIs oficiais
-  // (IBGE/SIDRA e BCB/PTAX). Escrita apenas no cache; a análise nunca quebra se a API estiver fora.
+  // Botão "Atualizar índices" — completa os meses faltantes nas APIs oficiais
+  // (IBGE/SIDRA e BCB/PTAX). Escrita apenas no cache; a análise nunca quebra.
   atualizarIndices: publicProcedure.mutation(async ({ ctx }) => {
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
-    // Permissão: quem vê o painel pode atualizar o cache de índices (não altera dados de negócio).
     await assertApplicationPermission(identity, dashboardNode("auto_parts"), "view");
     const status = await garantirIndicesEconomicos(getSupabasePool(), ultimosPeriodos(24));
     const falhas = Object.entries(status).filter(([, valor]) => valor === "indisponivel").map(([indice]) => indice);
@@ -171,7 +170,7 @@ export const costEvolutionRouter = router({
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");
     return getCodAgregados();
   }),
-  // B1: agregados COM descrição curta — alimenta o combo pesquisável da tela.
+  // Agregados COM descrição curta — alimenta o combo pesquisável da tela.
   codAgregadosDetalhados: publicProcedure.input(z.object({ segment })).query(async ({ ctx, input }) => {
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, dashboardNode(input.segment), "view");

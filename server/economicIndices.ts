@@ -2,9 +2,12 @@
 // economicIndices.ts
 // Índices econômicos oficiais: IPCA (IBGE/SIDRA, tabela 7060,
 // variação mensal %) e dólar PTAX (BCB, média mensal de fechamento).
-// O servidor busca APENAS os meses faltantes na API oficial, grava
-// o snapshot em economic_indices (cache) e NUNCA derruba a análise
-// se a API estiver indisponível — usa o último valor gravado.
+// B-v4 (18/10/2026): CORREÇÃO do formato de data do PTAX — a API do BCB
+// espera dd-MM-yyyy (dia-mês-ano); o formato MM-DD enviado antes era
+// interpretado errado (out/2025 virava 10 de janeiro) e datas como
+// "10-31" eram inválidas, por isso o dólar nunca entrou no cache.
+// O servidor busca APENAS os meses faltantes na API oficial, grava o
+// snapshot em economic_indices (cache) e NUNCA derruba a análise.
 // ============================================================
 import { getSupabasePool } from "./supabasePortal";
 
@@ -54,10 +57,11 @@ async function buscarIpca(inicio: string, fim: string): Promise<LinhaIndice[]> {
 
 // Dólar — Banco Central PTAX: média mensal das cotações de FECHAMENTO (valor)
 // e cotação de fechamento do último dia do mês (valorFechamento).
+// B-v4: datas em dd-MM-yyyy (formato exigido pela API do BCB).
 async function buscarDolar(inicio: string, fim: string): Promise<LinhaIndice[]> {
   const diaFinal = new Date(Number(fim.slice(0, 4)), Number(fim.slice(4, 6)), 0).getDate();
-  const dataInicial = `${inicio.slice(4, 6)}-01-${inicio.slice(0, 4)}`;
-  const dataFinal = `${fim.slice(4, 6)}-${String(diaFinal).padStart(2, "0")}-${fim.slice(0, 4)}`;
+  const dataInicial = `01-${inicio.slice(4, 6)}-${inicio.slice(0, 4)}`;
+  const dataFinal = `${String(diaFinal).padStart(2, "0")}-${fim.slice(4, 6)}-${fim.slice(0, 4)}`;
   const base = "https://olinda.bcb.gov.br/olinda/servico/PTAX/versao/v1/odata/CotacaoDolarPeriodo(dataInicial=@dataInicial,dataFinalCotacao=@dataFinalCotacao)";
   const diarias: { dataHoraCotacao: string; cotacaoVenda: number }[] = [];
   let skip = 0;

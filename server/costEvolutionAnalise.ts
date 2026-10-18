@@ -1,9 +1,13 @@
 // ============================================================
 // costEvolutionAnalise.ts
 // Ponte entre o portal e as funções SQL de evolução de custos.
-// B-v2 (18/10/2026): cast a.curve::text (enum inventory_curve quebrava o trim
-// silenciosamente); consumo da Indústria só com fotografia de saldo dos dois
-// meses (fórmula da Curva ABC); busca por descrição multi-termo.
+// B-v4 (18/10/2026): CORREÇÃO PRINCIPAL — o consumo lia apenas o ÚLTIMO batch
+// de cada source_kind (distinct on), descartando os fechamentos e entradas das
+// cargas mensais anteriores; agora lê TODOS os batches processados. Com a
+// cobertura provada (fotos em todos os meses de 2025-01 a 2026-08), o consumo
+// e o impacto acordam para a base. Mantém do B-v3: impacto por curva como soma
+// dos itens, cast a.curve::text, consumo só com fotografia dos dois meses,
+// eixo curvaFiltro, busca multi-termo, IPCA/PTAX.
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
@@ -56,7 +60,7 @@ function monthRange(start: string, end: string): string[] {
   }
   return result;
 }
-// ————— Limites de alerta configuráveis (B1) —————
+// ————— Limites de alerta configuráveis —————
 export type LimitesAlerta = { A: number; B: number; C: number; D: number; E: number };
 export const LIMITES_PADRAO: LimitesAlerta = { A: 10, B: 15, C: 20, D: 20, E: 20 };
 function sanitizarLimites(entrada?: Partial<LimitesAlerta> | null): LimitesAlerta {
@@ -103,7 +107,7 @@ function variacaoDoItem(item: ItemInterno): number | null {
   if (inicial == null || final == null || inicial === 0) return null;
   return ((final - inicial) * 100) / inicial;
 }
-// Consumo em R$ por mês: Indústria = valor_consumo (já é R$ por agregado);
+// Consumo em R$ por mês: Indústria = valor_consumo (R$ por agregado);
 // Autopeças = quantidade vendida (por agregado) × custo médio do item.
 function consumoMensalEmReais(mes: MesInterno, segment: CostEvolutionSegment): number | null {
   if (segment === "industry") {
@@ -175,8 +179,7 @@ async function attachAutoPartsMonthlySales(
     }
   }
 }
-// B1: estoque do Autopeças — fotografia da última importação aprovada de Compras
-// (inventoryAnalytics.stock / stockValue, por agregado), até saldos atualizados.
+// Estoque do Autopeças — fotografia da última importação aprovada de Compras.
 async function attachAutoPartsEstoque(
   businessPool: ReturnType<typeof getBusinessPool>,
   result: { items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; estoque?: number | null; estoqueValor?: number | null }> },
@@ -216,11 +219,14 @@ async function attachIndustryMonthlyConsumption(
 ) {
   const periods = (result.periodos ?? []).map(item => normalizeSalesPeriod(item.period)).filter((item): item is string => item != null).sort();
   if (!periods.length) return;
+  // B-v4 (18/10/2026) — CORREÇÃO PRINCIPAL: antes, distinct on (source_kind)
+  // pegava APENAS o batch mais recente de cada tipo, descartando os fechamentos
+  // e entradas das cargas mensais anteriores (as fotos existem em TODOS os
+  // meses de 2025-01 a 2026-08, provado por SQL). Agora lê TODOS os batches.
   const batches = await portalPool.query<{ id: string; source_kind: string }>(
-    `select distinct on (source_kind) id, source_kind
+    `select id, source_kind
        from public.operational_import_batches
-      where status = 'processed' and source_kind in ('ENTRADA_NF', 'FECHAMENTO_ESTOQUE')
-      order by source_kind, imported_at desc, id desc`,
+      where status = 'processed' and source_kind in ('ENTRADA_NF', 'FECHAMENTO_ESTOQUE')`,
   );
   const batchIds = batches.rows.map(row => row.id);
   if (!batchIds.length) return;
@@ -273,10 +279,9 @@ async function attachIndustryMonthlyConsumption(
       if (period && Number.isFinite(quantity) && Number.isFinite(unitValue)) add(entries, `${productKey}|${period}`, quantity * unitValue);
     }
   }
-  // B-v2 (18/10/2026) — BUG DO CONSUMO CORRIGIDO: consumo mensal segue a fórmula
-  // validada da Curva ABC: saldo_anterior + entradas − saldo_atual. Só é calculado
-  // quando EXISTE fotografia de saldo dos DOIS meses. Sem foto → sem consumo real
-  // (antes, entradas sem foto viravam "consumo" e inflavam o impacto).
+  // REGRA DO CONSUMO (validada): fórmula da Curva ABC — saldo_anterior + entradas −
+  // saldo_atual, SOMENTE quando existe fotografia de saldo dos DOIS meses. Sem foto
+  // → sem consumo real (nunca inventar base; o "—" na tela é honesto).
   const consumption = new Map<string, number>();
   for (const [productKey, aggregate] of aggregateByProduct) {
     for (let idx = 1; idx < allPeriods.length; idx++) {
@@ -299,8 +304,7 @@ async function attachIndustryMonthlyConsumption(
       month.valor_consumo = value ?? null;
     }
   }
-  // B1: estoque da Indústria = ÚLTIMA fotografia de FECHAMENTO_ESTOQUE, somada
-  // por agregado (regra do usuário: quando houver saldos atualizados, será este).
+  // Estoque da Indústria = ÚLTIMA fotografia de FECHAMENTO_ESTOQUE, somada por agregado.
   if (estoqueOut) {
     const periodsStock = Array.from(stock.keys()).map(key => key.split("|")[2]).filter((period): period is string => period != null).sort();
     const ultimaFotografia = periodsStock[periodsStock.length - 1];
@@ -350,9 +354,9 @@ async function getCurrentCurveLookup(
   }
   if (segment !== "industry") {
     try {
-      // B-v2 (18/10/2026) — CORREÇÃO DA CURVA DO AUTOPEÇAS: a coluna a.curve é o
-      // enum inventory_curve; trim(a.curve) lançava btrim(inventory_curve) does not
-      // exist e o erro era engolido, deixando TODOS os itens sem curva. Cast ::text.
+      // CORREÇÃO DA CURVA DO AUTOPEÇAS: a coluna a.curve é o enum inventory_curve;
+      // trim(a.curve) lançava btrim(inventory_curve) does not exist e o erro era
+      // engolido, deixando TODOS os itens sem curva. Cast ::text obrigatório.
       const result = await businessPool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
         `select trim(a.code) as code,
                 nullif(trim(a."codeOriginal"), '') as "codeOriginal",
@@ -412,8 +416,7 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     .map((entry: { period: string }) => normalizeSalesPeriod(String(entry.period)))
     .filter((entry): entry is string => entry != null)
     .sort();
-  // Índices oficiais: completa o cache e calcula IPCA acumulado (composição
-  // das variações mensais) e variação do dólar (fechamento último vs primeiro mês).
+  // Índices oficiais: completa o cache e calcula IPCA acumulado e variação do dólar.
   const statusIndices = await garantirIndicesEconomicos(portalPool, periods);
   const mapas = await getIndicesEconomicos(portalPool, periods);
   type ValorIndice = { valor: number; valorFechamento: number | null };
@@ -434,7 +437,6 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   const benchmarks: Partial<Record<"IPCA" | "IGPM" | "DOLAR_PTAX", number>> = {};
   if (ipcaPercent != null) benchmarks.IPCA = Number(ipcaPercent.toFixed(4));
   if (dolarVariationPercent != null) benchmarks.DOLAR_PTAX = Number(dolarVariationPercent.toFixed(4));
-  // Mesmo sem curvas, anexa o relatório para que a interface mostre o diagnóstico.
   const analisado = attachCostBenchmarkReport(result, curves, params.segment ?? "auto_parts", benchmarks);
   const items = (analisado.items ?? []) as ItemInterno[];
   enriquecerItens(items, params.segment ?? "auto_parts");
@@ -446,18 +448,27 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
       if (achado != null) item.estoqueAgregado = achado;
     }
   }
-  // Limites configuráveis: recalcula "Itens acima do limite" por curva.
-  const byCurve = (analisado.benchmarkReport.byCurve ?? {}) as Record<string, { highAlerts?: number } | undefined>;
+  // B-v3: por curva, "Itens acima do limite" usa a régua do usuário E
+  // "Impacto estimado" é a SOMA dos impactos reais dos itens da curva.
+  const byCurve = (analisado.benchmarkReport.byCurve ?? {}) as Record<string, { highAlerts?: number; estimatedImpact?: number | null } | undefined>;
   const contagem: Record<string, number> = {};
+  const impactoPorCurva: Record<string, number> = {};
   for (const item of items) {
     if (!item.curve || item.costStatus === "SEM_BASE_CUSTO") continue;
     const variacao = variacaoDoItem(item);
-    if (variacao == null) continue;
-    const limite = limites[item.curve as keyof LimitesAlerta] ?? LIMITES_PADRAO[item.curve as keyof LimitesAlerta];
-    if (Math.abs(variacao) >= limite) contagem[item.curve] = (contagem[item.curve] ?? 0) + 1;
+    if (variacao != null) {
+      const limite = limites[item.curve as keyof LimitesAlerta] ?? LIMITES_PADRAO[item.curve as keyof LimitesAlerta];
+      if (Math.abs(variacao) >= limite) contagem[item.curve] = (contagem[item.curve] ?? 0) + 1;
+    }
+    if (item.impactoEstimado != null) {
+      impactoPorCurva[item.curve] = (impactoPorCurva[item.curve] ?? 0) + item.impactoEstimado;
+    }
   }
   for (const curve of Object.keys(byCurve)) {
-    if (byCurve[curve]) byCurve[curve]!.highAlerts = contagem[curve] ?? 0;
+    if (byCurve[curve]) {
+      byCurve[curve]!.highAlerts = contagem[curve] ?? 0;
+      byCurve[curve]!.estimatedImpact = Number((impactoPorCurva[curve] ?? 0).toFixed(2));
+    }
   }
   const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
   relatorio.ipcaPercent = ipcaPercent;
@@ -465,8 +476,8 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   relatorio.indicesStatus = statusIndices;
   return { analisado, items, periods, limites };
 }
-// B-v2: busca multi-termo — TODAS as palavras devem aparecer na descrição OU no
-// código do agregado ("pneu 600" acha "PNEU DIAGONAL 600/50-22,5").
+// Busca multi-termo: TODAS as palavras devem aparecer na descrição OU no código
+// do agregado ("pneu 600" acha "PNEU DIAGONAL 600/50-22,5").
 function filtrarPorDescricao(items: ItemInterno[], descricao?: string, searchType?: string): ItemInterno[] {
   const termo = (descricao ?? "").trim().toLowerCase();
   if (!termo) return items;
@@ -480,9 +491,8 @@ function filtrarPorDescricao(items: ItemInterno[], descricao?: string, searchTyp
     return termos.every(t => texto.includes(t) || codigo.includes(t));
   });
 }
-// Custo total (decisão do usuário): consumo/venda do período × custo médio.
-// O consumo é por AGREGADO — deduplicado por filial|agregado|mês (primeira
-// ocorrência vence) para não somar o mesmo consumo em itens diferentes do agregado.
+// Custo total: consumo/venda do período × custo médio, deduplicado por
+// filial|agregado|mês (o consumo é por AGREGADO — não soma em dobro).
 function calcularCustoTotal(items: ItemInterno[], segment: CostEvolutionSegment): number {
   const porChave = new Map<string, number>();
   for (const item of items) {
@@ -525,9 +535,12 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
 // ————— API 2: itens paginados (grid sob demanda) —————
 export type CriterioItens = "todos" | "acima-limite" | "alta" | "reducao" | "sem-base" | "sem-curva" | "curva-A" | "curva-B" | "curva-C" | "curva-D" | "curva-E";
 export type OrdenacaoItens = "impacto" | "variacao" | "codigo" | "descricao";
+// B-v3: eixo Curva independente do Critério — itens de outra curva JAMAIS aparecem.
+export type CurvaFiltro = "A" | "B" | "C" | "D" | "E";
 export async function getCostEvolutionItens(params: ParamsBase & {
   searchType?: string;
   limitesAlerta?: Partial<LimitesAlerta> | null;
+  curvaFiltro?: CurvaFiltro;
   pagina?: number;
   itensPorPagina?: number;
   ordenacao?: OrdenacaoItens;
@@ -536,6 +549,7 @@ export async function getCostEvolutionItens(params: ParamsBase & {
   const limites = sanitizarLimites(params.limitesAlerta);
   const { items } = await obterBase(params, limites);
   let lista = filtrarPorDescricao(items, params.descricao, params.searchType);
+  if (params.curvaFiltro) lista = lista.filter(item => item.curve === params.curvaFiltro);
   const criterio = params.criterio ?? "todos";
   if (criterio === "sem-base") lista = lista.filter(item => item.costStatus === "SEM_BASE_CUSTO");
   else if (criterio === "sem-curva") lista = lista.filter(item => item.costStatus === "CURVA_NAO_VINCULADA");
