@@ -1,9 +1,9 @@
 // ============================================================
 // costEvolutionAnalise.ts
 // Ponte entre o portal e as funções SQL de evolução de custos.
-// B1 (18/10/2026): a análise devolve SOMENTE o consolidado (períodos, cards no
-// servidor, relatório ABC com limites configuráveis, IPCA/PTAX); os itens viram
-// chamada própria paginada (getCostEvolutionItens). Resposta em KBs — fim do timeout.
+// B-v2 (18/10/2026): cast a.curve::text (enum inventory_curve quebrava o trim
+// silenciosamente); consumo da Indústria só com fotografia de saldo dos dois
+// meses (fórmula da Curva ABC); busca por descrição multi-termo.
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
@@ -273,14 +273,20 @@ async function attachIndustryMonthlyConsumption(
       if (period && Number.isFinite(quantity) && Number.isFinite(unitValue)) add(entries, `${productKey}|${period}`, quantity * unitValue);
     }
   }
+  // B-v2 (18/10/2026) — BUG DO CONSUMO CORRIGIDO: consumo mensal segue a fórmula
+  // validada da Curva ABC: saldo_anterior + entradas − saldo_atual. Só é calculado
+  // quando EXISTE fotografia de saldo dos DOIS meses. Sem foto → sem consumo real
+  // (antes, entradas sem foto viravam "consumo" e inflavam o impacto).
   const consumption = new Map<string, number>();
   for (const [productKey, aggregate] of aggregateByProduct) {
-    let previousStock = stock.get(`${productKey}|${allPeriods[0]}`) ?? 0;
-    for (const period of allPeriods) {
-      const currentStock = stock.get(`${productKey}|${period}`) ?? 0;
-      const value = Math.max(0, previousStock + (entries.get(`${productKey}|${period}`) ?? 0) - currentStock);
+    for (let idx = 1; idx < allPeriods.length; idx++) {
+      const prevPeriod = allPeriods[idx - 1];
+      const period = allPeriods[idx];
+      const prevStock = stock.get(`${productKey}|${prevPeriod}`);
+      const curStock = stock.get(`${productKey}|${period}`);
+      if (prevStock == null || curStock == null) continue;
+      const value = Math.max(0, prevStock + (entries.get(`${productKey}|${period}`) ?? 0) - curStock);
       if (period >= periods[0]) add(consumption, `${productKey.split("|")[0]}|${aggregate}|${period}`, value);
-      previousStock = currentStock;
     }
   }
   for (const item of result.items ?? []) {
@@ -344,11 +350,14 @@ async function getCurrentCurveLookup(
   }
   if (segment !== "industry") {
     try {
+      // B-v2 (18/10/2026) — CORREÇÃO DA CURVA DO AUTOPEÇAS: a coluna a.curve é o
+      // enum inventory_curve; trim(a.curve) lançava btrim(inventory_curve) does not
+      // exist e o erro era engolido, deixando TODOS os itens sem curva. Cast ::text.
       const result = await businessPool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
         `select trim(a.code) as code,
                 nullif(trim(a."codeOriginal"), '') as "codeOriginal",
                 trim(a.branch) as "branchCode",
-                trim(a.curve) as curve
+                trim(a.curve::text) as curve
            from public."inventoryAnalytics" a
            join public."protheusImports" i on i.id = a."importId"
           where i.id = (
@@ -359,7 +368,7 @@ async function getCurrentCurveLookup(
              limit 1
           )
             and ($1::text is null or trim(a.branch) = $1)
-            and trim(a.curve) in ('A', 'B', 'C', 'D', 'E')`,
+            and a.curve::text in ('A', 'B', 'C', 'D', 'E')`,
         [branch],
       );
       for (const row of result.rows) {
@@ -369,7 +378,7 @@ async function getCurrentCurveLookup(
         }
       }
     } catch {
-      // Uma base sem o histórico de Compras continua exibindo SEM_CURVA.
+      // Uma base sem o histórico de Compras continua sem vínculo (anomalia a corrigir na origem).
     }
   }
   return buildCostCurveLookup(rows);
@@ -399,7 +408,6 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     await attachAutoPartsEstoque(businessPool, result);
   }
   const curves = await getCurrentCurveLookup(businessPool, portalPool, params.segment, filial);
-  // CORREÇÃO tsc 18/10: tipos explícitos na extração dos períodos do SQL.
   const periods: string[] = ((result.periodos ?? []) as Array<{ period: string }>)
     .map((entry: { period: string }) => normalizeSalesPeriod(String(entry.period)))
     .filter((entry): entry is string => entry != null)
@@ -408,7 +416,6 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   // das variações mensais) e variação do dólar (fechamento último vs primeiro mês).
   const statusIndices = await garantirIndicesEconomicos(portalPool, periods);
   const mapas = await getIndicesEconomicos(portalPool, periods);
-  // CORREÇÃO tsc 18/10: tipos explícitos no valor do Map e no reduce do IPCA.
   type ValorIndice = { valor: number; valorFechamento: number | null };
   let ipcaPercent: number | null = null;
   const mesesIpca = periods
@@ -458,15 +465,19 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   relatorio.indicesStatus = statusIndices;
   return { analisado, items, periods, limites };
 }
+// B-v2: busca multi-termo — TODAS as palavras devem aparecer na descrição OU no
+// código do agregado ("pneu 600" acha "PNEU DIAGONAL 600/50-22,5").
 function filtrarPorDescricao(items: ItemInterno[], descricao?: string, searchType?: string): ItemInterno[] {
   const termo = (descricao ?? "").trim().toLowerCase();
   if (!termo) return items;
   const tipo = searchType ?? "contem";
+  if (tipo === "inicia") return items.filter(item => (item.descricao ?? "").toLowerCase().startsWith(termo));
+  if (tipo === "termina") return items.filter(item => (item.descricao ?? "").toLowerCase().endsWith(termo));
+  const termos = termo.split(/\s+/).filter(Boolean);
   return items.filter(item => {
     const texto = (item.descricao ?? "").toLowerCase();
-    if (tipo === "inicia") return texto.startsWith(termo);
-    if (tipo === "termina") return texto.endsWith(termo);
-    return texto.includes(termo);
+    const codigo = String(item.cod_agregado ?? "").toLowerCase();
+    return termos.every(t => texto.includes(t) || codigo.includes(t));
   });
 }
 // Custo total (decisão do usuário): consumo/venda do período × custo médio.
