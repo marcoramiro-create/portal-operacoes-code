@@ -1,14 +1,18 @@
 // ============================================================
 // costEvolutionAnalise.ts
-// B-v9 (18/10/2026): UM ÚNICO MOTOR para cards e painel ABC, sobre o MESMO
-// conjunto filtrado — o triângulo fecha: Variação ponderada × Custo total =
-// Impacto estimado (prova do item isolado: -47.323,66 ÷ 1.445.924,96 =
-// -3,2729%, e não -0,4778% herdado do adapter). "Interna" removida (mesmo
-// conceito); curvas sem itens ocultas do painel. Inclui o B-v8: consumo da
-// Indústria agregado INTEIRO no Postgres (CTE com LAG) + cache de memória
-// TTL 10 min (fim do timeout nos itens paginados). Mantém: impacto = variação
-// % × consumo TOTAL, cast a.curve::text, TODOS os batches, eixo curvaFiltro,
-// busca multi-termo, IPCA/PTAX em cascata.
+// B-v10 (18/10/2026): CORREÇÃO DA REGRESSÃO QUE ZEROU OS VALORES. O SELECT
+// das CTEs devolvia "branch_code" SEM alias e o código lia row.branch —
+// undefined, porque o driver NÃO valida o generic TypeScript do query<T>.
+// Todas as chaves do consumo/estoque viravam "undefined|agregado|mês" e o
+// casamento com os itens falhava EM SILÊNCIO (custo total 0,00, "—" em tudo).
+// Correções: (1) AS branch nos dois SELECTs — o nome da coluna TEM que casar
+// com o tipo declarado; (2) LAG POR PRODUTO com soma no agregado, quebrando a
+// cadeia em buracos de calendário (paridade exata com a versão validada);
+// (3) filtro regex nos payloads numéricos (pula valor não numérico, como o
+// Number() do JS fazia). Mantém: motor único do B-v9 (triângulo Variação
+// ponderada × Custo total = Impacto), agregação no Postgres + cache TTL 10 min
+// do B-v8, impacto = variação % × consumo total, cast a.curve::text, TODOS os
+// batches, eixo curvaFiltro, busca multi-termo, IPCA/PTAX em cascata.
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
@@ -209,17 +213,18 @@ async function attachAutoPartsEstoque(
     if (achado) { item.estoque = achado.stock; item.estoqueValor = achado.valor; }
   }
 }
-// ————— B-v8: consumo da Indústria — AGREGAÇÃO NO POSTGRES + CACHE —————
+// ————— B-v8/B-v10: consumo da Indústria — AGREGAÇÃO NO POSTGRES + CACHE —————
 // CTE lê fotos de saldo (FECHAMENTO_ESTOQUE) e entradas (ENTRADA_NF) de TODOS
-// os batches processados, soma por agregado, aplica LAG (saldo do mês anterior)
-// e devolve o consumo final por filial|agregado|período — ~30 mil linhas leves
-// em vez das ~370 mil linhas de JSON bruto que o JS reprocessava por chamada
-// (causa do timeout nos itens paginados). CASE/regex protegem o cast ::numeric.
+// os batches processados, calcula o consumo POR PRODUTO (LAG com quebra de
+// cadeia em buracos de calendário — paridade com a fórmula validada da Curva
+// ABC) e soma no AGREGADO no final. ~30 mil linhas de resumo em vez das ~370
+// mil de JSON bruto que o JS reprocessava por chamada (causa do timeout nos
+// itens paginados). REGRA DO ALIAS (B-v10): o nome da coluna no SELECT TEM
+// que casar com o campo do tipo declarado — o driver não valida o generic.
+const REGEX_NUM = "^-?[0-9]+(\\.[0-9]+)?$";
 type ConsumoIndustria = { consumo: Map<string, number>; estoqueAgregado: Map<string, number>; gravadoEm: number };
 const CACHE_CONSUMO_TTL_MS = 10 * 60 * 1000;
 const cacheConsumoIndustria = new Map<string, ConsumoIndustria>();
-const NUM = (campo: string) => `CASE WHEN r.normalized_payload->>'${campo}' ~ '^-?[0-9]+(\\.[0-9]+)?$' THEN (r.normalized_payload->>'${campo}')::numeric ELSE 0 END`;
-
 async function obterConsumoIndustria(
   portalPool: ReturnType<typeof getSupabasePool>,
   periods: string[],
@@ -234,38 +239,46 @@ async function obterConsumoIndustria(
   const consumoRows = await portalPool.query<{ branch: string; agregado: string; period: string; consumo: string }>(
     `WITH fotos AS (
         SELECT r.branch_code,
+               r.product_code AS produto,
                COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
                (r.normalized_payload->>'year') || lpad(r.normalized_payload->>'month', 2, '0') AS period,
-               SUM(${NUM("totalValue")}) AS saldo
+               SUM((r.normalized_payload->>'totalValue')::numeric) AS saldo
           FROM public.operational_source_rows r
           JOIN public.operational_import_batches b ON b.id = r.batch_id
          WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
            AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
-         GROUP BY 1, 2, 3
+           AND r.normalized_payload->>'totalValue' ~ '${REGEX_NUM}'
+         GROUP BY 1, 2, 3, 4
      ),
      entradas AS (
         SELECT r.branch_code,
+               r.product_code AS produto,
                COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
                replace(substring(r.normalized_payload->>'entryDate' from 1 for 7), '-', '') AS period,
-               SUM(${NUM("quantity")} * ${NUM("itemValue")}) AS valor
+               SUM((r.normalized_payload->>'quantity')::numeric * (r.normalized_payload->>'itemValue')::numeric) AS valor
           FROM public.operational_source_rows r
           JOIN public.operational_import_batches b ON b.id = r.batch_id
          WHERE b.status = 'processed' AND b.source_kind = 'ENTRADA_NF'
            AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
-         GROUP BY 1, 2, 3
+           AND r.normalized_payload->>'quantity' ~ '${REGEX_NUM}'
+           AND r.normalized_payload->>'itemValue' ~ '${REGEX_NUM}'
+         GROUP BY 1, 2, 3, 4
      ),
      serie AS (
-        SELECT f.branch_code, f.agregado, f.period, f.saldo,
-               LAG(f.saldo) OVER (PARTITION BY f.branch_code, f.agregado ORDER BY f.period) AS saldo_anterior
+        SELECT f.branch_code, f.produto, f.agregado, f.period, f.saldo,
+               CASE WHEN f.period = to_char(to_date(LAG(f.period) OVER (PARTITION BY f.branch_code, f.produto ORDER BY f.period), 'YYYYMM') + INTERVAL '1 month', 'YYYYMM')
+                    THEN LAG(f.saldo) OVER (PARTITION BY f.branch_code, f.produto ORDER BY f.period)
+               END AS saldo_anterior
           FROM fotos f
      )
-     SELECT s.branch_code, s.agregado, s.period,
-            GREATEST(0, s.saldo_anterior + COALESCE(e.valor, 0) - s.saldo) AS consumo
+     SELECT s.branch_code AS branch, s.agregado, s.period,
+            SUM(GREATEST(0, s.saldo_anterior + COALESCE(e.valor, 0) - s.saldo)) AS consumo
        FROM serie s
        LEFT JOIN entradas e
-         ON e.branch_code = s.branch_code AND e.agregado = s.agregado AND e.period = s.period
+         ON e.branch_code = s.branch_code AND e.produto = s.produto AND e.period = s.period
       WHERE s.saldo_anterior IS NOT NULL
-        AND s.period BETWEEN $1 AND $2`,
+        AND s.period BETWEEN $1 AND $2
+      GROUP BY s.branch_code, s.agregado, s.period`,
     [inicio, fim],
   );
   const consumo = new Map<string, number>();
@@ -273,22 +286,25 @@ async function obterConsumoIndustria(
     const valor = Number(row.consumo);
     if (Number.isFinite(valor)) consumo.set(`${row.branch}|${row.agregado}|${row.period}`, valor);
   }
-  // Estoque da Indústria = SOMA das fotos do último período com fotografia.
+  // Estoque da Indústria = soma das fotos do ÚLTIMO período com fotografia,
+  // por produto, agregada no final (paridade com a versão validada).
   const estoqueRows = await portalPool.query<{ branch: string; agregado: string; saldo: string }>(
     `WITH fotos AS (
         SELECT r.branch_code,
                COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
                (r.normalized_payload->>'year') || lpad(r.normalized_payload->>'month', 2, '0') AS period,
-               SUM(${NUM("totalValue")}) AS saldo
+               SUM((r.normalized_payload->>'totalValue')::numeric) AS saldo
           FROM public.operational_source_rows r
           JOIN public.operational_import_batches b ON b.id = r.batch_id
          WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
            AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
+           AND r.normalized_payload->>'totalValue' ~ '${REGEX_NUM}'
          GROUP BY 1, 2, 3
      ),
      ultimo AS (SELECT max(period) AS period FROM fotos)
-     SELECT f.branch_code, f.agregado, f.saldo
-       FROM fotos f JOIN ultimo u ON f.period = u.period`,
+     SELECT f.branch_code AS branch, f.agregado, SUM(f.saldo) AS saldo
+       FROM fotos f JOIN ultimo u ON f.period = u.period
+      GROUP BY f.branch_code, f.agregado`,
   );
   const estoqueAgregado = new Map<string, number>();
   for (const row of estoqueRows.rows) {
@@ -298,7 +314,6 @@ async function obterConsumoIndustria(
   cacheConsumoIndustria.set(chave, { consumo, estoqueAgregado, gravadoEm: Date.now() });
   return { consumo, estoqueAgregado };
 }
-
 // Anexa o consumo por agregado aos meses dos itens da Indústria e devolve o
 // estoque agregado da última fotografia para o chamador.
 async function attachIndustryMonthlyConsumption(
@@ -451,9 +466,8 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
       if (achado != null) item.estoqueAgregado = achado;
     }
   }
-  // B-v9: o cruzamento por curva (contagens, impacto e variação ponderada) é
-  // recalculado na API consolidada SOBRE o conjunto FILTRADO — um único motor
-  // para cards e painel. Aqui ficam apenas os comparativos oficiais.
+  // O cruzamento por curva é recalculado na API consolidada SOBRE o conjunto
+  // FILTRADO — um único motor para cards e painel. Aqui ficam os comparativos.
   const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
   relatorio.ipcaPercent = ipcaPercent;
   relatorio.dolarVariationPercent = dolarVariationPercent;
@@ -538,8 +552,8 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
       }
     }
   }
-  // B-v9: triângulo que fecha — Variação ponderada × Custo total = Impacto
-  // estimado, calculados do MESMO motor sobre o MESMO conjunto filtrado.
+  // Triângulo que fecha — Variação ponderada × Custo total = Impacto estimado,
+  // calculados do MESMO motor sobre o MESMO conjunto filtrado.
   const variacaoPonderada = custoTotal > 0 ? Number(((somaImpacto / custoTotal) * 100).toFixed(4)) : null;
   const byCurveNovo: Record<string, { itemCount: number; itemsWithBase: number; averageVariationPercent: number | null; weightedVariationPercent?: number | null; estimatedImpact: number | null; highAlerts: number }> = {};
   for (const curve of Object.keys(itensPorCurva)) {
