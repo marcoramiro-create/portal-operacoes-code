@@ -47,7 +47,9 @@ const itensFilters = z.object({
   curvaFiltro: z.enum(["A", "B", "C", "D", "E"]).optional(),
   pagina: z.number().int().min(1).optional(),
   itensPorPagina: z.number().int().min(10).max(200).optional(),
-  ordenacao: z.enum(["impacto", "variacao", "codigo", "descricao"]).optional(),
+  ordenacao: z.enum(["impacto", "variacao", "codigo", "descricao", "filial", "curva"]).optional(),
+  // B-v12: direcao do clique no cabecalho (asc/desc alternando).
+  direcao: z.enum(["asc", "desc"]).optional(),
   criterio: z.enum(["todos", "acima-limite", "alta", "reducao", "sem-base", "sem-curva", "curva-A", "curva-B", "curva-C", "curva-D", "curva-E"]).optional(),
 });
 // Janela dos últimos 24 meses para o botão "Atualizar índices" (completa apenas
@@ -142,6 +144,7 @@ export const costEvolutionRouter = router({
       pagina: input.pagina,
       itensPorPagina: input.itensPorPagina,
       ordenacao: input.ordenacao,
+      direcao: input.direcao,
       criterio: input.criterio,
     });
   }),
