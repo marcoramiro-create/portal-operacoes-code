@@ -1,17 +1,18 @@
 // ============================================================
 // costEvolutionAnalise.ts
-// B-v11 (19/10/2026): (1) NOVOS LIMITES PADRÃO DA RÉGUA DE ALERTA —
-// A 3,00% · B 3,50% · C/D/E 4,00%; (2) ITENS SEM PREÇO E SEM CONSUMO no
-// período NÃO ENTRAM mais na análise (cards, painel e grid usam a mesma
-// lista limpa) — o conserto das entradas duplicadas do B-v10 revelou linhas
-// sem base real; (3) CONSUMO QUANTITATIVO por item (Autopeças: quantidade
-// vendida por mês; Indústria: "—" até confirmar o campo de quantidade do
-// fechamento na origem). Mantém TODO o motor B-v8/v9/v10 intacto.
-// B-v10 (18/10/2026): correção da regressão que zerou os valores — AS branch
-// nos dois SELECTs (o driver não valida o generic do query<T>), LAG POR
-// PRODUTO com quebra de cadeia em buracos de calendário, filtro regex nos
-// payloads numéricos. B-v9: motor único (triângulo Variação ponderada ×
-// Custo total = Impacto). B-v8: agregação no Postgres + cache TTL 10 min.
+// B-v12 (20/10/2026): (1) RÉGUA DE FERRO DO CUSTO — o item só entra na
+// análise se tiver CUSTO MÉDIO no período (quem tem consumo mas não tem
+// preço fica FORA e é contabilizado no diagnóstico; anomalia a tratar na
+// origem); (2) ordenação do grid estendida (filial, código, descrição,
+// curva, variação, impacto) com DIREÇÃO asc/desc. Mantém TODO o motor
+// B-v8/v9/v10/v11 intacto.
+// B-v11 (19/10/2026): novos limites padrão da régua — A 3,00 · B 3,50 ·
+// C/D/E 4,00; itens sem base fora da análise; consumo quantitativo
+// (Autopeças). B-v10: correção da regressão que zerou os valores — AS
+// branch nos SELECTs, LAG POR PRODUTO com quebra de cadeia em buracos de
+// calendário, filtro regex nos payloads numéricos. B-v9: motor único
+// (triângulo Variação ponderada × Custo total = Impacto). B-v8: agregação
+// no Postgres + cache TTL 10 min.
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
@@ -54,7 +55,7 @@ function previousPeriod(period: string): string {
 }
 // ————— Limites de alerta configuráveis —————
 export type LimitesAlerta = { A: number; B: number; C: number; D: number; E: number };
-// B-v11 (19/10/2026): novos limites padrão da régua — A 3,00 · B 3,50 · C/D/E 4,00.
+// B-v11: novos limites padrão da régua — A 3,00 · B 3,50 · C/D/E 4,00.
 export const LIMITES_PADRAO: LimitesAlerta = { A: 3, B: 3.5, C: 4, D: 4, E: 4 };
 function sanitizarLimites(entrada?: Partial<LimitesAlerta> | null): LimitesAlerta {
   const limites: LimitesAlerta = { ...LIMITES_PADRAO };
@@ -129,12 +130,11 @@ function enriquecerItens(items: ItemInterno[], segment: CostEvolutionSegment): v
     const consumoMedioMensal = consumoMedioDoItem(item, segment);
     const consumoTotal = consumoTotalDoItem(item, segment);
     let impactoEstimado: number | null = null;
-    // Impacto = variação % do período × consumo TOTAL do período —
-    // "quanto do gasto do período é efeito da variação de preço".
+    // Impacto = variação % do período × consumo TOTAL do período.
     if (variacaoPercent != null && consumoTotal != null) {
       impactoEstimado = consumoTotal * (variacaoPercent / 100);
     }
-    // B-v11: consumo QUANTITATIVO — Autopeças tem quantidade vendida por mês;
+    // Consumo QUANTITATIVO — Autopeças tem quantidade vendida por mês;
     // a Indústria fica "—" até o campo de quantidade do fechamento ser
     // confirmado na origem (o card exibe "—" honesto, nunca inventa base).
     const quantidades = item.meses
@@ -149,15 +149,16 @@ function enriquecerItens(items: ItemInterno[], segment: CostEvolutionSegment): v
     item.consumoTotalQuantidade = quantidades.length ? Number(somaQuantidades.toFixed(2)) : null;
   }
 }
-// B-v11: item sem preço E sem consumo no período fica fora da análise —
-// linha sem nenhum número é ruído para quem decide compra.
-function temBaseReal(item: ItemInterno, segment: CostEvolutionSegment): boolean {
-  for (const mes of item.meses) {
-    const custo = mes.custo_medio;
-    if (custo != null && custo !== 0) return true;
-    if (consumoMensalEmReais(mes, segment) != null) return true;
-  }
-  return false;
+// B-v12 (20/10/2026): RÉGUA DE FERRO — item sem CUSTO MÉDIO no período não
+// entra, NUNCA MAIS. O B-v11 ainda admitia quem tinha consumo mas não tinha
+// preço; o usuário determinou que isso é anomalia: fica fora e é CONTADO no
+// diagnóstico para tratamento na origem.
+function temCustoReal(item: ItemInterno): boolean {
+  return item.meses.some(mes => mes.custo_medio != null && mes.custo_medio !== 0);
+}
+function temConsumoSemPreco(item: ItemInterno, segment: CostEvolutionSegment): boolean {
+  if (temCustoReal(item)) return false;
+  return item.meses.some(mes => consumoMensalEmReais(mes, segment) != null);
 }
 // ————— Pesos mensais e estoque — fontes já aprovadas —————
 async function attachAutoPartsMonthlySales(
@@ -237,10 +238,8 @@ async function attachAutoPartsEstoque(
 // CTE lê fotos de saldo (FECHAMENTO_ESTOQUE) e entradas (ENTRADA_NF) de TODOS
 // os batches processados, calcula o consumo POR PRODUTO (LAG com quebra de
 // cadeia em buracos de calendário — paridade com a fórmula validada da Curva
-// ABC) e soma no AGREGADO no final. ~30 mil linhas de resumo em vez das ~370
-// mil de JSON bruto que o JS reprocessava por chamada (causa do timeout nos
-// itens paginados). REGRA DO ALIAS (B-v10): o nome da coluna no SELECT TEM
-// que casar com o campo do tipo declarado — o driver não valida o generic.
+// ABC) e soma no AGREGADO no final. REGRA DO ALIAS (B-v10): o nome da coluna
+// no SELECT TEM que casar com o campo do tipo declarado.
 const REGEX_NUM = "^-?[0-9]+(\\.[0-9]+)?$";
 type ConsumoIndustria = { consumo: Map<string, number>; estoqueAgregado: Map<string, number>; gravadoEm: number };
 const CACHE_CONSUMO_TTL_MS = 10 * 60 * 1000;
@@ -392,8 +391,7 @@ async function getCurrentCurveLookup(
   }
   if (segment !== "industry") {
     try {
-      // A coluna a.curve é o enum inventory_curve; cast ::text obrigatório
-      // (o trim sobre enum lançava erro que o try/catch engolia).
+      // A coluna a.curve é o enum inventory_curve; cast ::text obrigatório.
       const result = await businessPool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
         `select trim(a.code) as code,
                 nullif(trim(a."codeOriginal"), '') as "codeOriginal",
@@ -486,9 +484,11 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
       if (achado != null) item.estoqueAgregado = achado;
     }
   }
-  // B-v11: itens sem preço e sem consumo no período ficam fora — cards,
-  // painel de curvas e grid recebem a MESMA lista limpa (motor único).
-  const itemsComBase = items.filter(item => temBaseReal(item, params.segment ?? "auto_parts"));
+  // B-v12: régua de ferro — sem custo médio no período, o item NÃO entra.
+  // Quem tem consumo mas não tem preço é contado no diagnóstico (anomalia).
+  const segmentEfetivo = params.segment ?? "auto_parts";
+  const consumoSemPreco = items.filter(item => temConsumoSemPreco(item, segmentEfetivo)).length;
+  const itemsComBase = items.filter(item => temCustoReal(item));
   // O cruzamento por curva é recalculado na API consolidada SOBRE o conjunto
   // FILTRADO — um único motor para cards e painel. Aqui ficam os comparativos.
   const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
@@ -496,6 +496,12 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   relatorio.dolarVariationPercent = dolarVariationPercent;
   relatorio.indicesStatus = { IPCA: statusIndices.IPCA, DOLAR: statusIndices.DOLAR };
   relatorio.indicesDetalhes = statusIndices.detalhes;
+  relatorio.diagnosticoBase = {
+    itensNaBase: items.length,
+    itensComBase: itemsComBase.length,
+    itensExcluidos: items.length - itemsComBase.length,
+    consumoSemPreco,
+  };
   return { analisado, items: itemsComBase, periods, limites };
 }
 // Busca multi-termo: TODAS as palavras devem aparecer na descrição OU no código
@@ -575,8 +581,7 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
       }
     }
   }
-  // Triângulo que fecha — Variação ponderada × Custo total = Impacto estimado,
-  // calculados do MESMO motor sobre o MESMO conjunto filtrado.
+  // Triângulo que fecha — Variação ponderada × Custo total = Impacto estimado.
   const variacaoPonderada = custoTotal > 0 ? Number(((somaImpacto / custoTotal) * 100).toFixed(4)) : null;
   const byCurveNovo: Record<string, { itemCount: number; itemsWithBase: number; averageVariationPercent: number | null; weightedVariationPercent?: number | null; estimatedImpact: number | null; highAlerts: number }> = {};
   for (const curve of Object.keys(itensPorCurva)) {
@@ -606,7 +611,10 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
 }
 // ————— API 2: itens paginados (grid sob demanda) —————
 export type CriterioItens = "todos" | "acima-limite" | "alta" | "reducao" | "sem-base" | "sem-curva" | "curva-A" | "curva-B" | "curva-C" | "curva-D" | "curva-E";
-export type OrdenacaoItens = "impacto" | "variacao" | "codigo" | "descricao";
+// B-v12: ordenação estendida (filial e curva) com direção asc/desc —
+// clicar no cabeçalho do grid alterna crescente/decrescente.
+export type OrdenacaoItens = "impacto" | "variacao" | "codigo" | "descricao" | "filial" | "curva";
+export type DirecaoOrdenacao = "asc" | "desc";
 export type CurvaFiltro = "A" | "B" | "C" | "D" | "E";
 export async function getCostEvolutionItens(params: ParamsBase & {
   searchType?: string;
@@ -615,6 +623,7 @@ export async function getCostEvolutionItens(params: ParamsBase & {
   pagina?: number;
   itensPorPagina?: number;
   ordenacao?: OrdenacaoItens;
+  direcao?: DirecaoOrdenacao;
   criterio?: CriterioItens;
 }) {
   const limites = sanitizarLimites(params.limitesAlerta);
@@ -637,11 +646,15 @@ export async function getCostEvolutionItens(params: ParamsBase & {
     lista = lista.filter(item => item.curve === curva);
   }
   const ordenacao = params.ordenacao ?? "impacto";
+  const direcao = params.direcao === "asc" ? "asc" : "desc";
+  const fator = direcao === "asc" ? 1 : -1;
   lista = [...lista].sort((a, b) => {
-    if (ordenacao === "variacao") return Math.abs(b.variacaoPercent ?? -Infinity) - Math.abs(a.variacaoPercent ?? -Infinity);
-    if (ordenacao === "impacto") return Math.abs(b.impactoEstimado ?? -Infinity) - Math.abs(a.impactoEstimado ?? -Infinity);
-    if (ordenacao === "descricao") return String(a.descricao ?? "").localeCompare(String(b.descricao ?? ""));
-    return String(a.codigo).localeCompare(String(b.codigo));
+    if (ordenacao === "variacao") return fator * ((a.variacaoPercent ?? -Infinity) - (b.variacaoPercent ?? -Infinity));
+    if (ordenacao === "impacto") return fator * ((a.impactoEstimado ?? -Infinity) - (b.impactoEstimado ?? -Infinity));
+    if (ordenacao === "filial") return fator * String(a.filial ?? "").localeCompare(String(b.filial ?? ""));
+    if (ordenacao === "curva") return fator * String(a.curve ?? "").localeCompare(String(b.curve ?? ""));
+    if (ordenacao === "descricao") return fator * String(a.descricao ?? "").localeCompare(String(b.descricao ?? ""));
+    return fator * String(a.codigo).localeCompare(String(b.codigo));
   });
   const total = lista.length;
   const itensPorPagina = Math.min(200, Math.max(10, params.itensPorPagina ?? 50));

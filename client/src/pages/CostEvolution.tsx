@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { trpc } from "@/lib/trpc";
-import { BarChart3, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Filter, LoaderCircle, RotateCcw, Search, UploadCloud, X } from "lucide-react";
+import { AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Filter, LoaderCircle, RotateCcw, Search, UploadCloud, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
@@ -12,7 +12,7 @@ const config = {
   auto_parts: { label: "Autopeças", importNode: "importacoes-custos-autopecas", description: "Peças das unidades de autopeças" },
   industry: { label: "Indústria", importNode: "importacoes-custos-industria", description: "Materiais e peças da indústria" },
 } as const;
-// REGRA DE DINHEIRO DO PROJETO (18/10/2026): NUNCA exibir "R$". Totais com 2 casas;
+// REGRA DE DINHEIRO DO PROJETO: NUNCA exibir "R$". Totais com 2 casas;
 // valores da evolução (mensais) com 4 casas.
 const money2 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money4 = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 4, maximumFractionDigits: 4 });
@@ -150,7 +150,7 @@ type CurveCode = "A" | "B" | "C" | "D" | "E";
 // aparecem. Curvas D/E existem apenas no Autopeças.
 type CurvaSelecao = "todas" | CurveCode;
 type Limites = { A: number; B: number; C: number; D: number; E: number };
-// B-v11 (19/10/2026): novos limites padrão da régua — A 3,00 · B 3,50 · C/D/E 4,00.
+// B-v11: novos limites padrão da régua — A 3,00 · B 3,50 · C/D/E 4,00.
 const LIMITES_PADRAO: Limites = { A: 3, B: 3.5, C: 4, D: 4, E: 4 };
 type CurveSummary = { itemCount: number; itemsWithBase: number; averageVariationPercent: number | null; weightedVariationPercent?: number | null; estimatedImpact: number | null; highAlerts: number };
 type BenchmarkReport = {
@@ -161,6 +161,7 @@ type BenchmarkReport = {
   indicesStatus?: { IPCA?: string; DOLAR?: string };
   indicesDetalhes?: { IPCA?: string; DOLAR?: string };
   byCurve?: Partial<Record<CurveCode, CurveSummary>>;
+  diagnosticoBase?: { itensNaBase?: number; itensComBase?: number; itensExcluidos?: number; consumoSemPreco?: number };
 };
 type ItemRow = {
   codigo: string; descricao: string; filial: string; cod_agregado: string | null;
@@ -172,9 +173,13 @@ type ItemRow = {
 };
 // Sine qua non: não existe item sem curva e não se exibe "sem base de custo".
 type Criterio = "todos" | "alta" | "reducao" | "acima-limite";
-type OrdenacaoItens = "impacto" | "variacao" | "codigo" | "descricao";
+// B-v12: ordenação por cabeçalho — filial, código, descrição, curva, variação
+// e impacto, com direção crescente/decrescente alternada a cada clique.
+type OrdenacaoItens = "impacto" | "variacao" | "codigo" | "descricao" | "filial" | "curva";
+type DirecaoOrdenacao = "asc" | "desc";
 const CRITERIO_LABELS: Record<Criterio, string> = { todos: "Todos os itens", alta: "Itens com alta", reducao: "Itens com redução", "acima-limite": "Itens acima do limite" };
 const FILIAL_UNICA_INDUSTRY = "0105";
+const chaveItem = (item: ItemRow) => `${item.codigo}|${item.filial ?? ""}`;
 const itemChartKey = (item: ItemRow) => `${item.filial ?? ""}|${item.codigo}`;
 function buildSeries(item: ItemRow, periods: string[]) {
   const byPeriod = new Map(item.meses.map(m => [m.period, m.custo_medio]));
@@ -186,6 +191,9 @@ function buildSeries(item: ItemRow, periods: string[]) {
     else series.push(last);
   }
   return series;
+}
+function temPrecoNoMes(item: ItemRow, period: string) {
+  return item.meses.some(m => m.period === period && m.custo_medio != null && m.custo_medio !== 0);
 }
 function sugestaoDeAcao(item: ItemRow, periods: string[], limites: Limites) {
   const values = buildSeries(item, periods).filter((v): v is number => v != null);
@@ -207,20 +215,21 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const [descricao, setDescricao] = useState("");
   const [periodoInicio, setPeriodoInicio] = useState("");
   const [periodoFim, setPeriodoFim] = useState("");
-  // B-v11: régua nova padrão carregada — A 3 · B 3,5 · C/D/E 4.
   const [limitesTexto, setLimitesTexto] = useState({ A: "3", B: "3,5", C: "4", D: "4", E: "4" });
   const [exporting, setExporting] = useState(false);
   const [applied, setApplied] = useState<{ filial: string; codAgregado: string; descricao: string; periodoInicio: string; periodoFim: string; limitesAlerta: Partial<Limites> }>({ filial: "", codAgregado: "", descricao: "", periodoInicio: "", periodoFim: "", limitesAlerta: {} });
   const [runAnalysis, setRunAnalysis] = useState(false);
-  const [grid, setGrid] = useState<{ open: boolean; curva: CurvaSelecao; criterio: Criterio; pagina: number; ordenacao: OrdenacaoItens }>({ open: false, curva: "todas", criterio: "todos", pagina: 1, ordenacao: "impacto" });
+  // B-v12: estado do grid ganha filial rápida, ordenação e DIREÇÃO (cabeçalho clicável).
+  const [grid, setGrid] = useState<{ open: boolean; curva: CurvaSelecao; criterio: Criterio; pagina: number; ordenacao: OrdenacaoItens; direcao: DirecaoOrdenacao; filial: string }>({ open: false, curva: "todas", criterio: "todos", pagina: 1, ordenacao: "impacto", direcao: "desc", filial: "todas" });
   const [expandido, setExpandido] = useState<string | null>(null);
+  const [agregadoDetalhe, setAgregadoDetalhe] = useState<string | null>(null);
   const [mostrarGrafico, setMostrarGrafico] = useState(true);
   const gridRef = useRef<HTMLElement | null>(null);
   const periodos = trpc.costEvolution.periodos.useQuery({ segment }, { retry: false });
   const filiais = trpc.costEvolution.filiais.useQuery({ segment }, { retry: false, enabled: !isIndustry });
   const agregados = trpc.costEvolution.codAgregadosDetalhados.useQuery({ segment }, { retry: false });
-  // B-v11: botão "Atualizar índices" REMOVIDO — os índices oficiais (IBGE/BCB)
-  // se completam sozinhos no servidor a cada análise; o usuário não tem ação sobre isso.
+  // Botão "Atualizar índices" REMOVIDO — os índices oficiais (IBGE/BCB) se
+  // completam sozinhos no servidor a cada análise.
   const limitesAlerta = useMemo(() => {
     const parse = (value: string) => {
       const n = Number(String(value).trim().replace(",", "."));
@@ -245,9 +254,32 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     limitesAlerta: applied.limitesAlerta,
   }), [segment, isIndustry, applied]);
   const analise = trpc.costEvolution.analise.useQuery(input, { retry: false, enabled: runAnalysis });
-  const itensInput = useMemo(() => ({ ...input, curvaFiltro: grid.curva === "todas" ? undefined : grid.curva, criterio: grid.criterio, ordenacao: grid.ordenacao, pagina: grid.pagina, itensPorPagina: 50 }), [input, grid]);
+  const itensInput = useMemo(() => ({
+    ...input,
+    filial: grid.filial !== "todas" ? grid.filial : input.filial,
+    curvaFiltro: grid.curva === "todas" ? undefined : grid.curva,
+    criterio: grid.criterio,
+    ordenacao: grid.ordenacao,
+    direcao: grid.direcao,
+    pagina: grid.pagina,
+    itensPorPagina: 50,
+  }), [input, grid]);
   const itens = trpc.costEvolution.itensEvolutivos.useQuery(itensInput, { retry: false, enabled: runAnalysis && grid.open, placeholderData: prev => prev });
-  const chartItems = trpc.costEvolution.itensEvolutivos.useQuery({ ...input, criterio: "todos" as const, ordenacao: "codigo" as const, pagina: 1, itensPorPagina: 200 }, { retry: false, enabled: runAnalysis && Boolean(applied.codAgregado) });
+  const chartItems = trpc.costEvolution.itensEvolutivos.useQuery({ ...input, criterio: "todos" as const, ordenacao: "codigo" as const, direcao: "asc" as const, pagina: 1, itensPorPagina: 200 }, { retry: false, enabled: runAnalysis && Boolean(applied.codAgregado) });
+  // B-v12: família do agregado — TODOS os itens do agregado do item clicado,
+  // em qualquer filial, listados dentro do card de detalhe.
+  const familia = trpc.costEvolution.itensEvolutivos.useQuery(
+    { ...input, descricao: undefined, filial: undefined, codAgregado: agregadoDetalhe ?? undefined, criterio: "todos" as const, ordenacao: "codigo" as const, direcao: "asc" as const, pagina: 1, itensPorPagina: 100 },
+    { retry: false, enabled: runAnalysis && Boolean(expandido && agregadoDetalhe), placeholderData: prev => prev },
+  );
+  const abrirDetalhe = (item: ItemRow) => {
+    const chave = chaveItem(item);
+    const proximo = expandido === chave ? null : chave;
+    setExpandido(proximo);
+    setAgregadoDetalhe(proximo ? (item.cod_agregado ?? item.codigo) : null);
+    if (proximo) window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const fecharDetalhe = () => { setExpandido(null); setAgregadoDetalhe(null); };
   const aplicarFiltros = (sobrescrever?: { descricao?: string }) => {
     const nova = {
       filial: isIndustry ? "" : filial,
@@ -259,7 +291,7 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     setApplied(nova);
     setRunAnalysis(true);
     setGrid(g => ({ ...g, open: false, curva: "todas", criterio: "todos", pagina: 1 }));
-    setExpandido(null);
+    fecharDetalhe();
     toast.success("Filtros aplicados.");
   };
   const limparBusca = () => {
@@ -273,14 +305,30 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     setApplied({ filial: "", codAgregado: "", descricao: "", periodoInicio: "", periodoFim: "", limitesAlerta: {} });
     setRunAnalysis(false);
     setGrid(g => ({ ...g, open: false, curva: "todas", criterio: "todos", pagina: 1 }));
-    setExpandido(null);
+    fecharDetalhe();
     toast.success("Filtros limpos — janela padrão de 6 meses.");
   };
   const openGrid = (curva: CurvaSelecao, criterio: Criterio) => {
     setGrid(g => ({ ...g, open: true, curva, criterio, pagina: 1 }));
-    setExpandido(null);
+    fecharDetalhe();
     setTimeout(() => gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
   };
+  // B-v12: clique no cabeçalho — mesma coluna alterna asc/desc; coluna nova
+  // usa direção natural (variação/impacto desc; demais asc).
+  const ordenarPor = (campo: OrdenacaoItens) => setGrid(prev => ({
+    ...prev,
+    ordenacao: campo,
+    direcao: prev.ordenacao === campo ? (prev.direcao === "asc" ? "desc" : "asc") : (campo === "variacao" || campo === "impacto" ? "desc" : "asc"),
+    pagina: 1,
+  }));
+  const thSort = (campo: OrdenacaoItens, label: string, title?: string) => (
+    <TableHead>
+      <button type="button" className="inline-flex items-center gap-1 hover:text-slate-950" title={title ?? `Ordenar por ${label.toLowerCase()} — clique alterna crescente/decrescente`} onClick={() => ordenarPor(campo)}>
+        {label}
+        {grid.ordenacao === campo && (grid.direcao === "asc" ? <ChevronUp className="h-3.5 w-3.5 text-sky-700" /> : <ChevronDown className="h-3.5 w-3.5 text-sky-700" />)}
+      </button>
+    </TableHead>
+  );
   const analiseData = analise.data;
   const benchmark = analiseData?.benchmarkReport as BenchmarkReport | undefined;
   const periods: string[] = useMemo(() => (analiseData?.periodos ?? []).map((p: { period: string }) => p.period), [analiseData?.periodos]);
@@ -289,8 +337,11 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const reguaLabel = curvasSegmento.map(curva => `${curva} ≥ ${number.format(limitesEfetivos[curva])}%`).join(" · ");
   const efetivoInicio = analiseData?.periodoEfetivoInicio as string | null | undefined;
   const efetivoFim = analiseData?.periodoEfetivoFim as string | null | undefined;
-  const valorPeriodoInicio = applied.periodoInicio || (runAnalysis && efetivoInicio ? efetivoInicio : "");
-  const valorPeriodoFim = applied.periodoFim || (runAnalysis && efetivoFim ? efetivoFim : "");
+  // B-v12: o select exibe a ESCOLHA atual do usuário; sem escolha, mostra a
+  // base efetiva. (No B-v11 o value ignorava a escolha e o select "voltava"
+  // — causa do "não consigo selecionar o período" no celular.)
+  const valorPeriodoInicio = periodoInicio || (runAnalysis && efetivoInicio ? efetivoInicio : "");
+  const valorPeriodoFim = periodoFim || (runAnalysis && efetivoFim ? efetivoFim : "");
   const chartItemsList: ItemRow[] = (chartItems.data?.items ?? []) as ItemRow[];
   const chartData = useMemo(() => {
     if (!chartItemsList.length) return [];
@@ -305,7 +356,10 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     });
   }, [periods, chartItemsList]);
   const pageItems: ItemRow[] = (itens.data?.items ?? []) as ItemRow[];
+  const familiaList: ItemRow[] = (familia.data?.items ?? []) as ItemRow[];
+  const itemDetalhe = expandido ? (pageItems.find(i => chaveItem(i) === expandido) ?? familiaList.find(i => chaveItem(i) === expandido)) : null;
   const totalPaginas = itens.data ? Math.max(1, Math.ceil(itens.data.total / itens.data.itensPorPagina)) : 1;
+  const consumoSemPrecoCount = benchmark?.diagnosticoBase?.consumoSemPreco ?? 0;
   // Ordem de hooks: useMemo antes de qualquer retorno antecipado.
   const curveRows = useMemo(() => Object.entries(benchmark?.byCurve ?? {})
     .filter((entry): entry is [CurveCode, CurveSummary] => Boolean(entry[1]))
@@ -319,7 +373,12 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
       let pagina = 1;
       const curvaFiltro = grid.curva === "todas" ? undefined : grid.curva;
       for (;;) {
-        const data = await utils.costEvolution.itensEvolutivos.fetch({ ...input, curvaFiltro, criterio: grid.criterio, ordenacao: "impacto", pagina, itensPorPagina: 200 });
+        const data = await utils.costEvolution.itensEvolutivos.fetch({
+          ...input,
+          filial: grid.filial !== "todas" ? grid.filial : input.filial,
+          curvaFiltro, criterio: grid.criterio, ordenacao: grid.ordenacao, direcao: grid.direcao,
+          pagina, itensPorPagina: 200,
+        });
         all = all.concat((data.items ?? []) as ItemRow[]);
         if (all.length >= data.total || pagina >= 25) {
           if (pagina >= 25 && data.total > all.length) toast.warning(`Exportação limitada aos primeiros ${all.length.toLocaleString("pt-BR")} itens. Refine os filtros para exportar o restante.`);
@@ -337,8 +396,6 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
         header.push(monthLabel(p));
         if (i < periods.length - 1) header.push(`Var ${monthLabel(p)}→${monthLabel(periods[i + 1])}`);
       });
-      // B-v11: colunas finais (9) — Var% · vs IPCA · vs Dólar · Consumo méd. ·
-      // Consumo qtd. · Impacto · Estoque · Estoque R$ · Sugestão.
       header.push("Variação total %", "vs IPCA (p.p.)", "vs Dólar (p.p.)", "Consumo médio mensal", "Consumo méd./mês (qtd.)", "Impacto estimado", "Estoque", "Estoque R$", "Sugestão de ação");
       const ipca = benchmark?.ipcaPercent ?? null;
       const dolar = benchmark?.dolarVariationPercent ?? null;
@@ -368,7 +425,6 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
       sheet.columns.forEach((col: { width?: number }, index: number) => {
         col.width = index === 0 ? 10 : index === 1 ? 14 : index === 2 ? 50 : index === 3 ? 16 : index === 4 ? 8 : index >= header.length - 9 ? 18 : 14;
       });
-      // REGRA DE DINHEIRO DO PROJETO: meses com 4 casas; totais com 2 casas (sem símbolo).
       const firstMonthCol = 6;
       const lastMonthCol = firstMonthCol + periods.length * 2 - 2;
       for (let c = firstMonthCol; c <= lastMonthCol; c++) {
@@ -407,11 +463,10 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   return <div className="page-wrap">
     <PageHeader eyebrow={`Suprimentos e estoques · ${details.label}`} title={`Evolução de custos de ${details.label.toLowerCase()}`} description={`Acompanhe a evolução mês a mês do custo médio de cada item, com impacto financeiro, régua de alerta configurável e comparativos oficiais (IPCA e dólar PTAX).`} />
     <section className="sc-surface p-5 sm:p-7">
-      {/* B-v5: períodos e filial encolhidos, agregado largo — grade de 12 colunas. */}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-12">
-        <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-1 xl:col-span-2">Período inicial<select className="control" value={valorPeriodoInicio} onChange={event => setPeriodoInicio(event.target.value)}><option value="">Mais recente</option>{(periodos.data ?? []).map((p: { period: string }) => <option key={p.period} value={p.period}>{monthLabel(p.period)}{!applied.periodoInicio && runAnalysis && efetivoInicio === p.period ? " (padrão)" : ""}</option>)}</select></label>
-        <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-1 xl:col-span-2">Período final<select className="control" value={valorPeriodoFim} onChange={event => setPeriodoFim(event.target.value)}><option value="">Mais recente</option>{(periodos.data ?? []).map((p: { period: string }) => <option key={p.period} value={p.period}>{monthLabel(p.period)}{!applied.periodoFim && runAnalysis && efetivoFim === p.period ? " (padrão)" : ""}</option>)}</select></label>
-        {isIndustry ? <div className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-1 xl:col-span-2">Filial<div className="control flex items-center justify-between"><span className="font-extrabold text-slate-950">{FILIAL_UNICA_INDUSTRY}</span><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-emerald-700">única</span></div></div> : <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-1 xl:col-span-2">Filial<select className="control" value={filial} onChange={event => setFilial(event.target.value)}><option value="">Todas</option>{(filiais.data ?? []).map((f: { filial: string }) => <option key={f.filial} value={f.filial}>{f.filial}</option>)}</select></label>}
+        <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-1 xl:col-span-2">Período inicial<select className="control min-h-11 w-full" value={valorPeriodoInicio} onChange={event => setPeriodoInicio(event.target.value)}><option value="">Mais recente</option>{(periodos.data ?? []).map((p: { period: string }) => <option key={p.period} value={p.period}>{monthLabel(p.period)}{!applied.periodoInicio && runAnalysis && efetivoInicio === p.period ? " (padrão)" : ""}</option>)}</select></label>
+        <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-1 xl:col-span-2">Período final<select className="control min-h-11 w-full" value={valorPeriodoFim} onChange={event => setPeriodoFim(event.target.value)}><option value="">Mais recente</option>{(periodos.data ?? []).map((p: { period: string }) => <option key={p.period} value={p.period}>{monthLabel(p.period)}{!applied.periodoFim && runAnalysis && efetivoFim === p.period ? " (padrão)" : ""}</option>)}</select></label>
+        {isIndustry ? <div className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-1 xl:col-span-2">Filial<div className="control flex items-center justify-between"><span className="font-extrabold text-slate-950">{FILIAL_UNICA_INDUSTRY}</span><span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-emerald-700">única</span></div></div> : <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-1 xl:col-span-2">Filial<select className="control min-h-11 w-full" value={filial} onChange={event => setFilial(event.target.value)}><option value="">Todas</option>{(filiais.data ?? []).map((f: { filial: string }) => <option key={f.filial} value={f.filial}>{f.filial}</option>)}</select></label>}
         <label className="grid gap-2 text-xs font-extrabold uppercase tracking-[0.1em] text-slate-500 md:col-span-2 xl:col-span-6">Item agregado<AgregadoCombobox options={(agregados.data ?? []) as { cod_agregado: string; descricao: string | null }[]} value={codAgregado} onSelect={setCodAgregado} onBuscaTexto={texto => aplicarFiltros({ descricao: texto })} loading={agregados.isLoading} /></label>
       </div>
       {applied.descricao && <div className="mt-3 flex flex-wrap items-center gap-2"><span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-800" title="Aplicada pelo rodapé da busca do agregado">Busca nos itens: "{applied.descricao}"</span><button type="button" className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-slate-200" onClick={limparBusca}><X className="h-3.5 w-3.5" />Limpar busca</button></div>}
@@ -433,39 +488,42 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
         ["Itens com redução", analiseData ? (analiseData.cards as { reducao: number }).reducao.toLocaleString("pt-BR") : "0", "reducao" as Criterio],
         ["Base de comparação", periods.length ? `${monthLabel(periods[0])} a ${monthLabel(periods[periods.length - 1])}` : "—"],
       ].map(([label, value, criterio]) => <div key={label as string} className={`sc-surface p-4${criterio ? " cursor-pointer transition hover:bg-slate-50" : ""}`} onClick={criterio ? () => openGrid("todas", criterio as Criterio) : undefined} title={criterio ? "Ver os itens no detalhe paginado (todas as curvas)" : undefined}><p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-500">{label}</p><p className="mt-2 text-lg font-extrabold tracking-tight text-slate-950">{value}</p></div>)}
+      {/* B-v12: diagnóstico da régua de ferro — item com consumo SEM preço é
+          anomalia de origem; fica fora da análise e é EXIBIDO aqui. */}
+      {!analyzing && !analise.error && consumoSemPrecoCount > 0 && <div className="sc-surface col-span-full flex items-start gap-2 border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{consumoSemPrecoCount.toLocaleString("pt-BR")} item(ns) com consumo mas SEM custo médio no período foram excluídos da análise — item sem custo não entra, nunca mais. Anomalia a tratar na origem.</div>}
     </section>
-    {/* B-v11: DETALHE DO ITEM NO TOPO — abre logo abaixo dos cards de KPI, com
-        descrição, curva, vs IPCA, vs Dólar, consumo (R$ e qtd.), consumo do
-        período, impacto, estoque e meses sem preço + faixa mensal colorida. */}
-    {expandido && pageItems.find(item => `${item.codigo}|${item.filial}` === expandido) && (() => { const item = pageItems.find(item => `${item.codigo}|${item.filial}` === expandido)!; const vsIpca = item.variacaoPercent != null && benchmark?.ipcaPercent != null ? item.variacaoPercent - (benchmark.ipcaPercent as number) : null; const vsDolar = item.variacaoPercent != null && benchmark?.dolarVariationPercent != null ? item.variacaoPercent - (benchmark.dolarVariationPercent as number) : null; const serie = buildSeries(item, periods); const mesesSemPreco = periods.filter(p => !item.meses.some(m => m.period === p && m.custo_medio != null && m.custo_medio !== 0)).length; const estoqueTexto = item.estoque != null || item.estoqueValor != null ? `${item.estoque != null ? number.format(item.estoque) : "—"}${item.estoqueValor != null ? ` · ${money2.format(item.estoqueValor)}` : ""}` : item.estoqueAgregado != null ? `${money2.format(item.estoqueAgregado)} (agregado)` : "—"; return <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-base font-extrabold text-slate-950">Detalhe · {item.codigo}{item.filial ? ` · ${item.filial}` : ""}</h3><p className="mt-1 break-words text-sm font-medium leading-5 text-slate-600" title={item.descricao}>{trunc(item.descricao, 160)}</p>{item.curve && <span className="mt-1.5 inline-block rounded-full bg-sky-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-sky-800">Curva {item.curve}</span>}</div><button type="button" className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-slate-200" onClick={() => setExpandido(null)}><X className="h-3.5 w-3.5" />Recolher</button></div><div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Item agregado</p><p className="mt-1 text-sm font-extrabold text-slate-950">{item.cod_agregado ?? "—"}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">vs IPCA (p.p.)</p><p className={`mt-1 text-sm font-extrabold ${vsIpca == null ? "text-slate-400" : vsIpca > 0 ? "text-rose-700" : "text-emerald-700"}`}>{vsIpca == null ? "—" : `${vsIpca > 0 ? "+" : ""}${number.format(vsIpca)}`}</p><p className="mt-1 text-[10px] font-semibold text-slate-400">IPCA do período: {benchmark?.ipcaPercent != null ? pct(benchmark.ipcaPercent) : "—"}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">vs Dólar (p.p.)</p><p className={`mt-1 text-sm font-extrabold ${vsDolar == null ? "text-slate-400" : vsDolar > 0 ? "text-rose-700" : "text-emerald-700"}`}>{vsDolar == null ? "—" : `${vsDolar > 0 ? "+" : ""}${number.format(vsDolar)}`}</p><p className="mt-1 text-[10px] font-semibold text-slate-400">Dólar PTAX do período: {benchmark?.dolarVariationPercent != null ? pct(benchmark.dolarVariationPercent) : "—"}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Consumo méd./mês</p><p className="mt-1 text-sm font-extrabold text-slate-950">{item.consumoMedioMensal == null ? "—" : money2.format(item.consumoMedioMensal)}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Consumo méd./mês (qtd.)</p><p className="mt-1 text-sm font-extrabold text-slate-950">{item.consumoMedioQuantidade == null ? "—" : number.format(item.consumoMedioQuantidade)}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Consumo do período</p><p className="mt-1 text-sm font-extrabold text-slate-950">{item.consumoTotal == null ? "—" : money2.format(item.consumoTotal)}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Impacto estimado</p><p className={`mt-1 text-sm font-extrabold ${(item.impactoEstimado ?? 0) > 0 ? "text-rose-700" : (item.impactoEstimado ?? 0) < 0 ? "text-emerald-700" : "text-slate-950"}`}>{item.impactoEstimado == null ? "—" : money2.format(item.impactoEstimado)}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Estoque</p><p className="mt-1 text-sm font-extrabold text-slate-950">{estoqueTexto}</p></div><div className="rounded-xl bg-slate-50 p-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Meses sem preço</p><p className="mt-1 text-sm font-extrabold text-slate-950">{mesesSemPreco} de {periods.length}</p></div></div><div className="mt-4"><p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Série mensal · variação colorida</p><div className="mt-2 flex gap-2 overflow-x-auto pb-2">{periods.map((p, i) => { const val = serie[i]; const v = i < periods.length - 1 ? variationPct(serie[i + 1], serie[i]) : null; return <div key={p} className="min-w-[104px] shrink-0 rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-extrabold text-slate-500">{monthLabel(p)}</p><p className="mt-0.5 whitespace-nowrap text-xs font-extrabold text-slate-950">{val == null ? "—" : money4.format(val)}</p><p className={`whitespace-nowrap text-[10px] font-semibold ${i < periods.length - 1 ? (v == null ? "text-slate-400" : v > 0 ? "text-rose-700" : v < 0 ? "text-emerald-700" : "text-slate-600") : "text-transparent"}`}>{i < periods.length - 1 ? (v == null ? "—" : pct(v)) : "—"}</p></div>; })}</div></div></section>; })()}
+    {/* B-v12: DETALHE DO ITEM NO TOPO e CONGELADO ao rolar (como os cards de
+        KPI). 8 cards compactos numa única linha no desktop; consumo méd. reais
+        e quantidade JUNTOS; faixa mensal destaca os meses sem preço em âmbar;
+        família do agregado listada e clicável. */}
+    {itemDetalhe && (() => { const item = itemDetalhe; const vsIpca = item.variacaoPercent != null && benchmark?.ipcaPercent != null ? item.variacaoPercent - (benchmark.ipcaPercent as number) : null; const vsDolar = item.variacaoPercent != null && benchmark?.dolarVariationPercent != null ? item.variacaoPercent - (benchmark.dolarVariationPercent as number) : null; const serie = buildSeries(item, periods); const mesesSemPreco = periods.filter(p => !temPrecoNoMes(item, p)).length; const estoqueTexto = item.estoque != null || item.estoqueValor != null ? `${item.estoque != null ? number.format(item.estoque) : "—"}${item.estoqueValor != null ? ` · ${money2.format(item.estoqueValor)}` : ""}` : item.estoqueAgregado != null ? `${money2.format(item.estoqueAgregado)} (agregado)` : "—"; return <section className="sc-surface mt-5 p-4 sm:p-6 md:sticky md:top-[116px] md:z-[9]"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><h3 className="text-base font-extrabold text-slate-950">Detalhe · {item.codigo}{item.filial ? ` · ${item.filial}` : ""}</h3><p className="mt-1 break-words text-sm font-medium leading-5 text-slate-600" title={item.descricao}>{trunc(item.descricao, 160)}</p>{item.curve && <span className="mt-1.5 inline-block rounded-full bg-sky-100 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-[0.08em] text-sky-800">Curva {item.curve}</span>}</div><button type="button" className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600 hover:bg-slate-200" onClick={fecharDetalhe}><X className="h-3.5 w-3.5" />Recolher</button></div><div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4 lg:grid-cols-8"><div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Item agregado</p><p className="mt-1 text-sm font-extrabold text-slate-950">{item.cod_agregado ?? "—"}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">vs IPCA (p.p.)</p><p className={`mt-1 text-sm font-extrabold ${vsIpca == null ? "text-slate-400" : vsIpca > 0 ? "text-rose-700" : "text-emerald-700"}`}>{vsIpca == null ? "—" : `${vsIpca > 0 ? "+" : ""}${number.format(vsIpca)}`}</p><p className="mt-0.5 text-[9px] font-semibold text-slate-400">IPCA: {benchmark?.ipcaPercent != null ? pct(benchmark.ipcaPercent) : "—"}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">vs Dólar (p.p.)</p><p className={`mt-1 text-sm font-extrabold ${vsDolar == null ? "text-slate-400" : vsDolar > 0 ? "text-rose-700" : "text-emerald-700"}`}>{vsDolar == null ? "—" : `${vsDolar > 0 ? "+" : ""}${number.format(vsDolar)}`}</p><p className="mt-0.5 text-[9px] font-semibold text-slate-400">Dólar PTAX: {benchmark?.dolarVariationPercent != null ? pct(benchmark.dolarVariationPercent) : "—"}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Consumo méd./mês</p><p className="mt-1 text-sm font-extrabold text-slate-950">{item.consumoMedioMensal == null ? "—" : money2.format(item.consumoMedioMensal)}</p>{item.consumoMedioQuantidade != null && <p className="mt-0.5 whitespace-nowrap text-[9px] font-semibold text-slate-500">qtd. {number.format(item.consumoMedioQuantidade)}</p>}</div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Consumo do período</p><p className="mt-1 text-sm font-extrabold text-slate-950">{item.consumoTotal == null ? "—" : money2.format(item.consumoTotal)}</p>{item.consumoTotalQuantidade != null && <p className="mt-0.5 whitespace-nowrap text-[9px] font-semibold text-slate-500">qtd. {number.format(item.consumoTotalQuantidade)}</p>}</div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Impacto estimado</p><p className={`mt-1 text-sm font-extrabold ${(item.impactoEstimado ?? 0) > 0 ? "text-rose-700" : (item.impactoEstimado ?? 0) < 0 ? "text-emerald-700" : "text-slate-950"}`}>{item.impactoEstimado == null ? "—" : money2.format(item.impactoEstimado)}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Estoque</p><p className="mt-1 whitespace-nowrap text-sm font-extrabold text-slate-950">{estoqueTexto}</p></div><div className="rounded-xl bg-slate-50 p-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Meses sem preço</p><p className="mt-1 text-sm font-extrabold text-slate-950">{mesesSemPreco} de {periods.length}</p></div></div><div className="mt-3"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Série mensal · variação colorida · meses sem preço em âmbar</p><div className="mt-2 flex gap-2 overflow-x-auto pb-2">{periods.map((p, i) => { const val = serie[i]; const temPreco = temPrecoNoMes(item, p); const v = temPreco && i < periods.length - 1 ? variationPct(serie[i + 1], serie[i]) : null; return <div key={p} className={`min-w-[104px] shrink-0 rounded-xl p-3${temPreco ? " bg-slate-50" : " border border-amber-300 bg-amber-100"}`}><p className={`text-[10px] font-extrabold ${temPreco ? "text-slate-500" : "text-amber-800"}`}>{monthLabel(p)}</p><p className={`mt-0.5 whitespace-nowrap text-xs font-extrabold ${temPreco ? "text-slate-950" : "text-amber-800"}`}>{temPreco ? (val == null ? "—" : money4.format(val)) : "sem preço"}</p><p className={`whitespace-nowrap text-[10px] font-semibold ${!temPreco ? "text-amber-700" : i < periods.length - 1 ? (v == null ? "text-slate-400" : v > 0 ? "text-rose-700" : v < 0 ? "text-emerald-700" : "text-slate-600") : "text-transparent"}`}>{i < periods.length - 1 ? (v == null ? "—" : pct(v)) : "—"}</p></div>; })}</div></div>{agregadoDetalhe && familiaList.length > 0 && <div className="mt-4"><p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Itens do agregado {agregadoDetalhe} · {familiaList.length.toLocaleString("pt-BR")} — clique para trocar o detalhe</p><div className="mt-2 max-h-52 overflow-y-auto rounded-xl border border-slate-100">{familiaList.map(f => { const chave = chaveItem(f); const atual = chave === expandido; return <button key={chave} type="button" className={`flex w-full flex-wrap items-center gap-2 border-b border-slate-50 px-3 py-2 text-left text-xs last:border-b-0 ${atual ? "bg-sky-50" : "hover:bg-slate-50"}`} onClick={() => abrirDetalhe(f)}><span className="font-extrabold text-slate-950">{f.codigo}</span>{!isIndustry && <span className="text-slate-500">Filial {f.filial}</span>}{f.curve && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-extrabold text-sky-800">Curva {f.curve}</span>}<span className="ml-auto whitespace-nowrap font-bold text-slate-950">{f.variacaoPercent == null ? "—" : pct(f.variacaoPercent)}</span><span className="whitespace-nowrap text-slate-600">{f.impactoEstimado == null ? "—" : money2.format(f.impactoEstimado)}</span></button>; })}</div></div>}</section>; })()}
     {runAnalysis && benchmark && <section className="sc-surface mt-5 overflow-hidden">
       <div className="border-b border-slate-100 px-5 py-5 sm:px-7">
         <div><p className="eyebrow">Cruzamento gerencial</p><h2 className="mt-1 text-lg font-extrabold text-slate-950">Curva ABC na evolução de custos</h2><p className="mt-1 text-sm font-medium text-slate-500">Régua de alerta aplicada: {reguaLabel}. Clique em uma curva ou no número de itens acima do limite para ver o detalhe paginado — sempre restrito à curva clicada.</p>
-        {/* B-v5: comparativos em pílulas compactas (o box grande roubava espaço). */}
-        <div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Comparativos:</span>{benchmark.ipcaPercent != null && <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-800" title="IPCA acumulado no período (IBGE)">IPCA {pct(benchmark.ipcaPercent)}</span>}{benchmark.dolarVariationPercent != null && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-extrabold text-slate-700" title="Variação do dólar PTAX no período (BCB)">Dólar {pct(benchmark.dolarVariationPercent)}</span>}{benchmark.internalInflationPercent != null && <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800" title="Inflação interna ponderada">Interna {pct(benchmark.internalInflationPercent)}</span>}{benchmark.indicesStatus && Object.values(benchmark.indicesStatus).some(status => status === "indisponivel") && <span className="text-[10px] font-semibold text-amber-700">Fonte oficial indisponível — usando o último valor gravado.</span>}</div></div>
+        <div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-slate-500">Comparativos:</span>{benchmark.ipcaPercent != null && <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-800" title="IPCA acumulado no período (IBGE)">IPCA {pct(benchmark.ipcaPercent)}</span>}{benchmark.dolarVariationPercent != null && <span className="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-extrabold text-slate-700" title="Variação do dólar PTAX no período (BCB)">Dólar {pct(benchmark.dolarVariationPercent)}</span>}{benchmark.indicesStatus && Object.values(benchmark.indicesStatus).some(status => status === "indisponivel") && <span className="text-[10px] font-semibold text-amber-700">Fonte oficial indisponível — usando o último valor gravado.</span>}</div></div>
       </div>
       {curveRows.length > 0 && <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Curva</TableHead><TableHead>Itens</TableHead><TableHead>Variação ponderada</TableHead><TableHead>Impacto estimado</TableHead><TableHead title={`Itens da curva cuja variação do período passou da régua: ${reguaLabel}`}>Itens acima do limite</TableHead></TableRow></TableHeader><TableBody>{curveRows.map(([curve, summary]) => <TableRow key={curve}><TableCell><button type="button" className="rounded-full bg-slate-100 px-3 py-1 text-xs font-extrabold text-slate-800 transition hover:bg-sky-100 hover:text-sky-800" title={`Ver os itens da curva ${curve}`} onClick={() => openGrid(curve, "todos")}>{curve}</button></TableCell><TableCell>{summary.itemCount.toLocaleString("pt-BR")}</TableCell><TableCell>{summary.weightedVariationPercent == null ? "—" : pct(summary.weightedVariationPercent)}</TableCell><TableCell>{summary.estimatedImpact == null ? "—" : money2.format(summary.estimatedImpact)}</TableCell><TableCell>{summary.highAlerts > 0 ? <button type="button" className="font-extrabold text-rose-700 underline decoration-dotted underline-offset-2 hover:text-rose-900" title={`Ver os itens da curva ${curve} acima do limite`} onClick={() => openGrid(curve, "acima-limite")}>{summary.highAlerts.toLocaleString("pt-BR")}</button> : "0"}</TableCell></TableRow>)}</TableBody></Table></div>}
       {curveRows.length === 0 && <div className="p-5 text-sm font-medium text-slate-500 sm:p-7">O cruzamento ABC ainda não retornou curvas para este conjunto de filtros.</div>}
     </section>}
     {applied.codAgregado && chartData.length > 0 && <section className="sc-surface mt-5 p-5 sm:p-7"><div className="flex flex-wrap items-start justify-between gap-3"><div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#dcebf7] text-slate-950"><BarChart3 className="h-5 w-5" /></span><div><h2 className="text-lg font-extrabold text-slate-950">Evolução do agregado {applied.codAgregado}</h2><p className="mt-1 text-xs font-semibold text-slate-500">Uma linha por item{isIndustry ? "" : " e por filial"}. Meses sem preço usam o valor do mês anterior.</p></div></div><Button size="sm" variant="outline" onClick={() => setMostrarGrafico(valor => !valor)} title="Exibe ou recolhe o gráfico">{mostrarGrafico ? <ChevronUp className="mr-1.5 h-4 w-4" /> : <ChevronDown className="mr-1.5 h-4 w-4" />}{mostrarGrafico ? "Recolher gráfico" : "Exibir gráfico"}</Button></div>{mostrarGrafico && <div className="mt-6 h-80"><ResponsiveContainer width="100%" height="100%"><LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" /><XAxis dataKey="period" tick={{ fontSize: 11 }} /><YAxis tick={{ fontSize: 11 }} tickFormatter={value => money4.format(Number(value))} /><Tooltip formatter={value => money4.format(Number(value))} />{chartItemsList.map((item, idx) => <Line key={itemChartKey(item)} type="monotone" dataKey={itemChartKey(item)} name={`${item.codigo} · ${trunc(item.descricao, 40)}${item.filial && !isIndustry ? ` · Filial ${item.filial}` : ""}`} stroke={LINE_COLORS[idx % LINE_COLORS.length]} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />)}</LineChart></ResponsiveContainer></div>}</section>}
-    {runAnalysis && !grid.open && <section className="sc-surface mt-5 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7"><div><h2 className="text-lg font-extrabold text-slate-950">Evolução mês a mês por item</h2><p className="mt-1 text-sm font-medium text-slate-500">Abra o detalhe paginado para navegar pelos itens dos filtros atuais. Clique em uma linha: o detalhe abre no topo da tela, com vs IPCA, vs Dólar, consumo e estoque.</p></div><Button variant="outline" onClick={() => openGrid("todas", "todos")}><BarChart3 className="mr-2 h-4 w-4" />Ver evolução por item</Button></section>}
+    {runAnalysis && !grid.open && <section className="sc-surface mt-5 flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-7"><div><h2 className="text-lg font-extrabold text-slate-950">Evolução mês a mês por item</h2><p className="mt-1 text-sm font-medium text-slate-500">Abra o detalhe paginado para navegar pelos itens dos filtros atuais. Clique em uma linha: o detalhe abre no topo da tela, congelado ao rolar, com vs IPCA, vs Dólar, consumo e estoque.</p></div><Button variant="outline" onClick={() => openGrid("todas", "todos")}><BarChart3 className="mr-2 h-4 w-4" />Ver evolução por item</Button></section>}
     {runAnalysis && grid.open && <section ref={gridRef} className="sc-surface mt-5 overflow-hidden">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-5 sm:px-7">
         <div><h2 className="text-lg font-extrabold text-slate-950">{grid.curva === "todas" ? "Todas as curvas" : `Curva ${grid.curva}`} · {CRITERIO_LABELS[grid.criterio]}</h2><p className="mt-1 text-sm font-medium text-slate-500">{itens.data ? `${itens.data.total.toLocaleString("pt-BR")} itens · ${itens.data.itensPorPagina} por página · clique na linha para o detalhe no topo` : "Carregando itens…"}</p></div>
         <div className="flex flex-wrap items-center gap-2">
+          {!isIndustry && <select className="control h-9 w-36" value={grid.filial} onChange={event => setGrid(prev => ({ ...prev, filial: event.target.value, pagina: 1 }))} title="Filtro rápido de filial dentro do grid — sem reaplicar a análise"><option value="todas">Filial: todas</option>{(filiais.data ?? []).map((f: { filial: string }) => <option key={f.filial} value={f.filial}>Filial: {f.filial}</option>)}</select>}
           <select className="control h-9 w-40" value={grid.curva} onChange={event => setGrid(prev => ({ ...prev, curva: event.target.value as CurvaSelecao, pagina: 1 }))} title="Eixo da curva — itens de outra curva jamais aparecem"><option value="todas">Curva: todas</option>{curvasSegmento.map(curva => <option key={curva} value={curva}>Curva: {curva}</option>)}</select>
           <select className="control h-9 w-44" value={grid.criterio} onChange={event => setGrid(prev => ({ ...prev, criterio: event.target.value as Criterio, pagina: 1 }))} title="Critério dos itens"><option value="todos">Todos os itens</option><option value="alta">Itens com alta</option><option value="reducao">Itens com redução</option><option value="acima-limite">Itens acima do limite</option></select>
-          <select className="control h-9 w-40" value={grid.ordenacao} onChange={event => setGrid(prev => ({ ...prev, ordenacao: event.target.value as OrdenacaoItens, pagina: 1 }))}><option value="impacto">Ordenar: impacto</option><option value="variacao">Ordenar: variação</option><option value="codigo">Ordenar: código</option><option value="descricao">Ordenar: descrição</option></select>
+          <select className="control h-9 w-40" value={grid.ordenacao} onChange={event => setGrid(prev => ({ ...prev, ordenacao: event.target.value as OrdenacaoItens, direcao: (event.target.value === "variacao" || event.target.value === "impacto") ? "desc" : "asc", pagina: 1 }))}><option value="impacto">Ordenar: impacto</option><option value="variacao">Ordenar: variação</option><option value="codigo">Ordenar: código</option><option value="descricao">Ordenar: descrição</option><option value="filial">Ordenar: filial</option><option value="curva">Ordenar: curva</option></select>
           <Button size="sm" variant="outline" disabled={exporting} onClick={() => { exportXlsx(); }} title="Exporta todos os itens do critério atual">{exporting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}Exportar</Button>
           <Button size="sm" variant="outline" onClick={() => setGrid(prev => ({ ...prev, open: false }))}><X className="mr-1.5 h-4 w-4" />Fechar</Button>
         </div>
       </div>
-      {/* B-v11: rolagem INTERNA com altura limitada — a barra de rolagem fica
-          dentro do quadro do grid (não mais no pé da página) e o cabeçalho das
-          colunas fica FIXO ao rolar. Funciona igual no celular. */}
+      {/* B-v12: rolagem INTERNA com altura limitada, cabeçalho fixo e colunas
+          ordenáveis pelo cabeçalho (filial, código, descrição, curva, variação
+          e impacto — asc/desc alternando a cada clique). */}
       <div className="max-h-[65vh] min-h-[280px] overflow-auto">
-        {/* B-v5: erro da chamada tRPC EXIBIDO — "Nenhum item" nunca mais mascara uma falha. */}
-        <Table><TableHeader className="sticky top-0 z-20 bg-white shadow-[0_1px_0_0_#e2e8f0]"><TableRow><TableHead>Filial</TableHead><TableHead>Código</TableHead><TableHead>Descrição</TableHead><TableHead>Curva ABC</TableHead>{periods.map((p, i) => <TableHead key={p}>{monthLabel(p)}{i < periods.length - 1 && <span className="block text-[10px] font-semibold text-slate-400">var → {monthLabel(periods[i + 1])}</span>}</TableHead>)}<TableHead>Variação total</TableHead><TableHead>Impacto estimado</TableHead><TableHead>Sugestão de ação</TableHead></TableRow></TableHeader><TableBody>{itens.error ? <TableRow><TableCell colSpan={colunasGrid} className="h-24 text-center text-sm font-semibold text-rose-700">Falha ao carregar os itens: {(itens.error as unknown as Error).message}. Copie esta mensagem e me envie.</TableCell></TableRow> : itens.isLoading && !pageItems.length ? <TableRow><TableCell colSpan={colunasGrid} className="h-24 text-center text-sm font-medium text-slate-500"><LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />Carregando itens…</TableCell></TableRow> : pageItems.length ? pageItems.map(item => { const series = buildSeries(item, periods); const chave = `${item.codigo}|${item.filial}`; return <TableRow key={chave} className="cursor-pointer transition hover:bg-slate-50" onClick={() => { const proximo: string | null = expandido === chave ? null : chave; setExpandido(proximo); if (proximo) window.scrollTo({ top: 0, behavior: "smooth" }); }}><TableCell>{item.filial}</TableCell><TableCell className="font-bold text-slate-950">{item.codigo}</TableCell><TableCell className="max-w-xs">{item.descricao}</TableCell><TableCell className="whitespace-nowrap">{item.curve ? <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-800" title={`Curva ABC ${item.curve} vinculada por filial + código agregado`}>{item.curve}</span> : <span className="text-xs font-semibold text-slate-400" title="Sem curva vinculada — anomalia a corrigir na origem">—</span>}</TableCell>{periods.map((p, i) => { const val = series[i]; const v = variationPct(series[i + 1], series[i]); return <TableCell key={p}><p className="whitespace-nowrap">{val == null ? "—" : money4.format(val)}</p>{i < periods.length - 1 && <p className={`whitespace-nowrap text-xs font-semibold ${v == null ? "text-slate-400" : v > 0 ? "text-rose-700" : v < 0 ? "text-emerald-700" : "text-slate-600"}`}>{v == null ? "—" : pct(v)}</p>}</TableCell>; })}<TableCell className="whitespace-nowrap font-bold">{item.variacaoPercent == null ? "—" : pct(item.variacaoPercent)}</TableCell><TableCell className={`whitespace-nowrap font-semibold ${(item.impactoEstimado ?? 0) > 0 ? "text-rose-700" : (item.impactoEstimado ?? 0) < 0 ? "text-emerald-700" : "text-slate-600"}`}>{item.impactoEstimado == null ? "—" : money2.format(item.impactoEstimado)}</TableCell><TableCell className="max-w-xs text-xs font-medium text-slate-600">{sugestaoDeAcao(item, periods, limitesEfetivos)}</TableCell></TableRow>; }) : <TableRow><TableCell colSpan={colunasGrid} className="h-24 text-center text-sm font-medium text-slate-500">Nenhum item encontrado para este critério.</TableCell></TableRow>}</TableBody></Table>
+        <Table><TableHeader className="sticky top-0 z-20 bg-white shadow-[0_1px_0_0_#e2e8f0]"><TableRow>{thSort("filial", "Filial")}{thSort("codigo", "Código")}{thSort("descricao", "Descrição")}{thSort("curva", "Curva ABC")}{periods.map((p, i) => <TableHead key={p}>{monthLabel(p)}{i < periods.length - 1 && <span className="block text-[10px] font-semibold text-slate-400">var → {monthLabel(periods[i + 1])}</span>}</TableHead>)}{thSort("variacao", "Variação total")}{thSort("impacto", "Impacto estimado")}<TableHead>Sugestão de ação</TableHead></TableRow></TableHeader><TableBody>{itens.error ? <TableRow><TableCell colSpan={colunasGrid} className="h-24 text-center text-sm font-semibold text-rose-700">Falha ao carregar os itens: {(itens.error as unknown as Error).message}. Copie esta mensagem e me envie.</TableCell></TableRow> : itens.isLoading && !pageItems.length ? <TableRow><TableCell colSpan={colunasGrid} className="h-24 text-center text-sm font-medium text-slate-500"><LoaderCircle className="mr-2 inline h-4 w-4 animate-spin" />Carregando itens…</TableCell></TableRow> : pageItems.length ? pageItems.map(item => { const series = buildSeries(item, periods); const chave = chaveItem(item); return <TableRow key={chave} className="cursor-pointer transition hover:bg-slate-50" onClick={() => abrirDetalhe(item)}><TableCell>{item.filial}</TableCell><TableCell className="font-bold text-slate-950">{item.codigo}</TableCell><TableCell className="max-w-xs"><p className="line-clamp-2" title={item.descricao}>{item.descricao}</p></TableCell><TableCell className="whitespace-nowrap">{item.curve ? <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-extrabold text-sky-800" title={`Curva ABC ${item.curve} vinculada por filial + código agregado`}>{item.curve}</span> : <span className="text-xs font-semibold text-slate-400" title="Sem curva vinculada — anomalia a corrigir na origem">—</span>}</TableCell>{periods.map((p, i) => { const val = series[i]; const temPreco = temPrecoNoMes(item, p); const v = temPreco && i < periods.length - 1 ? variationPct(series[i + 1], series[i]) : null; return <TableCell key={p} className={temPreco ? "" : "bg-amber-50"}><p className="whitespace-nowrap">{temPreco ? (val == null ? "—" : money4.format(val)) : "—"}</p>{i < periods.length - 1 && <p className={`whitespace-nowrap text-xs font-semibold ${!temPreco ? "text-amber-700" : v == null ? "text-slate-400" : v > 0 ? "text-rose-700" : v < 0 ? "text-emerald-700" : "text-slate-600"}`}>{!temPreco ? "sem preço" : v == null ? "—" : pct(v)}</p>}</TableCell>; })}<TableCell className="whitespace-nowrap font-bold">{item.variacaoPercent == null ? "—" : pct(item.variacaoPercent)}</TableCell><TableCell className={`whitespace-nowrap font-semibold ${(item.impactoEstimado ?? 0) > 0 ? "text-rose-700" : (item.impactoEstimado ?? 0) < 0 ? "text-emerald-700" : "text-slate-600"}`}>{item.impactoEstimado == null ? "—" : money2.format(item.impactoEstimado)}</TableCell><TableCell className="max-w-xs text-xs font-medium text-slate-600">{sugestaoDeAcao(item, periods, limitesEfetivos)}</TableCell></TableRow>; }) : <TableRow><TableCell colSpan={colunasGrid} className="h-24 text-center text-sm font-medium text-slate-500">Nenhum item encontrado para este critério.</TableCell></TableRow>}</TableBody></Table>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-5 sm:p-7"><p className="text-sm font-semibold text-slate-600">Página {itens.data?.pagina ?? grid.pagina} de {totalPaginas}{itens.data ? ` · ${itens.data.total.toLocaleString("pt-BR")} itens` : ""}</p><div className="flex gap-2"><Button size="sm" variant="outline" disabled={(itens.data?.pagina ?? grid.pagina) <= 1 || itens.isFetching} onClick={() => setGrid(prev => ({ ...prev, pagina: Math.max(1, prev.pagina - 1) }))}><ChevronLeft className="mr-1 h-4 w-4" />Anterior</Button><Button size="sm" variant="outline" disabled={(itens.data?.pagina ?? grid.pagina) >= totalPaginas || itens.isFetching} onClick={() => setGrid(prev => ({ ...prev, pagina: prev.pagina + 1 }))}>Próxima<ChevronRight className="ml-1 h-4 w-4" /></Button></div></div>
     </section>}
