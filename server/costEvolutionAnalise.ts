@@ -440,6 +440,11 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     [params.periodoInicio ?? null, params.periodoFim ?? null, filial, params.codAgregado ?? null, params.descricao ?? null],
   );
   const result = rows[0]?.result ?? { periodos: [], items: [] };
+  // B-v13 (20/10/2026): SEGMENTO HERMÉTICO — no Autopeças a filial da
+  // Indústria (0105) jamais entra; o item da Indústria tem a própria tela.
+  if (params.segment !== "industry" && Array.isArray(result.items)) {
+    result.items = result.items.filter((item: { filial?: string }) => String(item.filial ?? "") !== INDUSTRY_BRANCH);
+  }
   const estoqueIndustria = params.segment === "industry"
     ? await attachIndustryMonthlyConsumption(portalPool, result)
     : null;
