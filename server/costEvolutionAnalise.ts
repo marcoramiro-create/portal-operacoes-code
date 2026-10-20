@@ -1,24 +1,22 @@
 // ============================================================
 // costEvolutionAnalise.ts
-// B-v10 (18/10/2026): CORREÇÃO DA REGRESSÃO QUE ZEROU OS VALORES. O SELECT
-// das CTEs devolvia "branch_code" SEM alias e o código lia row.branch —
-// undefined, porque o driver NÃO valida o generic TypeScript do query<T>.
-// Todas as chaves do consumo/estoque viravam "undefined|agregado|mês" e o
-// casamento com os itens falhava EM SILÊNCIO (custo total 0,00, "—" em tudo).
-// Correções: (1) AS branch nos dois SELECTs — o nome da coluna TEM que casar
-// com o tipo declarado; (2) LAG POR PRODUTO com soma no agregado, quebrando a
-// cadeia em buracos de calendário (paridade exata com a versão validada);
-// (3) filtro regex nos payloads numéricos (pula valor não numérico, como o
-// Number() do JS fazia). Mantém: motor único do B-v9 (triângulo Variação
-// ponderada × Custo total = Impacto), agregação no Postgres + cache TTL 10 min
-// do B-v8, impacto = variação % × consumo total, cast a.curve::text, TODOS os
-// batches, eixo curvaFiltro, busca multi-termo, IPCA/PTAX em cascata.
+// B-v11 (19/10/2026): (1) NOVOS LIMITES PADRÃO DA RÉGUA DE ALERTA —
+// A 3,00% · B 3,50% · C/D/E 4,00%; (2) ITENS SEM PREÇO E SEM CONSUMO no
+// período NÃO ENTRAM mais na análise (cards, painel e grid usam a mesma
+// lista limpa) — o conserto das entradas duplicadas do B-v10 revelou linhas
+// sem base real; (3) CONSUMO QUANTITATIVO por item (Autopeças: quantidade
+// vendida por mês; Indústria: "—" até confirmar o campo de quantidade do
+// fechamento na origem). Mantém TODO o motor B-v8/v9/v10 intacto.
+// B-v10 (18/10/2026): correção da regressão que zerou os valores — AS branch
+// nos dois SELECTs (o driver não valida o generic do query<T>), LAG POR
+// PRODUTO com quebra de cadeia em buracos de calendário, filtro regex nos
+// payloads numéricos. B-v9: motor único (triângulo Variação ponderada ×
+// Custo total = Impacto). B-v8: agregação no Postgres + cache TTL 10 min.
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
 import { buildCostCurveLookup } from "./costCurveLookup";
 import { garantirIndicesEconomicos, getIndicesEconomicos } from "./economicIndices";
-
 type CostEvolutionSegment = "auto_parts" | "industry";
 const INDUSTRY_BRANCH = "0105";
 const MONTH_NAMES: Record<string, string> = {
@@ -30,13 +28,13 @@ const MONTH_NAMES: Record<string, string> = {
 function normalizeSalesPeriod(value: string): string | null {
   const text = value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (/^\d{6}$/.test(text) && Number(text.slice(4, 6)) >= 1 && Number(text.slice(4, 6)) <= 12) return text;
-  const numeric = text.match(/^(\d{1,2})[\/-](\d{4})$/) ?? text.match(/^(\d{4})[\/-](\d{1,2})$/);
+  const numeric = text.match(/^(\d{1,2})[\/\-](\d{4})$/) ?? text.match(/^(\d{4})[\/\-](\d{1,2})$/);
   if (numeric) {
     const year = numeric[1].length === 4 ? numeric[1] : numeric[2];
     const month = numeric[1].length === 4 ? numeric[2] : numeric[1];
     return `${year}${month.padStart(2, "0")}`;
   }
-  const named = text.match(/^([a-z]+)[\s\/-]?(\d{4})$/) ?? text.match(/^(\d{4})[\s\/-]?([a-z]+)$/);
+  const named = text.match(/^([a-z]+)[\s\/\-]?(\d{4})$/) ?? text.match(/^(\d{4})[\s\/\-]?([a-z]+)$/);
   if (!named) return null;
   const year = named[1].length === 4 ? named[1] : named[2];
   const monthName = named[1].length === 4 ? named[2] : named[1];
@@ -56,7 +54,8 @@ function previousPeriod(period: string): string {
 }
 // ————— Limites de alerta configuráveis —————
 export type LimitesAlerta = { A: number; B: number; C: number; D: number; E: number };
-export const LIMITES_PADRAO: LimitesAlerta = { A: 10, B: 15, C: 20, D: 20, E: 20 };
+// B-v11 (19/10/2026): novos limites padrão da régua — A 3,00 · B 3,50 · C/D/E 4,00.
+export const LIMITES_PADRAO: LimitesAlerta = { A: 3, B: 3.5, C: 4, D: 4, E: 4 };
 function sanitizarLimites(entrada?: Partial<LimitesAlerta> | null): LimitesAlerta {
   const limites: LimitesAlerta = { ...LIMITES_PADRAO };
   for (const curva of ["A", "B", "C", "D", "E"] as const) {
@@ -74,6 +73,7 @@ type ItemInterno = {
   curve?: string; costStatus?: string;
   estoque?: number | null; estoqueValor?: number | null; estoqueAgregado?: number | null;
   variacaoPercent?: number | null; impactoEstimado?: number | null; consumoMedioMensal?: number | null;
+  consumoTotal?: number | null; consumoMedioQuantidade?: number | null; consumoTotalQuantidade?: number | null;
   meses: MesInterno[];
 };
 function serieCusto(item: ItemInterno, periods: string[]): (number | null)[] {
@@ -134,10 +134,30 @@ function enriquecerItens(items: ItemInterno[], segment: CostEvolutionSegment): v
     if (variacaoPercent != null && consumoTotal != null) {
       impactoEstimado = consumoTotal * (variacaoPercent / 100);
     }
+    // B-v11: consumo QUANTITATIVO — Autopeças tem quantidade vendida por mês;
+    // a Indústria fica "—" até o campo de quantidade do fechamento ser
+    // confirmado na origem (o card exibe "—" honesto, nunca inventa base).
+    const quantidades = item.meses
+      .map(mes => mes.quantidade_vendida)
+      .filter((valor): valor is number => valor != null && Number.isFinite(valor));
+    const somaQuantidades = quantidades.reduce((acc, valor) => acc + valor, 0);
     item.variacaoPercent = variacaoPercent == null ? null : Number(variacaoPercent.toFixed(4));
     item.impactoEstimado = impactoEstimado == null ? null : Number(impactoEstimado.toFixed(2));
     item.consumoMedioMensal = consumoMedioMensal == null ? null : Number(consumoMedioMensal.toFixed(2));
+    item.consumoTotal = consumoTotal == null ? null : Number(consumoTotal.toFixed(2));
+    item.consumoMedioQuantidade = quantidades.length ? Number((somaQuantidades / quantidades.length).toFixed(2)) : null;
+    item.consumoTotalQuantidade = quantidades.length ? Number(somaQuantidades.toFixed(2)) : null;
   }
+}
+// B-v11: item sem preço E sem consumo no período fica fora da análise —
+// linha sem nenhum número é ruído para quem decide compra.
+function temBaseReal(item: ItemInterno, segment: CostEvolutionSegment): boolean {
+  for (const mes of item.meses) {
+    const custo = mes.custo_medio;
+    if (custo != null && custo !== 0) return true;
+    if (consumoMensalEmReais(mes, segment) != null) return true;
+  }
+  return false;
 }
 // ————— Pesos mensais e estoque — fontes já aprovadas —————
 async function attachAutoPartsMonthlySales(
@@ -466,6 +486,9 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
       if (achado != null) item.estoqueAgregado = achado;
     }
   }
+  // B-v11: itens sem preço e sem consumo no período ficam fora — cards,
+  // painel de curvas e grid recebem a MESMA lista limpa (motor único).
+  const itemsComBase = items.filter(item => temBaseReal(item, params.segment ?? "auto_parts"));
   // O cruzamento por curva é recalculado na API consolidada SOBRE o conjunto
   // FILTRADO — um único motor para cards e painel. Aqui ficam os comparativos.
   const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
@@ -473,7 +496,7 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   relatorio.dolarVariationPercent = dolarVariationPercent;
   relatorio.indicesStatus = { IPCA: statusIndices.IPCA, DOLAR: statusIndices.DOLAR };
   relatorio.indicesDetalhes = statusIndices.detalhes;
-  return { analisado, items, periods, limites };
+  return { analisado, items: itemsComBase, periods, limites };
 }
 // Busca multi-termo: TODAS as palavras devem aparecer na descrição OU no código
 // do agregado ("pneu 600" acha "PNEU DIAGONAL 600/50-22,5").
