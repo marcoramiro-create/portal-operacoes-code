@@ -20,6 +20,9 @@ import { buildCostCurveLookup } from "./costCurveLookup";
 import { garantirIndicesEconomicos, getIndicesEconomicos } from "./economicIndices";
 type CostEvolutionSegment = "auto_parts" | "industry";
 const INDUSTRY_BRANCH = "0105";
+// B-v14 (22/10/2026): 0105 (Indústria) e 0201 jamais aparecem no Autopeças
+// nem no Compras — decisão do usuário, válida em TODAS as telas do portal.
+const FILIAIS_EXCLUIDAS_AUTOPECAS = new Set(["0105", "0201"]);
 const MONTH_NAMES: Record<string, string> = {
   jan: "01", janeiro: "01", feb: "02", fevereiro: "02", mar: "03", marco: "03", março: "03",
   apr: "04", abril: "04", may: "05", maio: "05", jun: "06", junho: "06", jul: "07", julho: "07",
@@ -443,7 +446,7 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   // B-v13 (20/10/2026): SEGMENTO HERMÉTICO — no Autopeças a filial da
   // Indústria (0105) jamais entra; o item da Indústria tem a própria tela.
   if (params.segment !== "industry" && Array.isArray(result.items)) {
-    result.items = result.items.filter((item: { filial?: string }) => String(item.filial ?? "") !== INDUSTRY_BRANCH);
+    result.items = result.items.filter((item: { filial?: string }) => !FILIAIS_EXCLUIDAS_AUTOPECAS.has(String(item.filial ?? "")));
   }
   const estoqueIndustria = params.segment === "industry"
     ? await attachIndustryMonthlyConsumption(portalPool, result)
