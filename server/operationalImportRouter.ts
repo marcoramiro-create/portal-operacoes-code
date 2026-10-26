@@ -57,16 +57,13 @@ export const operationalImportRouter = router({
     const content = Buffer.from(input.contentBase64, "base64");
     const parsed = parseStockEvolution(content);
     const imported = await importOperationalRows({ sourceKind: "FECHAMENTO_ESTOQUE", fileName: input.fileName, content, rows: parsed.rows });
-    // DECISÃO 01/10/2026: recálculo automático da Curva ABC Indústria APÓS
-    // importar FECHAMENTO_ESTOQUE (além do botão manual). Se faltar ENTRADA_NF
-    // ou SB1/SBZ em uso, o import não falha — apenas avisa.
-    try {
-      const curva = await recalcularCurvaIndustria();
-      return { ...imported, curva };
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Curva ABC da Indústria não calculada.";
-      return { ...imported, curva: null, curvaErro: msg };
-    }
+    // O recálculo da Curva ABC fica separado para não manter uma operação
+    // pesada dentro da mesma requisição de upload/importação.
+    return {
+      ...imported,
+      curva: null,
+      curvaErro: "Importação concluída. Recalcule a Curva ABC da Indústria separadamente.",
+    };
   }),
   importMaterialEntries: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parsed = parseMaterialEntries(content); return importOperationalRows({ sourceKind: "ENTRADA_NF", fileName: input.fileName, content, rows: parsed.rows }); }),
   // Botão manual "Recalcular curva" — exige permissão de GERENCIAR no módulo (ou admin)

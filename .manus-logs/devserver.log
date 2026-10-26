@@ -2389,3 +2389,15 @@
 [2026-10-17T20:24:55.810Z] at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:547:26)
 [2026-10-17T20:24:55.810Z] at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5)
 [2026-10-17T20:24:55.810Z] Node.js v22.13.0
+[2026-10-26T18:40:38.542Z] 6:40:38 PM [tsx] change in ./server/costEvolutionBenchmarkAdapter.ts Rerunning...
+[2026-10-26T18:40:38.645Z] 6:40:38 PM [tsx] unlink in ./server/routers/costEvolution.ts Restarting...
+[2026-10-26T18:40:41.412Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-26T18:40:41.448Z] /home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14
+[2026-10-26T18:40:41.448Z] if (!ENV.onedriveTokenKey) throw new Error("ONEDRIVE_TOKEN_KEY não configurada.");
+[2026-10-26T18:40:41.448Z] ^
+[2026-10-26T18:40:41.448Z] Error: ONEDRIVE_TOKEN_KEY não configurada.
+[2026-10-26T18:40:41.448Z] at <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14:34)
+[2026-10-26T18:40:41.448Z] at ModuleJob.run (node:internal/modules/esm/module_job:271:25)
+[2026-10-26T18:40:41.449Z] at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:547:26)
+[2026-10-26T18:40:41.449Z] at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5)
+[2026-10-26T18:40:41.449Z] Node.js v22.13.0

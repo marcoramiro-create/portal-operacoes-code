@@ -115,6 +115,7 @@ async function insertSourceRow(client: PoolClient, batchId: string, rowNumber: n
 }
 
 export type OperationalSourceKind = "PEDIDO_COMPRA" | "NF_LEGAL" | "NF_NATIVA" | "FECHAMENTO_ESTOQUE" | "ENTRADA_NF";
+const OPERATIONAL_INSERT_BATCH_SIZE = 500;
 type OperationalMappedRow = {
   companyCode: string | null;
   branchCode: string | null;
@@ -145,9 +146,14 @@ export async function importOperationalRows(options: { sourceKind: OperationalSo
     if (duplicate.rows[0]) throw new TRPCError({ code: "CONFLICT", message: `Este arquivo já foi importado para ${options.sourceKind}.` });
     const batchId = randomUUID();
     await client.query("insert into public.operational_import_batches (id,source_kind,file_name,file_hash,status,row_count,metadata) values ($1,$2,$3,$4,'received',$5,$6::jsonb)", [batchId, options.sourceKind, options.fileName, fileHash, options.rows.length, asJson({ parser: "operationalSourceParsers", preservedRaw: true })]);
-    for (let i = 0; i < options.rows.length; i += 1) {
-      const mapped = mapOperationalRow(options.sourceKind, options.rows[i]);
-      await insertOperationalSourceRow(client, batchId, i + 1, options.rows[i], mapped);
+    for (let start = 0; start < options.rows.length; start += OPERATIONAL_INSERT_BATCH_SIZE) {
+      await insertOperationalSourceRowsBatch(
+        client,
+        batchId,
+        options.sourceKind,
+        options.rows.slice(start, start + OPERATIONAL_INSERT_BATCH_SIZE),
+        start,
+      );
     }
     await client.query("update public.operational_import_batches set status='processed' where id=$1", [batchId]);
     await client.query("commit");
@@ -159,6 +165,40 @@ export async function importOperationalRows(options: { sourceKind: OperationalSo
     client.release();
   }
 }
-async function insertOperationalSourceRow(client: PoolClient, batchId: string, rowNumber: number, raw: unknown, mapped: OperationalMappedRow) {
-  await client.query(`insert into public.operational_source_rows (id,batch_id,source_row_number,company_code,branch_code,product_code,aggregate_product_code,supplier_code,supplier_store,raw_payload,normalized_payload,issue_messages) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,'[]'::jsonb)`, [randomUUID(), batchId, rowNumber, mapped.companyCode, mapped.branchCode, mapped.productCode, mapped.aggregateProductCode, mapped.supplierCode, mapped.supplierStore, asJson(raw), asJson(mapped.normalizedPayload)]);
+async function insertOperationalSourceRowsBatch(
+  client: PoolClient,
+  batchId: string,
+  source: OperationalSourceKind,
+  rows: unknown[],
+  startIndex: number,
+) {
+  if (rows.length === 0) return;
+  const values: unknown[] = [];
+  const tuples = rows.map((raw, index) => {
+    const mapped = mapOperationalRow(source, raw);
+    const offset = values.length;
+    values.push(
+      randomUUID(),
+      batchId,
+      startIndex + index + 1,
+      mapped.companyCode,
+      mapped.branchCode,
+      mapped.productCode,
+      mapped.aggregateProductCode,
+      mapped.supplierCode,
+      mapped.supplierStore,
+      asJson(raw),
+      asJson(mapped.normalizedPayload),
+    );
+    const placeholders = Array.from({ length: 11 }, (_, valueIndex) => `$${offset + valueIndex + 1}`);
+    return `(${placeholders.join(",")},'[]'::jsonb)`;
+  });
+  await client.query(
+    `insert into public.operational_source_rows
+      (id,batch_id,source_row_number,company_code,branch_code,product_code,
+       aggregate_product_code,supplier_code,supplier_store,raw_payload,
+       normalized_payload,issue_messages)
+     values ${tuples.join(",")}`,
+    values,
+  );
 }
