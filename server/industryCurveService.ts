@@ -42,6 +42,14 @@ async function batchEmUso(client: PoolClient, sourceKind: string): Promise<strin
   return res.rows[0]?.id ?? null;
 }
 
+async function batchesProcessados(client: PoolClient, sourceKind: string): Promise<string[]> {
+  const res = await client.query<{ id: string }>(
+    "select id from public.operational_import_batches where source_kind = $1 and status = 'processed' order by imported_at asc, id asc",
+    [sourceKind],
+  );
+  return res.rows.map((row) => row.id);
+}
+
 async function lerSb1(client: PoolClient, batchId: string): Promise<IndustryCurveInput["sb1"]> {
   const res = await client.query(
     "select product_code, aggregate_product_code, normalized_payload from public.operational_source_rows where batch_id = $1",
@@ -70,10 +78,11 @@ async function lerSbz(client: PoolClient, batchId: string): Promise<IndustryCurv
     }));
 }
 
-async function lerEntradas(client: PoolClient, batchId: string): Promise<IndustryCurveInput["entradas"]> {
+async function lerEntradas(client: PoolClient, batchIds: string[]): Promise<IndustryCurveInput["entradas"]> {
+  if (batchIds.length === 0) return [];
   const res = await client.query(
-    "select product_code, aggregate_product_code, branch_code, normalized_payload from public.operational_source_rows where batch_id = $1",
-    [batchId],
+    "select product_code, aggregate_product_code, branch_code, normalized_payload from public.operational_source_rows where batch_id = any($1::uuid[])",
+    [batchIds],
   );
   return res.rows
     .filter((r) => normalizeBranchCode(r.branch_code) === INDUSTRIA_BRANCH)
@@ -89,10 +98,11 @@ async function lerEntradas(client: PoolClient, batchId: string): Promise<Industr
     });
 }
 
-async function lerFechamentos(client: PoolClient, batchId: string): Promise<IndustryCurveInput["fechamentos"]> {
+async function lerFechamentos(client: PoolClient, batchIds: string[]): Promise<IndustryCurveInput["fechamentos"]> {
+  if (batchIds.length === 0) return [];
   const res = await client.query(
-    "select product_code, aggregate_product_code, branch_code, normalized_payload from public.operational_source_rows where batch_id = $1 and branch_code = $2",
-    [batchId, INDUSTRIA_BRANCH],
+    "select product_code, aggregate_product_code, branch_code, normalized_payload from public.operational_source_rows where batch_id = any($1::uuid[]) and branch_code = $2",
+    [batchIds, INDUSTRIA_BRANCH],
   );
   return res.rows.map((r) => {
     const p = r.normalized_payload ?? {};
@@ -157,6 +167,8 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
   try {
     const batchEntrada = await batchEmUso(client, "ENTRADA_NF");
     const batchFechamento = await batchEmUso(client, "FECHAMENTO_ESTOQUE");
+    const batchesEntrada = await batchesProcessados(client, "ENTRADA_NF");
+    const batchesFechamento = await batchesProcessados(client, "FECHAMENTO_ESTOQUE");
     if (!batchEntrada || !batchFechamento) {
       throw new TRPCError({
         code: "PRECONDITION_FAILED",
@@ -166,8 +178,8 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
     const batchSb1 = await batchEmUso(client, "SB1");
     const batchSbz = await batchEmUso(client, "SBZ");
     const input: IndustryCurveInput = {
-      entradas: await lerEntradas(client, batchEntrada),
-      fechamentos: await lerFechamentos(client, batchFechamento),
+      entradas: await lerEntradas(client, batchesEntrada),
+      fechamentos: await lerFechamentos(client, batchesFechamento),
       sb1: batchSb1 ? await lerSb1(client, batchSb1) : [],
       sbz: batchSbz ? await lerSbz(client, batchSbz) : [],
     };
