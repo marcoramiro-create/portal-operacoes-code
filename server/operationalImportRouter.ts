@@ -40,7 +40,7 @@ export const operationalImportRouter = router({
   previewOperationMap: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationMap(input.fileName, content); }),
   previewPurchaseOrders: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationalImport("PEDIDO_COMPRA", input.fileName, content); }),
   previewNfLegal: publicProcedure.input(fileInput.extend({ sourceKind: z.enum(["NF_LEGAL", "NF_NATIVA"]) })).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationalImport(input.sourceKind, input.fileName, content); }),
-  previewStockEvolution: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationalImport("FECHAMENTO_ESTOQUE", input.fileName, content); }),
+  previewStockEvolution: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); const parserInput = input.fileName.toLowerCase().endsWith(".csv") ? content.toString("utf8") : content; return previewOperationalImport("FECHAMENTO_ESTOQUE", input.fileName, parserInput); }),
   previewMaterialEntries: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewOperationalImport("ENTRADA_NF", input.fileName, content); }),
   previewSb1: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewCatalogImport("SB1", input.fileName, content); }),
   previewSbz: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => { await admin(ctx); const content = Buffer.from(input.contentBase64, "base64"); return previewCatalogImport("SBZ", input.fileName, content); }),
@@ -55,7 +55,8 @@ export const operationalImportRouter = router({
   importStockEvolution: publicProcedure.input(fileInput).mutation(async ({ ctx, input }) => {
     await admin(ctx);
     const content = Buffer.from(input.contentBase64, "base64");
-    const parsed = parseStockEvolution(content);
+    const parserInput = input.fileName.toLowerCase().endsWith(".csv") ? content.toString("utf8") : content;
+    const parsed = parseStockEvolution(parserInput);
     const imported = await importOperationalRows({ sourceKind: "FECHAMENTO_ESTOQUE", fileName: input.fileName, content, rows: parsed.rows });
     // O recálculo da Curva ABC fica separado para não manter uma operação
     // pesada dentro da mesma requisição de upload/importação.

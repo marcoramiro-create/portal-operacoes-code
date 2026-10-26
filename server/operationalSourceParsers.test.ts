@@ -17,4 +17,8 @@ describe("operationalSourceParsers", () => {
     expect(result.rows[0].productCode).toBe("000000136-MGT");
     expect(result.rows[0].month).toBe(9);
   });
+  it("preserva a filial e a quantidade no caminho CSV", () => {
+    const result = parseStockEvolution("Empresa;Codigo Item;Codigo Agregado;Desc.Item;Unid.Med.;Ano;Mês;Quantidade;Valor Total\n0105;000000136-MGT;000000136;Produto;UN;2026;9;2;10\n");
+    expect(result.rows[0]).toMatchObject({ branch: "0105", quantity: 2, totalValue: 10 });
+  });
 });

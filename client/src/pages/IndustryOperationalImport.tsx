@@ -7,10 +7,15 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 async function fileAsBase64(file: File) {
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 32_768) binary += String.fromCharCode(...Array.from(bytes.subarray(index, index + 32_768)));
-  return btoa(binary);
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+    reader.onload = () => {
+      const value = String(reader.result ?? "");
+      resolve(value.split(",", 2)[1] ?? "");
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 type Mode = "stock" | "entries";

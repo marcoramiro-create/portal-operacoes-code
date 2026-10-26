@@ -16,7 +16,7 @@ function readDelimited(content: string): RawRow[] {
 }
 function readRows(input: Buffer | string, required?: string[]): RawRow[] {
   if (typeof input === "string") return readDelimited(input);
-  const workbook = XLSX.read(input, { type: "buffer", cellText: false, cellDates: true });
+  const workbook = XLSX.read(input, { type: "buffer", cellText: false, cellDates: true, dense: true, WTF: false });
   const candidates = required?.length ? workbook.SheetNames : [workbook.SheetNames[0]];
   for (const sheetName of candidates) {
     const sheet = workbook.Sheets[sheetName];
