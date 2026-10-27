@@ -78,6 +78,31 @@ async function lerSbz(client: PoolClient, batchId: string): Promise<IndustryCurv
     }));
 }
 
+async function lerSbzMaterializado(client: PoolClient): Promise<IndustryCurveInput["sbz"]> {
+  const res = await client.query(
+    `select p.product_code
+       from public.sbz_product_curves c
+       join public.products p on p.id = c.product_id
+      where c.operation = $1 and c.branch_code = $2 and c.is_current = true`,
+    [INDUSTRIA_OPERATION, INDUSTRIA_BRANCH],
+  );
+  return res.rows.map((r) => ({
+    productCode: normalizeProductCode(r.product_code),
+    branchCode: INDUSTRIA_BRANCH,
+  }));
+}
+
+async function lerSb1Materializado(client: PoolClient): Promise<IndustryCurveInput["sb1"]> {
+  const res = await client.query(
+    "select product_code, name from public.products where active = true",
+  );
+  return res.rows.map((r) => ({
+    productCode: normalizeProductCode(r.product_code),
+    aggregateProductCode: null,
+    description: String(r.name ?? ""),
+  }));
+}
+
 async function lerEntradas(client: PoolClient, batchIds: string[]): Promise<IndustryCurveInput["entradas"]> {
   if (batchIds.length === 0) return [];
   const res = await client.query(
@@ -177,11 +202,15 @@ export async function recalcularCurvaIndustria(pool?: Pool): Promise<IndustryCur
     }
     const batchSb1 = await batchEmUso(client, "SB1");
     const batchSbz = await batchEmUso(client, "SBZ");
+    const entradas = await lerEntradas(client, batchesEntrada);
+    const fechamentos = await lerFechamentos(client, batchesFechamento);
+    const sb1Bruto = batchSb1 ? await lerSb1(client, batchSb1) : [];
+    const sbzBruto = batchSbz ? await lerSbz(client, batchSbz) : [];
     const input: IndustryCurveInput = {
-      entradas: await lerEntradas(client, batchesEntrada),
-      fechamentos: await lerFechamentos(client, batchesFechamento),
-      sb1: batchSb1 ? await lerSb1(client, batchSb1) : [],
-      sbz: batchSbz ? await lerSbz(client, batchSbz) : [],
+      entradas,
+      fechamentos,
+      sb1: sb1Bruto.length ? sb1Bruto : await lerSb1Materializado(client),
+      sbz: sbzBruto.length ? sbzBruto : await lerSbzMaterializado(client),
     };
     const resultado = calcularCurvaIndustriaCore(input);
     if (!resultado.referencePeriod || !resultado.resumo.referencePeriod) {

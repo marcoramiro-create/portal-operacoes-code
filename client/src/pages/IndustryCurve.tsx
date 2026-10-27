@@ -40,10 +40,11 @@ const badgeClasse: Record<"A" | "B" | "C", string> = {
 
 export default function IndustryCurve() {
   const curva = trpc.operationalImport.curvaIndustriaAtual.useQuery(undefined, { retry: false });
+  const utils = trpc.useUtils();
   const recalcular = trpc.operationalImport.recalcularCurvaIndustria.useMutation({
     onSuccess: (resultado) => {
       toast.success(`Curva ABC recalculada: ${resultado.totalAgregados.toLocaleString("pt-BR")} agregados - ${resultado.classeA} A / ${resultado.classeB} B / ${resultado.classeC} C - ${resultado.referencePeriod}`);
-      trpc.useUtils().operationalImport.curvaIndustriaAtual.invalidate();
+      utils.operationalImport.curvaIndustriaAtual.invalidate();
     },
     onError: (error) => toast.error(error.message),
   });

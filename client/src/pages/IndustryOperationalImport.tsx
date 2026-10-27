@@ -29,7 +29,10 @@ export default function IndustryOperationalImport({ mode }: { mode: Mode }) {
   const [file, setFile] = useState<File | null>(null);
   const [contentBase64, setContentBase64] = useState("");
   const [preview, setPreview] = useState<any>(null);
-  const previewMutation = trpc.operationalImport[details.preview].useMutation({ onError: error => toast.error(error.message) });
+  const previewMutation = trpc.operationalImport[details.preview].useMutation({
+    onSuccess: result => { setPreview(result); toast.success("Prévia gerada sem gravar dados."); },
+    onError: error => toast.error(error.message),
+  });
   const commitMutation = trpc.operationalImport[details.commit].useMutation({
     onSuccess: (result: any) => { toast.success(result.curva?.message ?? `${result.rowCount?.toLocaleString("pt-BR") ?? "Carga"} registros gravados.`); setFile(null); setContentBase64(""); setPreview(null); previewMutation.reset(); },
     onError: error => toast.error(error.message),
