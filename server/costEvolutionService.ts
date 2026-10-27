@@ -3,6 +3,32 @@ import { createHash } from "node:crypto";
 import { costEvolutionImports } from "../drizzle/schema";
 import { getDb } from "./db";
 import { parseCostEvolutionWorkbook, type CostEvolutionSegment } from "./costEvolution";
+// ============================================================
+// costEvolutionService.ts — GRAVAÇÃO da planilha de custos em cost_records
+// ============================================================
+// B-v15 (23/10/2026): (1) DELETE TOTAL por filial antes de regravar — antes o
+// delete filtrava também por period, o que deixava lixo antigo quando um mês
+// passava a vir vazio na planilha nova; (2) custoMedio aceita null (mês sem
+// movimento não é gravado como 0); (3) MAPA DE COLUNAS documentado.
+// ============================================================
+//
+// MAPA DE COLUNAS — cost_records (destino)
+//   sheet_type      ← segment: "industry" → 'industria' | "auto_parts" → 'pecas'
+//   filial          ← planilha col. A "FILIAL"
+//   cod_agregado    ← planilha col. B "COD AGREGADO"  (CHAVE da Curva ABC)
+//   codigo          ← planilha col. C "CODIGO"
+//   entra_mrp       ← planilha col. D "ENTRA MRP" (S/Sim → true)
+//   descricao       ← planilha col. E "DESCRIÇÃO"
+//   comprador_codigo/nome ← planilha col. F "COMPRADOR" (split "000065-Nome")
+//   ultima_compra   ← planilha col. G "ULT.COMPRA" (aaaammdd)
+//   ultimo_preco    ← planilha col. H "ULT.PRECO"
+//   period          ← cabeçalho da coluna mensal (aaaaMMdd) → 6 primeiros
+//                     dígitos = "aaaaMM". Ex.: 20250131 → "202501"
+//   custo_medio     ← célula da coluna mensal na linha do item.
+//                     NULL quando o mês não tem movimento (célula vazia ou 0).
+//   source_file     ← nome do arquivo importado
+//   imported_at     ← data/hora da importação
+// ============================================================
 
 export type CostEvolutionFilters = {
   segment: CostEvolutionSegment;
@@ -13,7 +39,6 @@ export type CostEvolutionFilters = {
   page?: number;
   pageSize?: number;
 };
-
 type CostRecordRow = {
   sheetType: "pecas" | "industria";
   filial: string;
@@ -26,13 +51,11 @@ type CostRecordRow = {
   ultimaCompra: string | null;
   ultimoPreco: number | null;
   period: string;
-  custoMedio: number;
+  custoMedio: number | null;
   sourceFile: string;
   importedAt: Date;
 };
-
 const asBusinessDate = (value: string) => new Date(`${value}T00:00:00.000Z`);
-
 function splitBuyerCodeName(buyer: string): { code: string | null; name: string | null } {
   const normalized = (buyer || "").replace(/\s+/g, " ").trim();
   if (!normalized) return { code: null, name: null };
@@ -40,15 +63,14 @@ function splitBuyerCodeName(buyer: string): { code: string | null; name: string 
   if (match) return { code: match[1], name: (match[2] || "").trim() || null };
   return { code: null, name: normalized };
 }
-
+// period = 6 primeiros dígitos da DATA SALDO do cabeçalho mensal.
+// Ex.: "2025-01-31" → "2025-01" → "202501".
 function toCostRecordPeriod(balanceDate: string): string {
   return balanceDate.slice(0, 7).replace("-", "");
 }
-
 function toCostRecordPurchaseDate(isoDate: string): string {
   return isoDate.slice(0, 10).replace(/-/g, "");
 }
-
 export async function commitCostEvolutionImport(input: {
   fileName: string;
   contentBase64: string;
@@ -57,13 +79,11 @@ export async function commitCostEvolutionImport(input: {
 }) {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-
   const buffer = Buffer.from(input.contentBase64, "base64");
   const parsed = parseCostEvolutionWorkbook(input.fileName, buffer, input.segment);
   if (parsed.issues.length)
     throw new Error(`A planilha contém ${parsed.issues.length} erro(s) de validação. Revise a prévia antes de confirmar.`);
   if (!parsed.rows.length) throw new Error("A planilha não contém itens válidos para importação.");
-
   const fileKey = `local:${createHash("sha256").update(buffer).digest("hex")}`;
   const existing = await db
     .select()
@@ -84,9 +104,7 @@ export async function commitCostEvolutionImport(input: {
       idempotent: true as const,
     };
   }
-
   return db.transaction(async (tx) => {
-    // 1) Registra a versão (para aparecer na lista e poder aprovar).
     const inserted = await tx
       .insert(costEvolutionImports)
       .values({
@@ -103,27 +121,22 @@ export async function commitCostEvolutionImport(input: {
       .returning({ id: costEvolutionImports.id });
     const created = inserted[0];
     if (!created) throw new Error("Não foi possível registrar a versão de custos.");
-
-    // 2) Grava os dados na tabela que a análise realmente lê (cost_records).
     const sheetType: "pecas" | "industria" = input.segment === "industry" ? "industria" : "pecas";
     const filiais = Array.from(new Set(parsed.rows.map((row) => row.branch))).filter(Boolean);
-    const periods = Array.from(
-      new Set(parsed.rows.flatMap((row) => row.observations.map((obs) => toCostRecordPeriod(obs.balanceDate)))),
-    ).filter(Boolean);
-
-    if (filiais.length && periods.length) {
-      // Evita duplicar ao reimportar o mesmo arquivo: apaga antes o que já existe
-      // para as mesmas filiais, meses e tipo de carga.
+    if (filiais.length) {
+      // B-v15: DELETE TOTAL POR FILIAL — sem filtro de period.
+      // Motivo: se um mês passou a vir vazio na planilha nova, o registro antigo
+      // daquele mês ficaria órfão com valor velho. Apagando tudo da filial e
+      // regravando, o banco reflete exatamente a planilha atual.
       await tx.execute(sql`delete from cost_records
         where sheet_type = ${sheetType}::sheet_type
-          and filial in (${sql.join(filiais.map((f) => sql`${f}`), sql`, `)})
-          and period in (${sql.join(periods.map((p) => sql`${p}`), sql`, `)})`);
-
+          and filial in (${sql.join(filiais.map((f) => sql`${f}`), sql`, `)})`);
       const importedAt = new Date();
       const records: CostRecordRow[] = [];
       for (const row of parsed.rows) {
         const buyer = splitBuyerCodeName(row.buyer);
         for (const observation of row.observations) {
+          if (observation.cost === null) continue;
           records.push({
             sheetType,
             filial: row.branch,
@@ -142,7 +155,6 @@ export async function commitCostEvolutionImport(input: {
           });
         }
       }
-
       for (let start = 0; start < records.length; start += 1000) {
         const chunk = records.slice(start, start + 1000);
         const values = chunk.map(
@@ -153,7 +165,6 @@ export async function commitCostEvolutionImport(input: {
           values ${sql.join(values, sql`, `)}`);
       }
     }
-
     return {
       id: created.id,
       status: "pending",
@@ -166,7 +177,6 @@ export async function commitCostEvolutionImport(input: {
     };
   });
 }
-
 export async function listCostEvolutionImports(segment: CostEvolutionSegment) {
   const db = await getDb();
   if (!db) return [];
@@ -176,14 +186,11 @@ export async function listCostEvolutionImports(segment: CostEvolutionSegment) {
     .where(eq(costEvolutionImports.segment, segment))
     .orderBy(desc(costEvolutionImports.importedAt), desc(costEvolutionImports.id));
 }
-
 export async function updateCostEvolutionImportStatus(id: number, status: "approved" | "archived") {
   const db = await getDb();
   if (!db) throw new Error("Banco de dados indisponível.");
-
   const current = (await db.select().from(costEvolutionImports).where(eq(costEvolutionImports.id, id)).limit(1))[0];
   if (!current) throw new Error("Versão de custos não encontrada.");
-
   await db.transaction(async (tx) => {
     if (status === "approved") {
       await tx
@@ -193,18 +200,14 @@ export async function updateCostEvolutionImportStatus(id: number, status: "appro
     }
     await tx.update(costEvolutionImports).set({ status }).where(eq(costEvolutionImports.id, id));
   });
-
   return { success: true as const };
 }
-
 export async function getCostEvolutionFilterOptions(_segment?: CostEvolutionSegment) {
   return { currentImport: null, branches: [] as string[], buyers: [] as string[], mrps: [] as ("Sim" | "Não")[] };
 }
-
 export async function getCostEvolutionItems(_filters?: CostEvolutionFilters) {
   return { currentImport: null, page: 1, pageSize: 50, total: 0, items: [] };
 }
-
 export async function getCostEvolutionSummary(_filters?: CostEvolutionFilters) {
   return { currentImport: null, itemCount: 0, observationCount: 0, latestAverageCost: 0 };
 }

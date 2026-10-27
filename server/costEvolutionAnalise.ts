@@ -1,18 +1,24 @@
 // ============================================================
-// costEvolutionAnalise.ts
-// B-v12 (20/10/2026): (1) RÉGUA DE FERRO DO CUSTO — o item só entra na
-// análise se tiver CUSTO MÉDIO no período (quem tem consumo mas não tem
-// preço fica FORA e é contabilizado no diagnóstico; anomalia a tratar na
-// origem); (2) ordenação do grid estendida (filial, código, descrição,
-// curva, variação, impacto) com DIREÇÃO asc/desc. Mantém TODO o motor
-// B-v8/v9/v10/v11 intacto.
-// B-v11 (19/10/2026): novos limites padrão da régua — A 3,00 · B 3,50 ·
-// C/D/E 4,00; itens sem base fora da análise; consumo quantitativo
-// (Autopeças). B-v10: correção da regressão que zerou os valores — AS
-// branch nos SELECTs, LAG POR PRODUTO com quebra de cadeia em buracos de
-// calendário, filtro regex nos payloads numéricos. B-v9: motor único
-// (triângulo Variação ponderada × Custo total = Impacto). B-v8: agregação
-// no Postgres + cache TTL 10 min.
+// costEvolutionAnalise.ts — MOTOR da Evolução de Custos
+// ============================================================
+// B-v15 (23/10/2026) — REGRAS DE NEGÓCIO DEFINIDAS PELO USUÁRIO:
+//  (1) HERANÇA DO CUSTO MÉDIO: custo médio 0 na planilha = mês SEM movimento.
+//      O item HERDA o custo médio do último mês que teve custo calculado.
+//      O CONSUMO NUNCA É INVENTADO — só o custo médio é transportado.
+//  (2) O FILTRO DE PERÍODO MANDA: se no período selecionado o item não tem
+//      nenhum dado, ele NÃO aparece.
+//  (3) ITEM SEM CURVA NÃO CALCULA E NÃO MOSTRA — é anomalia de origem.
+//  (4) PRÉ-CÁLCULO: o resultado é materializado no banco na importação.
+// ============================================================
+//
+// ORIGEM DA CURVA ABC — POR SEGMENTO (deliberadamente diferentes):
+//   AUTOPEÇAS → public."inventoryAnalytics" (Compras Protheus)
+//               colunas: branch, code, "codeOriginal", curve (enum)
+//               ~322 mil registros. É a MESMA base da Sugestão de Compras.
+//               A tabela sbz_product_curves NÃO é usada pelo Autopeças.
+//   INDÚSTRIA → public.sbz_product_curves (ABC Indústria)
+//               operation='INDUSTRIA', is_current=true, ~4.252 registros.
+//   CHAVE DE VÍNCULO: filial + código (com e sem zeros à esquerda).
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
@@ -56,7 +62,6 @@ function previousPeriod(period: string): string {
   const month = Number(period.slice(4, 6));
   return month === 1 ? `${year - 1}12` : `${year}${String(month - 1).padStart(2, "0")}`;
 }
-// ————— Limites de alerta configuráveis —————
 export type LimitesAlerta = { A: number; B: number; C: number; D: number; E: number };
 // B-v11: novos limites padrão da régua — A 3,00 · B 3,50 · C/D/E 4,00.
 export const LIMITES_PADRAO: LimitesAlerta = { A: 3, B: 3.5, C: 4, D: 4, E: 4 };
@@ -70,7 +75,6 @@ function sanitizarLimites(entrada?: Partial<LimitesAlerta> | null): LimitesAlert
   }
   return limites;
 }
-// ————— Séries, consumo e impacto —————
 type MesInterno = { period: string; custo_medio: number | null; quantidade_vendida?: number | null; valor_consumo?: number | null };
 type ItemInterno = {
   codigo: string; descricao?: string; filial?: string; cod_agregado?: string | null;
@@ -80,6 +84,8 @@ type ItemInterno = {
   consumoTotal?: number | null; consumoMedioQuantidade?: number | null; consumoTotalQuantidade?: number | null;
   meses: MesInterno[];
 };
+// B-v15: SÉRIE COM HERANÇA — o custo médio de um mês sem movimento é o do
+// último mês que teve custo calculado. O consumo NÃO é herdado.
 function serieCusto(item: ItemInterno, periods: string[]): (number | null)[] {
   const values = new Map(item.meses.map(mes => [mes.period, mes.custo_medio]));
   let anterior: number | null = null;
@@ -88,6 +94,17 @@ function serieCusto(item: ItemInterno, periods: string[]): (number | null)[] {
     if (atual != null && atual !== 0) anterior = atual;
     return anterior;
   });
+}
+// B-v15: aplica a herança DIRETO nos meses do item, para que o consumo em
+// reais (quantidade × custo) use o custo herdado. Só o custo é transportado.
+function aplicarHerancaDeCusto(item: ItemInterno, periods: string[]): void {
+  const serie = serieCusto(item, periods);
+  const porPeriodo = new Map(periods.map((period, index) => [period, serie[index]]));
+  for (const mes of item.meses) {
+    if (mes.custo_medio != null && mes.custo_medio !== 0) continue;
+    const herdado = porPeriodo.get(mes.period);
+    if (herdado != null) mes.custo_medio = herdado;
+  }
 }
 function extremosDoCusto(item: ItemInterno): { inicial: number | null; final: number | null } {
   let inicial: number | null = null;
@@ -107,6 +124,7 @@ function variacaoDoItem(item: ItemInterno): number | null {
 }
 // Consumo em reais por mês: Indústria = valor_consumo (reais por agregado);
 // Autopeças = quantidade vendida (por agregado) × custo médio do item.
+// B-v15: o custo usado aqui já vem herdado; a QUANTIDADE nunca é inventada.
 function consumoMensalEmReais(mes: MesInterno, segment: CostEvolutionSegment): number | null {
   if (segment === "industry") {
     const valor = mes.valor_consumo ?? null;
@@ -133,13 +151,9 @@ function enriquecerItens(items: ItemInterno[], segment: CostEvolutionSegment): v
     const consumoMedioMensal = consumoMedioDoItem(item, segment);
     const consumoTotal = consumoTotalDoItem(item, segment);
     let impactoEstimado: number | null = null;
-    // Impacto = variação % do período × consumo TOTAL do período.
     if (variacaoPercent != null && consumoTotal != null) {
       impactoEstimado = consumoTotal * (variacaoPercent / 100);
     }
-    // Consumo QUANTITATIVO — Autopeças tem quantidade vendida por mês;
-    // a Indústria fica "—" até o campo de quantidade do fechamento ser
-    // confirmado na origem (o card exibe "—" honesto, nunca inventa base).
     const quantidades = item.meses
       .map(mes => mes.quantidade_vendida)
       .filter((valor): valor is number => valor != null && Number.isFinite(valor));
@@ -152,10 +166,7 @@ function enriquecerItens(items: ItemInterno[], segment: CostEvolutionSegment): v
     item.consumoTotalQuantidade = quantidades.length ? Number(somaQuantidades.toFixed(2)) : null;
   }
 }
-// B-v12 (20/10/2026): RÉGUA DE FERRO — item sem CUSTO MÉDIO no período não
-// entra, NUNCA MAIS. O B-v11 ainda admitia quem tinha consumo mas não tinha
-// preço; o usuário determinou que isso é anomalia: fica fora e é CONTADO no
-// diagnóstico para tratamento na origem.
+// B-v15: RÉGUA DE FERRO — item sem NENHUM custo médio no período não entra.
 function temCustoReal(item: ItemInterno): boolean {
   return item.meses.some(mes => mes.custo_medio != null && mes.custo_medio !== 0);
 }
@@ -163,7 +174,6 @@ function temConsumoSemPreco(item: ItemInterno, segment: CostEvolutionSegment): b
   if (temCustoReal(item)) return false;
   return item.meses.some(mes => consumoMensalEmReais(mes, segment) != null);
 }
-// ————— Pesos mensais e estoque — fontes já aprovadas —————
 async function attachAutoPartsMonthlySales(
   businessPool: ReturnType<typeof getBusinessPool>,
   result: { items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; meses: Array<Record<string, unknown>> }> },
@@ -204,7 +214,6 @@ async function attachAutoPartsMonthlySales(
     }
   }
 }
-// Estoque do Autopeças — fotografia da última importação aprovada de Compras.
 async function attachAutoPartsEstoque(
   businessPool: ReturnType<typeof getBusinessPool>,
   result: { items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; estoque?: number | null; estoqueValor?: number | null }> },
@@ -237,12 +246,11 @@ async function attachAutoPartsEstoque(
     if (achado) { item.estoque = achado.stock; item.estoqueValor = achado.valor; }
   }
 }
-// ————— B-v8/B-v10: consumo da Indústria — AGREGAÇÃO NO POSTGRES + CACHE —————
-// CTE lê fotos de saldo (FECHAMENTO_ESTOQUE) e entradas (ENTRADA_NF) de TODOS
-// os batches processados, calcula o consumo POR PRODUTO (LAG com quebra de
-// cadeia em buracos de calendário — paridade com a fórmula validada da Curva
-// ABC) e soma no AGREGADO no final. REGRA DO ALIAS (B-v10): o nome da coluna
-// no SELECT TEM que casar com o campo do tipo declarado.
+// MAPA DE COLUNAS DAS FONTES DE CONSUMO DA INDÚSTRIA:
+//   FECHAMENTO_ESTOQUE → period = normalized_payload->>'year' + lpad(month,2,'0')
+//                        saldo  = normalized_payload->>'totalValue'
+//   ENTRADA_NF         → period = substring(normalized_payload->>'entryDate',1,7)
+//                        valor  = quantity × itemValue
 const REGEX_NUM = "^-?[0-9]+(\\.[0-9]+)?$";
 type ConsumoIndustria = { consumo: Map<string, number>; estoqueAgregado: Map<string, number>; gravadoEm: number };
 const CACHE_CONSUMO_TTL_MS = 10 * 60 * 1000;
@@ -308,8 +316,6 @@ async function obterConsumoIndustria(
     const valor = Number(row.consumo);
     if (Number.isFinite(valor)) consumo.set(`${row.branch}|${row.agregado}|${row.period}`, valor);
   }
-  // Estoque da Indústria = soma das fotos do ÚLTIMO período com fotografia,
-  // por produto, agregada no final (paridade com a versão validada).
   const estoqueRows = await portalPool.query<{ branch: string; agregado: string; saldo: string }>(
     `WITH fotos AS (
         SELECT r.branch_code,
@@ -336,8 +342,6 @@ async function obterConsumoIndustria(
   cacheConsumoIndustria.set(chave, { consumo, estoqueAgregado, gravadoEm: Date.now() });
   return { consumo, estoqueAgregado };
 }
-// Anexa o consumo por agregado aos meses dos itens da Indústria e devolve o
-// estoque agregado da última fotografia para o chamador.
 async function attachIndustryMonthlyConsumption(
   portalPool: ReturnType<typeof getSupabasePool>,
   result: { periodos?: Array<{ period: string }>; items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; meses: Array<Record<string, unknown>> }> },
@@ -357,6 +361,7 @@ async function attachIndustryMonthlyConsumption(
   }
   return estoqueAgregado;
 }
+// B-v15: ORIGEM DA CURVA POR SEGMENTO — ver bloco de documentação no topo.
 async function getCurrentCurveLookup(
   businessPool: ReturnType<typeof getBusinessPool>,
   portalPool: ReturnType<typeof getSupabasePool>,
@@ -420,12 +425,11 @@ async function getCurrentCurveLookup(
         }
       }
     } catch {
-      // Uma base sem o histórico de Compras continua sem vínculo (anomalia a corrigir na origem).
+      // Uma base sem o histórico de Compras continua sem vínculo.
     }
   }
   return buildCostCurveLookup(rows);
 }
-// ————— Pipeline comum (consolidado e itens usam o mesmo motor) —————
 type ParamsBase = {
   segment?: CostEvolutionSegment;
   periodoInicio?: string;
@@ -443,8 +447,8 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     [params.periodoInicio ?? null, params.periodoFim ?? null, filial, params.codAgregado ?? null, params.descricao ?? null],
   );
   const result = rows[0]?.result ?? { periodos: [], items: [] };
-  // B-v13 (20/10/2026): SEGMENTO HERMÉTICO — no Autopeças a filial da
-  // Indústria (0105) jamais entra; o item da Indústria tem a própria tela.
+  // B-v13: SEGMENTO HERMÉTICO — no Autopeças a filial da Indústria (0105)
+  // jamais entra; o item da Indústria tem a própria tela.
   if (params.segment !== "industry" && Array.isArray(result.items)) {
     result.items = result.items.filter((item: { filial?: string }) => !FILIAIS_EXCLUIDAS_AUTOPECAS.has(String(item.filial ?? "")));
   }
@@ -460,7 +464,6 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     .map((entry: { period: string }) => normalizeSalesPeriod(String(entry.period)))
     .filter((entry): entry is string => entry != null)
     .sort();
-  // Índices oficiais: completa o cache e calcula IPCA acumulado e variação do dólar.
   const statusIndices = await garantirIndicesEconomicos(portalPool, periods);
   const mapas = await getIndicesEconomicos(portalPool, periods);
   type ValorIndice = { valor: number; valorFechamento: number | null };
@@ -483,6 +486,9 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   if (dolarVariationPercent != null) benchmarks.DOLAR_PTAX = Number(dolarVariationPercent.toFixed(4));
   const analisado = attachCostBenchmarkReport(result, curves, params.segment ?? "auto_parts", benchmarks);
   const items = (analisado.items ?? []) as ItemInterno[];
+  // B-v15: HERANÇA DO CUSTO MÉDIO antes de enriquecer — o consumo em reais
+  // passa a usar o custo herdado do último mês com valor calculado.
+  for (const item of items) aplicarHerancaDeCusto(item, periods);
   enriquecerItens(items, params.segment ?? "auto_parts");
   if (params.segment === "industry" && estoqueIndustria) {
     for (const item of items) {
@@ -492,13 +498,14 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
       if (achado != null) item.estoqueAgregado = achado;
     }
   }
-  // B-v12: régua de ferro — sem custo médio no período, o item NÃO entra.
-  // Quem tem consumo mas não tem preço é contado no diagnóstico (anomalia).
+  // B-v15: RÉGUA DE FERRO — sem custo médio no período, o item NÃO entra.
   const segmentEfetivo = params.segment ?? "auto_parts";
   const consumoSemPreco = items.filter(item => temConsumoSemPreco(item, segmentEfetivo)).length;
   const itemsComBase = items.filter(item => temCustoReal(item));
-  // O cruzamento por curva é recalculado na API consolidada SOBRE o conjunto
-  // FILTRADO — um único motor para cards e painel. Aqui ficam os comparativos.
+  // B-v15: ITEM SEM CURVA NÃO CALCULA E NÃO MOSTRA (regra do usuário).
+  // Aplicado nos dois segmentos: se a exportação está correta, não haverá
+  // item sem curva; se aparecer, é anomalia real que deve ficar visível.
+  const itemsComCurva = itemsComBase.filter(item => Boolean(item.curve));
   const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
   relatorio.ipcaPercent = ipcaPercent;
   relatorio.dolarVariationPercent = dolarVariationPercent;
@@ -509,8 +516,9 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     itensComBase: itemsComBase.length,
     itensExcluidos: items.length - itemsComBase.length,
     consumoSemPreco,
+    itensSemCurva: itemsComBase.length - itemsComCurva.length,
   };
-  return { analisado, items: itemsComBase, periods, limites };
+  return { analisado, items: itemsComCurva, periods, limites };
 }
 // Busca multi-termo: TODAS as palavras devem aparecer na descrição OU no código
 // do agregado ("pneu 600" acha "PNEU DIAGONAL 600/50-22,5").
@@ -543,7 +551,6 @@ function calcularCustoTotal(items: ItemInterno[], segment: CostEvolutionSegment)
   const total = Array.from(porChave.values()).reduce((acc, valor) => acc + valor, 0);
   return Number(total.toFixed(2));
 }
-// ————— API 1: análise consolidada (KBs — fim do timeout) —————
 export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?: string; limitesAlerta?: Partial<LimitesAlerta> | null }) {
   const limites = sanitizarLimites(params.limitesAlerta);
   const { analisado, items, periods, limites: limitesAplicados } = await obterBase(params, limites);
@@ -575,8 +582,6 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
       impactoPorCurva[item.curve] = (impactoPorCurva[item.curve] ?? 0) + item.impactoEstimado;
       somaImpacto += item.impactoEstimado;
     }
-    // Consumo da curva, deduplicado por filial|agregado|mês (mesma régua do
-    // custo total) — base da variação ponderada por curva.
     const chaves = chavesConsumoCurva[item.curve] ?? (chavesConsumoCurva[item.curve] = new Set());
     const chaveItem = `${item.filial ?? ""}|${(item.cod_agregado ?? item.codigo).trim()}`;
     for (const mes of item.meses) {
@@ -589,7 +594,6 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
       }
     }
   }
-  // Triângulo que fecha — Variação ponderada × Custo total = Impacto estimado.
   const variacaoPonderada = custoTotal > 0 ? Number(((somaImpacto / custoTotal) * 100).toFixed(4)) : null;
   const byCurveNovo: Record<string, { itemCount: number; itemsWithBase: number; averageVariationPercent: number | null; weightedVariationPercent?: number | null; estimatedImpact: number | null; highAlerts: number }> = {};
   for (const curve of Object.keys(itensPorCurva)) {
@@ -605,9 +609,9 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
     };
   }
   const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
-  relatorio.byCurve = byCurveNovo; // só curvas com itens — fim das linhas 0,00
+  relatorio.byCurve = byCurveNovo;
   relatorio.weightedMonthlyVariationPercent = variacaoPonderada;
-  relatorio.internalInflationPercent = null; // pílula "Interna" removida (mesmo conceito da variação ponderada)
+  relatorio.internalInflationPercent = null;
   return {
     periodos: analisado.periodos ?? [],
     periodoEfetivoInicio: periods[0] ?? null,
@@ -617,10 +621,7 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
     limites: limitesAplicados,
   };
 }
-// ————— API 2: itens paginados (grid sob demanda) —————
 export type CriterioItens = "todos" | "acima-limite" | "alta" | "reducao" | "sem-base" | "sem-curva" | "curva-A" | "curva-B" | "curva-C" | "curva-D" | "curva-E";
-// B-v12: ordenação estendida (filial e curva) com direção asc/desc —
-// clicar no cabeçalho do grid alterna crescente/decrescente.
 export type OrdenacaoItens = "impacto" | "variacao" | "codigo" | "descricao" | "filial" | "curva";
 export type DirecaoOrdenacao = "asc" | "desc";
 export type CurvaFiltro = "A" | "B" | "C" | "D" | "E";
@@ -670,7 +671,6 @@ export async function getCostEvolutionItens(params: ParamsBase & {
   const inicio = (pagina - 1) * itensPorPagina;
   return { total, pagina, itensPorPagina, limites, items: lista.slice(inicio, inicio + itensPorPagina) };
 }
-// ————— Agregados com descrição (combo pesquisável) —————
 export async function getCodAgregadosComDescricao() {
   const pool = getBusinessPool();
   const { rows } = await pool.query<{ cod_agregado: string; descricao: string }>(
