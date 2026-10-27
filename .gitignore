@@ -4,5 +4,6 @@ dashboard-custos-v2.html
 .env
 node_modules/
 dist/
-_txt-export/backup-*/
+_txt-export/
+backup-*/
 *.bak
