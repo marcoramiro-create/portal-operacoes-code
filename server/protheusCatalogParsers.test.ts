@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSa2, parseSb1, parseSb5, parseSbz } from "./protheusCatalogParsers";
+import { parseSa2, parseSb1, parseSb5, parseSbz, parseZfm, parseZsf } from "./protheusCatalogParsers";
 
 describe("protheusCatalogParsers", () => {
   it("preserva SB1 Codigo e Cod Agregado com zeros e relação 1:N", () => {
@@ -17,5 +17,18 @@ describe("protheusCatalogParsers", () => {
   it("usa Codigo+Loja na SA2 e ignora linha de controle", () => {
     const r = parseSa2("SA2\n\nCodigo;Loja;CNPJ/CPF;Razao Social;Endereco;Numero;CEP;Bairro;Municipio;Estado\n000001;01;12.345.678/0001-90;Fornecedor;Rua A;1;00000-000;Centro;Cidade;SP\n");
     expect(r.rows[0].supplierCode).toBe("000001"); expect(r.rows[0].store).toBe("01"); expect(r.duplicateRows).toBe(0);
+  });
+  it("lê ZFM com cabeçalho na linha 4 e preserva zeros à esquerda", () => {
+    const r = parseZfm("Famílias\n\nExportação\nCódigo;Descrição\n0000002;ACESSORIOS\n0000021;FAMÍLIA FINAL\n");
+    expect(r.rows).toEqual([
+      { code: "0000002", description: "ACESSORIOS" },
+      { code: "0000021", description: "FAMÍLIA FINAL" },
+    ]);
+    expect(r.sourceRows).toBe(2);
+  });
+  it("lê ZSF com cabeçalho na linha 4, preserva zeros e espaços internos", () => {
+    const r = parseZsf("SubFamília\n\nCadastro Protheus\nCódigo;Descrição\n0000046;DESCRIÇÃO  COM DOIS ESPAÇOS\n0000064;OUTRA DESCRIÇÃO\n");
+    expect(r.rows[0]).toEqual({ code: "0000046", description: "DESCRIÇÃO  COM DOIS ESPAÇOS" });
+    expect(r.rows[1].code).toBe("0000064");
   });
 });

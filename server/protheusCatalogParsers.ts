@@ -111,6 +111,8 @@ const SB1_HEADER = [["codigo", "cod"], ["codagregado", "codagreg", "codigodoagre
 const SBZ_HEADER = [["filial", "codigofilial", "fil"], ["codigo", "cod", "produto"], ["entramrp", "mrp", "entranomrp"]];
 const SB5_HEADER = [["produto", "codigo", "cod"], ["marcapeca", "marcadapeca"]];
 const SA2_HEADER = [["codigo", "cod"], ["loja", "filial", "store"], ["razaosocial", "nome", "fornecedor"]];
+const ZFM_HEADER = [["codigo", "cod", "codfamilia", "familia"], ["descricao", "desc", "descricaofamilia", "descricaodafamilia"]];
+const ZSF_HEADER = [["codigo", "cod", "codsubfamilia", "subfamilia"], ["descricao", "desc", "descricaosubfamilia", "descricaodasubfamilia"]];
 
 // Procura a linha do cabeçalho comparando grupos de apelidos normalizados.
 function headerIndex(rows: CsvRow[], requiredGroups: string[][]): number {
@@ -154,6 +156,14 @@ function get(row: CsvRow, map: Map<string, number>, ...aliases: string[]) {
   for (const alias of aliases) {
     const index = map.get(normalizeHeader(alias));
     if (index !== undefined) return cleanSourceText(row[index]);
+  }
+  return "";
+}
+
+function getPreservingInternalSpaces(row: CsvRow, map: Map<string, number>, ...aliases: string[]) {
+  for (const alias of aliases) {
+    const index = map.get(normalizeHeader(alias));
+    if (index !== undefined) return String(row[index] ?? "").trim();
   }
   return "";
 }
@@ -333,4 +343,45 @@ export function parseSa2(content: Buffer | string): RegistrationResult<Sa2Row> {
     });
   });
   return out;
+}
+
+export type FamilyCatalogRow = { code: string; description: string };
+
+function parseSimpleClassificationCatalog(
+  content: Buffer | string,
+  kind: "ZFM" | "ZSF",
+  requiredHeader: string[][],
+): RegistrationResult<FamilyCatalogRow> {
+  const { rows, header } = readRowsWithHeader(content, requiredHeader);
+  if (header < 0) throw new Error(`${kind}: cabeçalho não encontrado. Esperadas as colunas Código e Descrição (o cabeçalho pode estar deslocado).`);
+  const map = mapHeaders(rows[header]);
+  const out = emptyResult<FamilyCatalogRow>();
+  const seen = new Set<string>();
+  rows.slice(header + 1).forEach((row, offset) => {
+    if (!row.some(v => String(v ?? "").trim() !== "")) return;
+    out.sourceRows += 1;
+    const code = getPreservingInternalSpaces(row, map, "Codigo", "Cod", kind === "ZFM" ? "Cod Família" : "Cod Subfamília");
+    const description = getPreservingInternalSpaces(row, map, "Descricao", "Desc", kind === "ZFM" ? "Descrição da Família" : "Descrição da Subfamília");
+    if (!code || !description || invalidScientific(code)) {
+      out.skippedRows += 1;
+      out.issues.push({ row: header + offset + 2, field: !code ? "Codigo" : "Descricao", message: "Código ou descrição ausente; linha ignorada." });
+      return;
+    }
+    if (seen.has(code)) {
+      out.duplicateRows += 1;
+      out.issues.push({ row: header + offset + 2, field: "Codigo", message: `Código duplicado: ${code}.` });
+      return;
+    }
+    seen.add(code);
+    out.rows.push({ code, description });
+  });
+  return out;
+}
+
+export function parseZfm(content: Buffer | string): RegistrationResult<FamilyCatalogRow> {
+  return parseSimpleClassificationCatalog(content, "ZFM", ZFM_HEADER);
+}
+
+export function parseZsf(content: Buffer | string): RegistrationResult<FamilyCatalogRow> {
+  return parseSimpleClassificationCatalog(content, "ZSF", ZSF_HEADER);
 }
