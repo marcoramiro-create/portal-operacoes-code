@@ -39,7 +39,7 @@
 - [x] Modelar o cadastro central de funcionários, fornecedores e produtos.
 - [x] Modelar usuários, grupos de acesso e permissões por aplicação e subaplicação.
 - [ ] Definir a priorização de reconstrução do painel Protheus, recebimentos e consumíveis, EPIs e uniformes.
-- [ ] Mapear fontes de dados e integrações para as aplicações de estoque, custos, fornecedores e manutenção.
+- [x] Mapear fontes de dados e integrações para as aplicações de estoque, custos, fornecedores e manutenção.
 - [x] Definir o fluxo próprio de solicitação, criação, aprovação, liberação e redefinição de senha de usuários.
 - [x] Implementar cadastros e controles vinculados a funcionário, centro de custo e unidade.
 - [ ] Garantir a importação e a exportação por planilhas nos cadastros do portal.
