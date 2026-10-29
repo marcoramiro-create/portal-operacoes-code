@@ -2435,3 +2435,26 @@
 [2026-10-27T11:15:19.143Z] at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:547:26)
 [2026-10-27T11:15:19.143Z] at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5)
 [2026-10-27T11:15:19.143Z] Node.js v22.13.0
+[2026-10-28T19:40:41.057Z] 7:40:41 PM [tsx] change in ./server/costEvolutionService.ts Rerunning...
+[2026-10-28T19:40:45.118Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-28T19:40:45.148Z] /home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14
+[2026-10-28T19:40:45.148Z] if (!ENV.onedriveTokenKey) throw new Error("ONEDRIVE_TOKEN_KEY não configurada.");
+[2026-10-28T19:40:45.148Z] ^
+[2026-10-28T19:40:45.148Z] Error: ONEDRIVE_TOKEN_KEY não configurada.
+[2026-10-28T19:40:45.148Z] at <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14:34)
+[2026-10-28T19:40:45.148Z] at ModuleJob.run (node:internal/modules/esm/module_job:271:25)
+[2026-10-28T19:40:45.149Z] at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:547:26)
+[2026-10-28T19:40:45.149Z] at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:116:5)
+[2026-10-28T19:40:45.149Z] Node.js v22.13.0
+[2026-10-29T12:17:19.427Z] Starting dev server with command: pnpm run dev
+[2026-10-29T12:17:21.810Z] $ cross-env NODE_ENV=development tsx watch server/_core/standalone.ts
+[2026-10-29T12:17:33.459Z] [OAuth] Initialized with baseURL: https://api.manus.im
+[2026-10-29T12:17:33.516Z] /home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14
+[2026-10-29T12:17:33.516Z] if (!ENV.onedriveTokenKey) throw new Error("ONEDRIVE_TOKEN_KEY não configurada.");
+[2026-10-29T12:17:33.516Z] ^
+[2026-10-29T12:17:33.516Z] Error: ONEDRIVE_TOKEN_KEY não configurada.
+[2026-10-29T12:17:33.516Z] at <anonymous> (/home/ubuntu/gestao-suprimentos-logistica/server/oneDriveOAuth.ts:14:34)
+[2026-10-29T12:17:33.516Z] at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+[2026-10-29T12:17:33.516Z] at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+[2026-10-29T12:17:33.516Z] at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+[2026-10-29T12:17:33.516Z] Node.js v22.23.4

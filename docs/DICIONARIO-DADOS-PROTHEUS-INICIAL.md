@@ -66,6 +66,30 @@ O portal deve usar o arquivo existente no OneDrive como fonte. O usuário não d
 
 **Chave de negócio:** `filial + código`. A SBZ não possui código agregado; no cruzamento com Compras, o código agregado da SB1 deve apontar para o código da SBZ.
 
+### SB9 — Saldos e custos mensais
+
+**Fonte validada:** `SB9-202610262105_1.csv`. O arquivo possui uma linha inicial com a identificação `SB9`, uma linha em branco, cabeçalho separado por ponto e vírgula e 497 linhas de dados.
+
+**Uso previsto:** histórico mensal de saldo inicial e custo unitário por filial, produto e armazém.
+
+| Campo | Papel no portal | Situação |
+|---|---|---|
+| `Filial` | Filial do saldo | Confirmado no arquivo |
+| `Produto` | Código textual do produto | Confirmado no arquivo; preservar zeros e sufixos |
+| `Armazem` | Local do saldo | Confirmado no arquivo |
+| `Data Saldo` | Mês/data de referência do saldo | Confirmado no arquivo |
+| `Sld.Ini.Mes` | Saldo inicial mensal | Confirmado no arquivo; 119 registros não nulos na amostra recebida |
+| `C Unit 1a M` | Custo unitário principal | Confirmado no arquivo; 119 registros não nulos na amostra recebida |
+| `C Unit 2a M` a `C Unit 5a M` | Custos unitários adicionais | Confirmado no arquivo; zerados na amostra recebida |
+| `Custo Stand.` | Custo padrão | Confirmado no arquivo; zerado na amostra recebida |
+| `R Unitario` | Valor unitário de referência/reposição | Confirmado no arquivo; zerado na amostra recebida |
+| `Grupo` | Grupo do produto | Confirmado no arquivo |
+| `Cod. Produto` | Código de produto informado pela fonte | Confirmado no arquivo |
+
+**Chave técnica provisória:** `filial + produto + armazém + data saldo`. O vínculo gerencial deve resolver o produto pela SB1 e priorizar `filial + código agregado`.
+
+**Período e escopo da amostra recebida:** filial `0101`, 25 produtos distintos, de `28/02/2025` a `31/12/2025`. A carga recebida não deve ser tratada como histórico completo do OneDrive até a conferência do arquivo definitivo.
+
 ### SB5 — Complemento do produto
 
 **Uso previsto:** enriquecer produtos de Autopeças.
