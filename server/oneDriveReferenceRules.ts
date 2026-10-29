@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { parseSb1, parseSbz, parseZfm, parseZsf } from "./protheusCatalogParsers";
 import { importSb1, importSbz } from "./referenceImporters";
-export type ReferenceKind = "SB1" | "SBZ" | "ZFM" | "ZSF";
+export type ReferenceKind = "SB1" | "SBZ" | "SB9" | "ZFM" | "ZSF";
 export type SourceFile = { id: string; name: string; folderName: string; size: number; modifiedAt: string };
 export function selectReferenceFile(files: SourceFile[], kind: ReferenceKind): SourceFile {
   const extension = kind === "ZFM" || kind === "ZSF" ? /\.(?:xlsx|xls)$/i : /\.csv$/i;
@@ -35,6 +35,7 @@ export function prepareReference(kind: ReferenceKind, content: Buffer) {
     if (!parsed.rows.length) throw new Error(`${kind}: nenhum registro válido encontrado. Base anterior preservada.`);
     return { kind, hash, sb1: [], sbz: [], catalog: parsed.rows, products: [] };
   }
+  if (kind === "SB9") throw new Error("SB9: use o sincronismo incremental de custos, não o carregamento de cadastro.");
   const parsed = parseSbz(content);
   if (!parsed.rows.length) throw new Error(`${kind}: nenhum registro válido encontrado. Base anterior preservada.`);
   const rows = parsed.rows;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseSa2, parseSb1, parseSb5, parseSbz, parseZfm, parseZsf } from "./protheusCatalogParsers";
+import { createSb9StreamParser, parseSa2, parseSb1, parseSb5, parseSb9, parseSbz, parseZfm, parseZsf } from "./protheusCatalogParsers";
 
 describe("protheusCatalogParsers", () => {
   it("preserva SB1 Codigo e Cod Agregado com zeros e relação 1:N", () => {
@@ -30,5 +30,20 @@ describe("protheusCatalogParsers", () => {
     const r = parseZsf("SubFamília\n\nCadastro Protheus\nCódigo;Descrição\n0000046;DESCRIÇÃO  COM DOIS ESPAÇOS\n0000064;OUTRA DESCRIÇÃO\n");
     expect(r.rows[0]).toEqual({ code: "0000046", description: "DESCRIÇÃO  COM DOIS ESPAÇOS" });
     expect(r.rows[1].code).toBe("0000064");
+  });
+  it("lê SB9 com cabeçalho deslocado e usa C Unit 1a M como custo", () => {
+    const r = parseSb9("SB9\n\nFilial;Produto;Armazem;Data Saldo;Qtd.Inic.Mes;Sld.Ini.Mes;Grupo;Cod. Produto;Custo Stand.;C Unit 1a M\n0105;000123-MGT;01;31/01/2025;10;25,50;0002;000123-MGT;9,99;1.234,56\n");
+    expect(r.rows).toHaveLength(1);
+    expect(r.rows[0]).toMatchObject({ branchCode: "0105", productCode: "000123-MGT", balanceDateIso: "2025-01-31", unitCost1aM: "1.234,56", unitCost1aMValue: 1234.56 });
+  });
+  it("processa SB9 em pedaços e não acumula linhas quando há callback", () => {
+    const content = Buffer.from("SB9\n\nFilial;Produto;Armazem;Data Saldo;C Unit 1a M\n0105;000001;01;31/01/2025;10,00\n0105;000002;01;28/02/2025;20,00\n", "latin1");
+    const rows: string[] = [];
+    const parser = createSb9StreamParser(row => rows.push(row.productCode));
+    for (let start = 0; start < content.length; start += 7) parser.push(content.subarray(start, start + 7));
+    const result = parser.finish();
+    expect(rows).toEqual(["000001", "000002"]);
+    expect(result.rows).toHaveLength(0);
+    expect(result.sourceRows).toBe(2);
   });
 });

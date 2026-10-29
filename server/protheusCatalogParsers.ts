@@ -25,7 +25,7 @@
  * //   continuam funcionando (fallback automático).
  */
 import * as XLSX from "xlsx";
-import { cleanSourceText, normalizeBranchCode, normalizeProductCode, normalizeSupplierKey } from "./operationalNormalization";
+import { cleanSourceText, normalizeBranchCode, normalizeProductCode, normalizeSupplierKey, parseSourceNumber } from "./operationalNormalization";
 
 export type RegistrationIssue = { row: number; field: string; message: string };
 export type RegistrationResult<T> = { rows: T[]; sourceRows: number; skippedRows: number; duplicateRows: number; issues: RegistrationIssue[] };
@@ -113,6 +113,7 @@ const SB5_HEADER = [["produto", "codigo", "cod"], ["marcapeca", "marcadapeca"]];
 const SA2_HEADER = [["codigo", "cod"], ["loja", "filial", "store"], ["razaosocial", "nome", "fornecedor"]];
 const ZFM_HEADER = [["codigo", "cod", "codfamilia", "familia"], ["descricao", "desc", "descricaofamilia", "descricaodafamilia"]];
 const ZSF_HEADER = [["codigo", "cod", "codsubfamilia", "subfamilia"], ["descricao", "desc", "descricaosubfamilia", "descricaodasubfamilia"]];
+const SB9_HEADER = [["filial", "codigofilial", "fil"], ["produto", "codigo"], ["datasaldo"], ["cunit1am", "custo1am", "cunit1"]];
 
 // Procura a linha do cabeçalho comparando grupos de apelidos normalizados.
 function headerIndex(rows: CsvRow[], requiredGroups: string[][]): number {
@@ -300,6 +301,104 @@ export function parseSb5(content: Buffer | string): RegistrationResult<Sb5Row> {
     });
   });
   return out;
+}
+
+export type Sb9Row = {
+  branchCode: string;
+  productCode: string;
+  warehouseCode: string;
+  balanceDate: string;
+  balanceDateIso: string;
+  initialQuantity: string;
+  initialBalance: string;
+  groupCode: string;
+  auditProductCode: string;
+  standardCost: string;
+  unitCost1aM: string;
+  unitCost1aMValue: number | null;
+};
+
+function normalizeSb9Date(value: string) {
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+}
+
+function decodeSb9(content: Buffer | string) {
+  if (typeof content === "string") return content.replace(/^\uFEFF/, "");
+  return new TextDecoder("windows-1252").decode(content).replace(/^\uFEFF/, "");
+}
+
+/**
+ * Lê SB9 em pedaços e entrega cada linha válida ao callback. Isso evita manter
+ * a exportação inteira em memória na atualização do OneDrive.
+ */
+export function createSb9StreamParser(onRow?: (row: Sb9Row) => void) {
+  let pending = "";
+  let headerMap: Map<string, number> | null = null;
+  const result = emptyResult<Sb9Row>();
+
+  const consumeLine = (line: string) => {
+    const rows = parseCsv(line.replace(/\r$/, ""));
+    if (!rows.length || !rows[0].some(value => cleanSourceText(value))) return;
+    if (!headerMap) {
+      if (headerIndex(rows, SB9_HEADER) >= 0) headerMap = mapHeaders(rows[0]);
+      return;
+    }
+
+    const row = rows[0];
+    result.sourceRows += 1;
+    const rawBranch = get(row, headerMap, "Filial");
+    const rawProduct = get(row, headerMap, "Produto");
+    const balanceDate = get(row, headerMap, "Data Saldo");
+    const branchCode = normalizeBranchCode(rawBranch);
+    const productCode = normalizeProductCode(rawProduct);
+    if (!branchCode || !productCode || !balanceDate || !normalizeSb9Date(balanceDate) || invalidScientific(rawProduct)) {
+      result.skippedRows += 1;
+      result.issues.push({ row: result.sourceRows + 3, field: "Filial/Produto/Data Saldo", message: "Linha SB9 sem filial, produto ou data de saldo válida." });
+      return;
+    }
+
+    const unitCost1aM = get(row, headerMap, "C Unit 1a M");
+    const parsed: Sb9Row = {
+      branchCode,
+      productCode,
+      warehouseCode: get(row, headerMap, "Armazem", "Armazém"),
+      balanceDate,
+      balanceDateIso: normalizeSb9Date(balanceDate),
+      initialQuantity: get(row, headerMap, "Qtd.Inic.Mes"),
+      initialBalance: get(row, headerMap, "Sld.Ini.Mes"),
+      groupCode: get(row, headerMap, "Grupo"),
+      auditProductCode: get(row, headerMap, "Cod. Produto"),
+      standardCost: get(row, headerMap, "Custo Stand."),
+      unitCost1aM,
+      unitCost1aMValue: parseSourceNumber(unitCost1aM),
+    };
+    if (onRow) onRow(parsed);
+    else result.rows.push(parsed);
+  };
+
+  return {
+    push(chunk: Buffer | string) {
+      pending += decodeSb9(chunk);
+      let newline = pending.indexOf("\n");
+      while (newline >= 0) {
+        consumeLine(pending.slice(0, newline));
+        pending = pending.slice(newline + 1);
+        newline = pending.indexOf("\n");
+      }
+    },
+    finish() {
+      if (pending.trim()) consumeLine(pending);
+      if (!headerMap) throw new Error("SB9: cabeçalho não encontrado. Esperadas as colunas Filial, Produto, Data Saldo e C Unit 1a M.");
+      return result;
+    },
+  };
+}
+
+export function parseSb9(content: Buffer | string): RegistrationResult<Sb9Row> {
+  const parser = createSb9StreamParser();
+  parser.push(content);
+  return parser.finish();
 }
 
 export type Sa2Row = {

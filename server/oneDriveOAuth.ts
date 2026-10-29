@@ -230,7 +230,7 @@ export async function downloadOneDriveFile(req: Request, res: Response) {
   res.end();
 }
 
-export async function readOneDriveContent(req: Request, itemId: string): Promise<Buffer> {
+async function oneDriveContentResponse(req: Request, itemId: string): Promise<globalThis.Response> {
   const identity = await currentAdmin(req);
   const connection = await usableConnection(identity.id);
   if (!connection) throw new Error("OneDrive não conectado.");
@@ -239,9 +239,16 @@ export async function readOneDriveContent(req: Request, itemId: string): Promise
   // Graph pode entregar 200 diretamente ou redirecionar para URL temporária.
   const content = location ? await fetch(location, {signal:AbortSignal.timeout(60000)}) : response;
   if (!content.ok || !content.body) throw new Error("Não foi possível ler o CSV do OneDrive.");
+  return content;
+}
+
+export async function* streamOneDriveContent(req: Request, itemId: string): AsyncGenerator<Buffer> {
+  const content = await oneDriveContentResponse(req, itemId);
+  for await (const part of content.body as any) yield Buffer.from(part);
+}
+
+export async function readOneDriveContent(req: Request, itemId: string): Promise<Buffer> {
   const parts: Buffer[] = [];
-  for await (const part of content.body as any) {
-    parts.push(Buffer.from(part));
-  }
+  for await (const part of streamOneDriveContent(req, itemId)) parts.push(part);
   return Buffer.concat(parts);
 }

@@ -7,6 +7,7 @@ import { getOneDriveImportsLink, getOneDriveSourceStatus } from "../onedriveShar
 import { registrationTypes } from "../../shared/registrationLayouts";
 import { validateCardNumber, validatePersonDocument } from "../personDocumentValidation";
 import { syncOneDriveReferences } from "../oneDriveReferenceSync";
+import { syncOneDriveSb9 } from "../oneDriveCostSync";
 import { listOneDriveFiles, oneDriveStatus } from "../oneDriveOAuth";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
@@ -40,7 +41,12 @@ export const portalRouter = router({
   userNodePermissions: publicProcedure.input(z.object({ userId: z.string().uuid() })).query(async ({ ctx, input }) => { await administrator(ctx); return listUserNodePermissions(input.userId); }),
   oneDriveSource: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return { ...(await getOneDriveSourceStatus()), link: getOneDriveImportsLink() }; }),
   oneDriveConnection: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return oneDriveStatus(ctx.req); }),
-  syncOneDriveReferences: publicProcedure.mutation(async ({ ctx }) => { await administrator(ctx); return syncOneDriveReferences(ctx.req); }),
+  syncOneDriveReferences: publicProcedure.mutation(async ({ ctx }) => {
+    await administrator(ctx);
+    const references = await syncOneDriveReferences(ctx.req);
+    const sb9 = await syncOneDriveSb9(ctx.req);
+    return { ...references, results: [...references.results, sb9] };
+  }),
   oneDriveFiles: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listOneDriveFiles(ctx.req); }),
   updateUserNodePermission: publicProcedure.input(z.object({ userId: z.string().uuid(), nodeId: z.string().uuid(), permission: nodePermission, allowed: z.boolean() })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return updateUserNodePermission(input, identity); }),
   salvarObservacao: publicProcedure.input(z.object({ codigo: z.string().trim().min(1).max(80), filial: z.string().trim().min(1).max(20), period: z.string().trim().min(6).max(6), observacao: z.string().max(2000).nullable() })).mutation(async ({ ctx, input }) => { const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers)); return upsertObservacao(input, identity); }),
