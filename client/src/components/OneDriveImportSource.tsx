@@ -44,7 +44,7 @@ export default function OneDriveImportSource() {
           <p className="eyebrow text-sky-800">Origem semiassistida</p>
           <h2 className="mt-1 text-lg font-extrabold tracking-tight text-slate-950">OneDrive · Cadastros</h2>
           <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-slate-600">
-            Leitura direta dos CSVs de SB1 e SBZ. Nenhum download ou upload manual é necessário.
+            Leitura direta das exportações de SB1, SBZ, Família e Subfamília. Nenhum download ou upload manual é necessário.
           </p>
         </div>
         {source.isLoading ? (
@@ -67,8 +67,8 @@ export default function OneDriveImportSource() {
       {connection.data?.connected && (
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-slate-950">Arquivos disponíveis</p><p className="text-xs text-slate-500">Leitura somente de {connection.data.folderPath}.</p></div><button type="button" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700" onClick={() => files.refetch()}><RefreshCw className="h-3.5 w-3.5" />Atualizar</button></div>
-          <button type="button" disabled={sync.isPending} onClick={() => sync.mutate()} className="mt-4 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{sync.isPending ? "Atualizando SB1 e SBZ…" : "Atualizar bases do OneDrive"}</button>
-          <p className="mt-2 text-xs text-slate-500">Atualiza somente SB1 e SBZ, usando o CSV mais recentemente modificado de cada subpasta. As demais fontes não serão processadas.</p>
+          <button type="button" disabled={sync.isPending} onClick={() => sync.mutate()} className="mt-4 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{sync.isPending ? "Atualizando cadastros…" : "Atualizar bases do OneDrive"}</button>
+          <p className="mt-2 text-xs text-slate-500">Atualiza SB1, SBZ, Família e Subfamília. Arquivos SB1 e SBZ sem alteração não são baixados novamente.</p>
           {sync.error && <p role="alert" className="mt-3 text-sm text-rose-700">{sync.error.message}</p>}
           {sync.data && <div role="status" className="mt-3 text-sm">{sync.data.results.map(r => <p key={r.kind}>{r.kind} · {r.status} · {r.count.toLocaleString("pt-BR")} registros · {r.fileName}</p>)}<p>{sync.data.reenriquecidos.toLocaleString("pt-BR")} itens de Compras reprocessados.</p>{sync.data.warning && <p className="text-amber-700">{sync.data.warning}</p>}</div>}
           {files.error && <p role="alert" className="mt-3 text-sm text-rose-700">{files.error.message}</p>}

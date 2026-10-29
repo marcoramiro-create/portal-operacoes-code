@@ -114,7 +114,8 @@ async function materializeClassifications(tx: any, prepared: PreparedReference[]
 }
 
 export async function syncOneDriveReferences(req: Request) {
-  if (process.cwd() !== "/home/ubuntu/portal-operacoes-homolog" || ENV.onedriveFolderPath !== "Documents/Documentos/Portal de Operações/Cadastros") throw new Error("Atualização bloqueada: diretório ou pasta não corresponde à Homologação autorizada.");
+  const allowedFolders = new Set(["Documents/Documentos/Portal de Operações/Cadastros", "Documentos/Portal de Operações/Cadastros"]);
+  if (process.cwd() !== "/home/ubuntu/portal-operacoes-homolog" || !allowedFolders.has(ENV.onedriveFolderPath)) throw new Error("Atualização bloqueada: diretório ou pasta não corresponde à Homologação autorizada.");
   const db = await getDb();
   if (!db) throw new Error("Banco indisponível.");
   const check = await db.execute(sql`select current_database() as name`);
@@ -123,9 +124,34 @@ export async function syncOneDriveReferences(req: Request) {
   if (!tables.rows[0]?.classifications || !tables.rows[0]?.links) throw new Error("Cadastro unificado ainda não instalado: aplique a migração 0052 na Homologação antes de atualizar as bases.");
   const listing = await listOneDriveFiles(req);
   if (!listing.connected) throw new Error("Conecte o OneDrive antes de atualizar.");
+  const previousStates = await db.execute(sql`
+    select kind, item_id, file_hash, modified_at
+    from public.portal_onedrive_reference_state
+    where kind in ('SB1', 'SBZ', 'ZFM', 'ZSF')
+  `);
+  const stateByKind = new Map(previousStates.rows.map(row => [String(row.kind), row]));
   const prepared: PreparedReference[] = [];
   for (const kind of REFERENCE_KINDS) {
     const file = selectReferenceFile(listing.files, kind);
+    const prior = stateByKind.get(kind);
+    const unchangedByMetadata = prior
+      && String(prior.item_id) === file.id
+      && new Date(String(prior.modified_at)).getTime() === new Date(file.modifiedAt).getTime();
+    if (unchangedByMetadata && (kind === "SB1" || kind === "SBZ")) {
+      if (kind === "SB1") {
+        const products = await db.execute(sql`
+          select source_product_code as "productCode",
+            coalesce(metadata->>'familia', '') as family,
+            coalesce(metadata->>'subfamilia', '') as subfamily
+          from public.products
+          where active = true and source_system = 'SB1'
+        `);
+        prepared.push({ file, kind, hash: String(prior.file_hash), sb1: [], sbz: [], catalog: [], products: products.rows as { productCode: string; family: string; subfamily: string }[] });
+      } else {
+        prepared.push({ file, kind, hash: String(prior.file_hash), sb1: [], sbz: [], catalog: [], products: [] });
+      }
+      continue;
+    }
     const content = await readOneDriveContent(req, file.id);
     prepared.push({ file, ...prepareReference(kind, content) });
   }

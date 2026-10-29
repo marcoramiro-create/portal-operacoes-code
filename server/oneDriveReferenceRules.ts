@@ -16,7 +16,7 @@ export function prepareReference(kind: ReferenceKind, content: Buffer) {
   const hash = createHash("sha256").update(content).digest("hex");
   if (kind === "SB1") {
     const parsed = parseSb1(content);
-    if (!parsed.rows.length || parsed.skippedRows || parsed.duplicateRows) throw new Error(`${kind}: validação bloqueada (${parsed.rows.length} válidas, ${parsed.skippedRows} inválidas, ${parsed.duplicateRows} duplicadas). Base anterior preservada.`);
+    if (!parsed.rows.length) throw new Error(`${kind}: nenhum registro válido encontrado. Base anterior preservada.`);
     const rows = parsed.rows;
     const index = importSb1([["Cod Agregado","Codigo","Descricao","Familia","Sub-familia","Tipo"], ...rows.map(r => [r.aggregateProductCode || r.productCode,r.productCode,r.description,r.family,r.subfamily,r.type])]);
     const unique = new Map(index.registros.filter(r => r.code && r.code !== "0").map(r => [r.code, { code:r.code,tipo:r.tipo,familiaCode:r.familiaCode,subfamiliaCode:r.subfamiliaCode }]));
@@ -32,11 +32,11 @@ export function prepareReference(kind: ReferenceKind, content: Buffer) {
   }
   if (kind === "ZFM" || kind === "ZSF") {
     const parsed = kind === "ZFM" ? parseZfm(content) : parseZsf(content);
-    if (!parsed.rows.length || parsed.skippedRows || parsed.duplicateRows) throw new Error(`${kind}: validação bloqueada (${parsed.rows.length} válidas, ${parsed.skippedRows} inválidas, ${parsed.duplicateRows} duplicadas). Base anterior preservada.`);
+    if (!parsed.rows.length) throw new Error(`${kind}: nenhum registro válido encontrado. Base anterior preservada.`);
     return { kind, hash, sb1: [], sbz: [], catalog: parsed.rows, products: [] };
   }
   const parsed = parseSbz(content);
-  if (!parsed.rows.length || parsed.skippedRows || parsed.duplicateRows) throw new Error(`${kind}: validação bloqueada (${parsed.rows.length} válidas, ${parsed.skippedRows} inválidas, ${parsed.duplicateRows} duplicadas). Base anterior preservada.`);
+  if (!parsed.rows.length) throw new Error(`${kind}: nenhum registro válido encontrado. Base anterior preservada.`);
   const rows = parsed.rows;
   const index = importSbz([["Filial","Codigo","Estoq Minimo","Estoq Maximo","Entra MRP"], ...rows.map(r => [r.branchCode,r.productCode,r.minStock,r.maxStock,r.mrp ? "Sim" : "Não"]) ]);
   return { kind, hash, sb1: [], sbz:[...index.porChave.values()].map(r => ({chave:r.chave,code:r.codigo,filial:r.filial,estoqMin:r.estoqMin?.toString() ?? null,estoqMax:r.estoqMax?.toString() ?? null,entraMrp:r.entraMrp})), catalog: [], products: [] };

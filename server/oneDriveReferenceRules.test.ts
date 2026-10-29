@@ -23,8 +23,8 @@ describe("OneDrive SB1/SBZ", () => {
     expect(() => prepareReference('SB1',Buffer.from('invalido'))).toThrow();
     expect(() => prepareReference('SBZ',Buffer.from('SBZ\n\nFilial;Codigo;Entra MRP\n'))).toThrow();
   });
-  it("bloqueia duplicidades e notação científica", () => {
-    expect(() => prepareReference('SB1',Buffer.concat([sb1,Buffer.from('00000136-MGT;00000136;Produto A;ME;2;2\n')]))).toThrow();
+  it("deduplica registros válidos e bloqueia notação científica", () => {
+    expect(() => prepareReference('SB1',Buffer.concat([sb1,Buffer.from('00000136-MGT;00000136;Produto A;ME;2;2\n')]))).not.toThrow();
     expect(() => prepareReference('SB1',Buffer.from('Codigo;Cod Agregado;Descricao\n1E+12;136;Produto\n'))).toThrow();
   });
   it("seleciona XLSX nas subpastas ZFM e ZSF, sem aceitar CSV como fonte delas", () => {
