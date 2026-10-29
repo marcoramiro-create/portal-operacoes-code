@@ -34,7 +34,7 @@ describe("OneDrive SB1/SBZ", () => {
     expect(selectReferenceFile([zsfFile], 'ZSF').name).toBe('SubFamília.xlsx');
   });
   it("prepara ZFM e ZSF preservando os códigos e a descrição", () => {
-    expect(prepareReference('ZFM', zfm).catalog).toEqual([{ code: '0000002', descricao: 'ACESSORIOS' }]);
-    expect(prepareReference('ZSF', zsf).catalog).toEqual([{ code: '0000046', descricao: 'DESCRIÇÃO  COM DOIS ESPAÇOS' }]);
+    expect(prepareReference('ZFM', zfm).catalog).toEqual([{ code: '0000002', description: 'ACESSORIOS' }]);
+    expect(prepareReference('ZSF', zsf).catalog).toEqual([{ code: '0000046', description: 'DESCRIÇÃO  COM DOIS ESPAÇOS' }]);
   });
 });

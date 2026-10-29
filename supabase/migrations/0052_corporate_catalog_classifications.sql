@@ -2,6 +2,12 @@
 -- Não apagar nem substituir familyReferences/subfamilyReferences nesta etapa.
 -- Dados brutos continuam em operational_source_rows.
 
+alter table public.operational_import_batches
+  drop constraint if exists operational_import_batches_source_kind_check;
+alter table public.operational_import_batches
+  add constraint operational_import_batches_source_kind_check
+  check (source_kind in ('SB1','SBZ','SB5','SA2','ZFM','ZSF','ENTRADA_NF','PEDIDO_COMPRA','NF_FISCAL','NF_LEGAL','NF_NATIVA','FECHAMENTO_ESTOQUE','MAPA_OPERACOES','FATOS_INSIGHTS'));
+
 create table if not exists public.corporate_catalog_classifications (
   id uuid primary key default gen_random_uuid(),
   kind text not null check (kind in ('FAMILIA', 'SUBFAMILIA')),
