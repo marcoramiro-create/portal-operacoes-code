@@ -3,14 +3,21 @@ import { parseSb1, parseSbz, parseZfm, parseZsf } from "./protheusCatalogParsers
 import { importSb1, importSbz } from "./referenceImporters";
 export type ReferenceKind = "SB1" | "SBZ" | "SB9" | "ZFM" | "ZSF";
 export type SourceFile = { id: string; name: string; folderName: string; size: number; modifiedAt: string };
+function isVariantExport(name: string): boolean {
+  return /(?:[_-]\d+|\s*\(\d+\))\.[^.]+$/i.test(name.trim());
+}
 export function selectReferenceFile(files: SourceFile[], kind: ReferenceKind): SourceFile {
   const extension = kind === "ZFM" || kind === "ZSF" ? /\.(?:xlsx|xls)$/i : /\.csv$/i;
   const matches = files.filter(f => f.folderName.split("/")[0]?.toUpperCase() === kind && extension.test(f.name));
-  matches.sort((a,b) => Date.parse(b.modifiedAt) - Date.parse(a.modifiedAt));
-  if (!matches.length) throw new Error(`Nenhum CSV encontrado na subpasta ${kind}. Nenhuma base foi alterada.`);
-  if (matches.some(f => !Number.isFinite(Date.parse(f.modifiedAt)))) throw new Error(`${kind}: data de modificação inválida.`);
-  if (matches.length > 1 && matches[0].modifiedAt === matches[1].modifiedAt) throw new Error(`${kind}: dois arquivos com a mesma data. Mantenha uma exportação vigente por subpasta.`);
-  return matches[0];
+  const preferred = kind === "SB9" && matches.some(file => !isVariantExport(file.name))
+    ? matches.filter(file => !isVariantExport(file.name))
+    : matches;
+  const candidates = preferred.length ? preferred : matches;
+  candidates.sort((a,b) => Date.parse(b.modifiedAt) - Date.parse(a.modifiedAt));
+  if (!candidates.length) throw new Error(`Nenhum CSV encontrado na subpasta ${kind}. Nenhuma base foi alterada.`);
+  if (candidates.some(f => !Number.isFinite(Date.parse(f.modifiedAt)))) throw new Error(`${kind}: data de modificação inválida.`);
+  if (candidates.length > 1 && candidates[0].modifiedAt === candidates[1].modifiedAt) throw new Error(`${kind}: dois arquivos com a mesma data. Mantenha uma exportação vigente por subpasta.`);
+  return candidates[0];
 }
 export function prepareReference(kind: ReferenceKind, content: Buffer) {
   const hash = createHash("sha256").update(content).digest("hex");

@@ -55,7 +55,9 @@ function codeVariants(value: unknown): string[] {
   const raw = String(value ?? "").trim();
   if (!raw) return [];
   const normalized = raw.replace(/^0+(?=\d)/, "");
-  return Array.from(new Set([raw, normalized]));
+  const withoutSystemSuffix = raw.replace(/[-_]([A-Za-z]+)$/, "");
+  const withoutSystemSuffixNormalized = withoutSystemSuffix.replace(/^0+(?=\d)/, "");
+  return Array.from(new Set([raw, normalized, withoutSystemSuffix, withoutSystemSuffixNormalized]));
 }
 function previousPeriod(period: string): string {
   const year = Number(period.slice(0, 4));
@@ -75,7 +77,7 @@ function sanitizarLimites(entrada?: Partial<LimitesAlerta> | null): LimitesAlert
   }
   return limites;
 }
-type MesInterno = { period: string; custo_medio: number | null; quantidade_vendida?: number | null; valor_consumo?: number | null };
+export type MesInterno = { period: string; custo_medio: number | null; quantidade_vendida?: number | null; valor_consumo?: number | null; custo_herdado?: boolean };
 type ItemInterno = {
   codigo: string; descricao?: string; filial?: string; cod_agregado?: string | null;
   curve?: string; costStatus?: string;
@@ -97,13 +99,19 @@ function serieCusto(item: ItemInterno, periods: string[]): (number | null)[] {
 }
 // B-v15: aplica a herança DIRETO nos meses do item, para que o consumo em
 // reais (quantidade × custo) use o custo herdado. Só o custo é transportado.
-function aplicarHerancaDeCusto(item: ItemInterno, periods: string[]): void {
+export function aplicarHerancaDeCusto(item: ItemInterno, periods: string[]): void {
   const serie = serieCusto(item, periods);
   const porPeriodo = new Map(periods.map((period, index) => [period, serie[index]]));
   for (const mes of item.meses) {
-    if (mes.custo_medio != null && mes.custo_medio !== 0) continue;
+    if (mes.custo_medio != null && mes.custo_medio !== 0) {
+      mes.custo_herdado = false;
+      continue;
+    }
     const herdado = porPeriodo.get(mes.period);
-    if (herdado != null) mes.custo_medio = herdado;
+    if (herdado != null) {
+      mes.custo_medio = herdado;
+      mes.custo_herdado = true;
+    }
   }
 }
 function extremosDoCusto(item: ItemInterno): { inicial: number | null; final: number | null } {
@@ -267,15 +275,20 @@ async function attachSb9MonthlyCosts(
     period: string;
     cost: string | null;
   }>(
-    `with sb9 as (
+    `with latest_sb9 as (
+       select id
+         from public.operational_import_batches
+        where status = 'processed'
+          and source_kind = 'SB9'
+        order by imported_at desc, id desc
+        limit 1
+     ), sb9 as (
        select trim(r.branch_code) as branch,
               trim(r.product_code) as product,
               to_char(r.event_date, 'YYYYMM') as period,
               max(r.unit_value)::text as cost
          from public.operational_source_rows r
-         join public.operational_import_batches b on b.id = r.batch_id
-        where b.status = 'processed'
-          and b.source_kind = 'SB9'
+         join latest_sb9 b on b.id = r.batch_id
           and r.branch_code is not null
           and trim(r.branch_code) <> ''
           and r.product_code is not null
@@ -284,33 +297,29 @@ async function attachSb9MonthlyCosts(
           and r.unit_value is not null
           and ($1::text is null or r.event_date >= to_date($1, 'YYYYMM'))
           and ($2::text is null or r.event_date < to_date($2, 'YYYYMM') + interval '1 month')
-          and ($3::text is null or trim(r.branch_code) = $3)
         group by trim(r.branch_code), trim(r.product_code), to_char(r.event_date, 'YYYYMM')
+     ), sb1 as (
+       select distinct on (trim(r.product_code))
+              trim(r.product_code) as product,
+              nullif(trim(r.aggregate_product_code), '') as aggregate
+         from public.operational_source_rows r
+         join public.operational_import_batches b on b.id = r.batch_id
+        where b.status = 'processed'
+          and b.source_kind = 'SB1'
+          and r.product_code is not null
+          and trim(r.product_code) <> ''
+        order by trim(r.product_code), b.imported_at desc, r.source_row_number desc
      )
      select s.branch,
             s.product,
-            coalesce(agg.aggregate_code, s.product) as aggregate,
-            p.name as description,
+            coalesce(sb1.aggregate, s.product) as aggregate,
+            null::text as description,
             s.period,
             s.cost
        from sb9 s
-       left join lateral (
-         select p0.id, p0.name
-           from public.products p0
-          where p0.source_product_code = s.product or p0.product_code = s.product
-          order by (p0.source_product_code = s.product) desc, p0.active desc, p0.updated_at desc
-          limit 1
-       ) p on true
-       left join lateral (
-         select a.aggregate_code
-           from public.product_aggregate_members m
-           join public.product_aggregates a on a.id = m.aggregate_id
-          where m.product_id = p.id and m.active = true and a.active = true
-          order by a.updated_at desc
-          limit 1
-       ) agg on true
+       left join sb1 on sb1.product = s.product
       order by s.branch, aggregate, s.product, s.period`,
-    [inicio, fim, params.filial ?? null],
+    [inicio, fim],
   );
 
   if (!rows.rows.length) return;
@@ -321,7 +330,7 @@ async function attachSb9MonthlyCosts(
   );
   const items = result.items ?? (result.items = []);
   const findItem = (branch: string, product: string, aggregate: string) => items.find(item =>
-    String(item.filial ?? "") === branch &&
+    codeVariants(item.filial).some(itemBranch => codeVariants(branch).includes(itemBranch)) &&
     [...codeVariants(item.codigo), ...codeVariants(item.cod_agregado), ...codeVariants(product), ...codeVariants(aggregate)]
       .some(code => code === product || code === aggregate),
   );
@@ -336,8 +345,13 @@ async function attachSb9MonthlyCosts(
       items.push(item);
     }
     const existing = item.meses.find(month => normalizeSalesPeriod(String(month.period ?? "")) === period);
-    if (existing) existing.custo_medio = row.cost == null ? null : Number(row.cost);
-    else item.meses.push({ period, custo_medio: row.cost == null ? null : Number(row.cost) });
+    if (existing) {
+      // A SB9 importada na Homologação é a fonte oficial e substitui o valor legado.
+      existing.custo_medio = row.cost == null ? null : Number(row.cost);
+      existing.custo_herdado = false;
+    } else {
+      item.meses.push({ period, custo_medio: row.cost == null ? null : Number(row.cost), custo_herdado: false });
+    }
   }
   result.periodos = Array.from(periods).sort().map(period => ({ period }));
 }
@@ -550,10 +564,16 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   const estoqueIndustria = params.segment === "industry"
     ? await attachIndustryMonthlyConsumption(portalPool, result)
     : null;
+  try {
+    await attachSb9MonthlyCosts(portalPool, result, { periodoInicio: params.periodoInicio, periodoFim: params.periodoFim, filial });
+  } catch (error) {
+    // A SB9 indisponível não pode derrubar a análise legada. O erro fica no log
+    // para diagnóstico, enquanto a consulta antiga continua sendo apresentada.
+    console.warn("[Custos] SB9 não incorporada à evolução", error instanceof Error ? error.message : error);
+  }
   if (params.segment !== "industry") {
     await attachAutoPartsMonthlySales(businessPool, result);
     await attachAutoPartsEstoque(businessPool, result);
-    await attachSb9MonthlyCosts(portalPool, result, { periodoInicio: params.periodoInicio, periodoFim: params.periodoFim, filial });
   }
   const curves = await getCurrentCurveLookup(businessPool, portalPool, params.segment, filial);
   const periods: string[] = ((result.periodos ?? []) as Array<{ period: string }>)

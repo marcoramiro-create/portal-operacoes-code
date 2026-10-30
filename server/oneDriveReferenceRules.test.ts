@@ -10,6 +10,11 @@ describe("OneDrive SB1/SBZ", () => {
     expect(selectReferenceFile([file,{...file,id:'b',modifiedAt:'2026-10-10T00:00:00Z'},{...file,id:'xml',name:'NF.xml'}], 'SB1').id).toBe('b');
     expect(() => selectReferenceFile([{...file,folderName:'Email attachments'}], 'SB1')).toThrow();
   });
+  it("prioriza a SB9 normal sobre uma cópia reduzida mesmo que a cópia seja mais recente", () => {
+    const normal={id:'normal',name:'SB9 - 202610262105.csv',folderName:'SB9',size:100,modifiedAt:'2026-10-26T21:05:00Z'};
+    const reduzida={id:'reduzida',name:'SB9 - 202610262105_1.csv',folderName:'SB9',size:10,modifiedAt:'2026-10-30T12:00:00Z'};
+    expect(selectReferenceFile([normal,reduzida], 'SB9').id).toBe('normal');
+  });
   it("preserva prioridade do agregado na referência de Compras", () => {
     const p=prepareReference('SB1',sb1);
     expect(p.sb1[0]).toMatchObject({code:'136',tipo:'ME',familiaCode:'2'});

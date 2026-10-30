@@ -169,7 +169,7 @@ type ItemRow = {
   estoque?: number | null; estoqueValor?: number | null; estoqueAgregado?: number | null;
   variacaoPercent?: number | null; impactoEstimado?: number | null; consumoMedioMensal?: number | null;
   consumoTotal?: number | null; consumoMedioQuantidade?: number | null; consumoTotalQuantidade?: number | null;
-  meses: { period: string; custo_medio: number | null; quantidade_vendida?: number | null; valor_consumo?: number | null }[];
+  meses: { period: string; custo_medio: number | null; quantidade_vendida?: number | null; valor_consumo?: number | null; custo_herdado?: boolean }[];
 };
 // Sine qua non: não existe item sem curva e não se exibe "sem base de custo".
 type Criterio = "todos" | "alta" | "reducao" | "acima-limite";
@@ -193,7 +193,7 @@ function buildSeries(item: ItemRow, periods: string[]) {
   return series;
 }
 function temPrecoNoMes(item: ItemRow, period: string) {
-  return item.meses.some(m => m.period === period && m.custo_medio != null && m.custo_medio !== 0);
+  return item.meses.some(m => m.period === period && !m.custo_herdado && m.custo_medio != null && m.custo_medio !== 0);
 }
 function sugestaoDeAcao(item: ItemRow, periods: string[], limites: Limites) {
   const values = buildSeries(item, periods).filter((v): v is number => v != null);
