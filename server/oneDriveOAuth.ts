@@ -38,6 +38,15 @@ function authorizationHeader(req: Request) {
   const value = req.headers.authorization;
   return Array.isArray(value) ? value[0] : value;
 }
+function workerSignature(userId: string) {
+  return createHmac("sha256", KEY).update(`worker:${userId}`).digest("base64url");
+}
+function workerUser(req: Request) {
+  const userId = req.headers["x-onedrive-worker-user"];
+  const signature = req.headers["x-onedrive-worker-signature"];
+  if (typeof userId !== "string" || typeof signature !== "string") return null;
+  return /^[0-9a-f-]{36}$/i.test(userId) && signature === workerSignature(userId) ? userId : null;
+}
 function signedOAuthUser(userId: string) {
   const signature = createHmac("sha256", KEY).update(`onedrive:${userId}`).digest("base64url");
   return `${userId}.${signature}`;
@@ -72,6 +81,11 @@ function isAdministrator(identity: PortalIdentity | null): identity is PortalIde
   return Boolean(identity?.isDevelopmentAdmin || identity?.profiles.includes("operations-admin"));
 }
 async function currentAdmin(req: Request): Promise<PortalIdentity> {
+  const workerUserId = workerUser(req);
+  if (workerUserId) {
+    const identity = await identityById(workerUserId);
+    if (isAdministrator(identity)) return identity;
+  }
   let identity: PortalIdentity | null = null;
   const token = portalToken(req);
   if (token) identity = await authenticatePortalSession(token);
@@ -80,6 +94,15 @@ async function currentAdmin(req: Request): Promise<PortalIdentity> {
   }
   if (!isAdministrator(identity)) throw new TRPCError({ code: "FORBIDDEN", message: "Apenas administradores podem conectar o OneDrive." });
   return identity;
+}
+
+export function createOneDriveWorkerRequest(userId: string) {
+  return {
+    headers: {
+      "x-onedrive-worker-user": userId,
+      "x-onedrive-worker-signature": workerSignature(userId),
+    },
+  } as unknown as Request;
 }
 async function currentOAuthAdmin(req: Request): Promise<PortalIdentity> {
   try { return await currentAdmin(req); } catch {

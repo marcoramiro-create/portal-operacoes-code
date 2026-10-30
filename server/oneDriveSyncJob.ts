@@ -1,53 +1,64 @@
-import type { Request } from "express";
-import { syncOneDriveReferences } from "./oneDriveReferenceSync";
-import { syncOneDriveSb9 } from "./oneDriveCostSync";
+import { sql } from "drizzle-orm";
+import { getDb } from "./db";
 
-type SyncResult = Awaited<ReturnType<typeof syncOneDriveReferences>> & {
+export type OneDriveSyncResult = {
   results: Array<{ kind: string; fileName: string; status: string; count: number; updatedAt: string }>;
+  reenriquecidos: number;
+  warning: string | null;
+  classificationIssues: unknown[];
 };
-type Job =
-  | { status: "running"; startedAt: string }
-  | { status: "completed"; startedAt: string; finishedAt: string; result: SyncResult }
-  | { status: "failed"; startedAt: string; finishedAt: string; error: string };
+export type OneDriveSyncStatus = {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  currentStep: string | null;
+  progress: Record<string, unknown>;
+  result: OneDriveSyncResult | null;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
 
-const jobs = new Map<string, Job>();
-let activeJobId: string | null = null;
-
-export function startOneDriveSync(req: Request) {
-  if (activeJobId && jobs.get(activeJobId)?.status === "running") {
-    return { jobId: activeJobId, status: "running" as const };
-  }
-
-  const jobId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  const startedAt = new Date().toISOString();
-  jobs.set(jobId, { status: "running", startedAt });
-  activeJobId = jobId;
-
-  void (async () => {
-    try {
-      const references = await syncOneDriveReferences(req);
-      const sb9 = await syncOneDriveSb9(req);
-      jobs.set(jobId, {
-        status: "completed",
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        result: { ...references, results: [...references.results, sb9] },
-      });
-    } catch (error) {
-      jobs.set(jobId, {
-        status: "failed",
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        error: error instanceof Error ? error.message : "Falha na atualização do OneDrive.",
-      });
-    } finally {
-      if (activeJobId === jobId) activeJobId = null;
-    }
-  })();
-
-  return { jobId, status: "running" as const };
+export async function createOneDriveSyncJob(requestedBy: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Banco indisponível.");
+  const active = await db.execute(sql`
+    select id, status
+    from public.portal_onedrive_sync_jobs
+    where status in ('pending', 'running')
+    order by created_at desc
+    limit 1
+  `);
+  if (active.rows[0]) return { jobId: String(active.rows[0].id), status: String(active.rows[0].status) as "pending" | "running" };
+  const result = await db.execute(sql`
+    insert into public.portal_onedrive_sync_jobs (requested_by, status, current_step, progress)
+    values (${requestedBy}::uuid, 'pending', 'queued', '{"step":"queued"}'::jsonb)
+    returning id
+  `);
+  return { jobId: String(result.rows[0].id), status: "pending" as const };
 }
 
-export function getOneDriveSyncJob(jobId: string) {
-  return jobs.get(jobId) ?? { status: "failed" as const, error: "Atualização não encontrada. Inicie uma nova atualização." };
+export async function getOneDriveSyncJob(jobId: string): Promise<OneDriveSyncStatus | { status: "failed"; error: string }> {
+  return getDb().then(async db => {
+    if (!db) throw new Error("Banco indisponível.");
+    const result = await db.execute(sql`
+      select id, status, current_step as "currentStep", progress, result, error,
+             created_at as "createdAt", started_at as "startedAt", finished_at as "finishedAt"
+      from public.portal_onedrive_sync_jobs
+      where id = ${jobId}::uuid
+    `);
+    const row = result.rows[0] as Partial<OneDriveSyncStatus> | undefined;
+    if (!row) return { status: "failed" as const, error: "Atualização não encontrada. Inicie uma nova atualização." };
+    return {
+      id: String(row.id),
+      status: row.status ?? "failed",
+      currentStep: row.currentStep ?? null,
+      progress: (row.progress as Record<string, unknown> | undefined) ?? {},
+      result: (row.result as OneDriveSyncResult | null | undefined) ?? null,
+      error: row.error ?? null,
+      createdAt: String(row.createdAt),
+      startedAt: row.startedAt ? String(row.startedAt) : null,
+      finishedAt: row.finishedAt ? String(row.finishedAt) : null,
+    };
+  });
 }

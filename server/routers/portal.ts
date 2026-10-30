@@ -7,7 +7,7 @@ import { getOneDriveImportsLink, getOneDriveSourceStatus } from "../onedriveShar
 import { registrationTypes } from "../../shared/registrationLayouts";
 import { validateCardNumber, validatePersonDocument } from "../personDocumentValidation";
 import { listOneDriveFiles, oneDriveStatus } from "../oneDriveOAuth";
-import { getOneDriveSyncJob, startOneDriveSync } from "../oneDriveSyncJob";
+import { createOneDriveSyncJob, getOneDriveSyncJob } from "../oneDriveSyncJob";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 function requestInfo(ctx: { req: { ip?: string } }) { return { ip: ctx.req.ip }; }
@@ -41,8 +41,8 @@ export const portalRouter = router({
   oneDriveSource: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return { ...(await getOneDriveSourceStatus()), link: getOneDriveImportsLink() }; }),
   oneDriveConnection: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return oneDriveStatus(ctx.req); }),
   syncOneDriveReferences: publicProcedure.mutation(async ({ ctx }) => {
-    await administrator(ctx);
-    return startOneDriveSync(ctx.req);
+    const identity = await administrator(ctx);
+    return createOneDriveSyncJob(identity.id);
   }),
   oneDriveSyncStatus: publicProcedure.input(z.object({ jobId: z.string().min(1).max(100) })).query(async ({ ctx, input }) => {
     await administrator(ctx);

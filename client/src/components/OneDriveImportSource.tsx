@@ -9,7 +9,7 @@ export default function OneDriveImportSource() {
   const sync = trpc.portal.syncOneDriveReferences.useMutation({ onSuccess: result => setSyncJobId(result.jobId) });
   const syncStatus = trpc.portal.oneDriveSyncStatus.useQuery(
     { jobId: syncJobId ?? "-" },
-    { enabled: Boolean(syncJobId), refetchInterval: query => query.state.data?.status === "running" ? 2000 : false, retry: false },
+    { enabled: Boolean(syncJobId), refetchInterval: query => query.state.data?.status === "pending" || query.state.data?.status === "running" ? 2000 : false, retry: false },
   );
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
@@ -74,11 +74,11 @@ export default function OneDriveImportSource() {
       {connection.data?.connected && (
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
           <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-extrabold text-slate-950">Arquivos disponíveis</p><p className="text-xs text-slate-500">Leitura somente de {connection.data.folderPath}.</p></div><button type="button" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700" onClick={() => files.refetch()}><RefreshCw className="h-3.5 w-3.5" />Atualizar</button></div>
-          <button type="button" disabled={sync.isPending || syncStatus.data?.status === "running"} onClick={() => { setSyncJobId(null); sync.mutate(); }} className="mt-4 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{sync.isPending || syncStatus.data?.status === "running" ? "Atualizando cadastros…" : "Atualizar bases do OneDrive"}</button>
+          <button type="button" disabled={sync.isPending || syncStatus.data?.status === "pending" || syncStatus.data?.status === "running"} onClick={() => { setSyncJobId(null); sync.mutate(); }} className="mt-4 rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{sync.isPending || syncStatus.data?.status === "pending" || syncStatus.data?.status === "running" ? "Atualizando cadastros…" : "Atualizar bases do OneDrive"}</button>
           <p className="mt-2 text-xs text-slate-500">Atualiza SB1, SBZ, Família, Subfamília e SB9. Arquivos sem alteração não são lidos novamente; a SB9 é gravada em lotes sem manter o arquivo inteiro na memória.</p>
           {sync.error && <p role="alert" className="mt-3 text-sm text-rose-700">{sync.error.message}</p>}
           {syncStatus.data?.status === "failed" && <p role="alert" className="mt-3 text-sm text-rose-700">{syncStatus.data.error}</p>}
-          {syncStatus.data?.status === "completed" && <div role="status" className="mt-3 text-sm">{syncStatus.data.result.results.map(r => <p key={r.kind}>{r.kind} · {r.status} · {r.count.toLocaleString("pt-BR")} registros · {r.fileName}</p>)}<p>{syncStatus.data.result.reenriquecidos.toLocaleString("pt-BR")} itens de Compras reprocessados.</p>{syncStatus.data.result.warning && <p className="text-amber-700">{syncStatus.data.result.warning}</p>}</div>}
+          {syncStatus.data?.status === "completed" && syncStatus.data.result && <div role="status" className="mt-3 text-sm">{syncStatus.data.result.results.map(r => <p key={r.kind}>{r.kind} · {r.status} · {r.count.toLocaleString("pt-BR")} registros · {r.fileName}</p>)}<p>{syncStatus.data.result.reenriquecidos.toLocaleString("pt-BR")} itens de Compras reprocessados.</p>{syncStatus.data.result.warning && <p className="text-amber-700">{syncStatus.data.result.warning}</p>}</div>}
           {files.error && <p role="alert" className="mt-3 text-sm text-rose-700">{files.error.message}</p>}
           {files.isLoading ? <p className="mt-3 text-sm text-slate-500">Lendo exportações…</p> : files.data?.files.length ? <ul className="mt-3 divide-y divide-slate-100">{files.data.files.map(file => <li key={file.id} className="py-2 text-sm"><span className="mr-2 font-bold">{file.folderName}</span>{file.name}<span className="ml-2 text-xs text-slate-500">{new Date(file.modifiedAt).toLocaleString("pt-BR")}</span></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">Nenhuma exportação encontrada nas subpastas.</p>}
         </div>

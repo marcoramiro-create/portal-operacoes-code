@@ -1,0 +1,19 @@
+[Unit]
+Description=Portal de Operações - Worker OneDrive (Homologação)
+After=network.target postgresql.service portal-operacoes.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/portal-operacoes-homolog
+Environment=NODE_ENV=production
+Environment=PATH=/home/ubuntu/.nvm/versions/node/v22.23.2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+Environment=NODE_OPTIONS=--max-old-space-size=1400
+EnvironmentFile=/etc/portal-operacoes/onedrive-secret.env
+EnvironmentFile=/etc/portal-operacoes/portal.env
+ExecStart=/home/ubuntu/.nvm/versions/node/v22.23.2/bin/npx tsx server/oneDriveWorker.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
