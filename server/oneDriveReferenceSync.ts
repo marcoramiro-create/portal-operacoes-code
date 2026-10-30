@@ -49,20 +49,23 @@ async function materializeClassifications(tx: any, prepared: PreparedReference[]
     const sourceSystem = item.kind;
     for (let start = 0; start < item.catalog.length; start += 500) {
       const rows = item.catalog.slice(start, start + 500);
-      for (const row of rows) {
-        await tx.execute(sql`
-          insert into public.corporate_catalog_classifications
-            (kind, code, description, source_batch_id, source_system, active, updated_at)
-          values (${kind}, ${row.code}, ${row.description}, ${batchIds.get(item.kind)}, ${sourceSystem}, true, now())
-          on conflict (kind, code) do update set
-            description = excluded.description,
-            source_batch_id = excluded.source_batch_id,
-            source_system = excluded.source_system,
-            active = true,
-            valid_to = null,
-            updated_at = now()
-        `);
-      }
+      if (!rows.length) continue;
+      const values = sql.join(rows.map(row => sql`(
+        ${kind}, ${row.code}, ${row.description}, ${batchIds.get(item.kind)},
+        ${sourceSystem}, true, now()
+      )`), sql`, `);
+      await tx.execute(sql`
+        insert into public.corporate_catalog_classifications
+          (kind, code, description, source_batch_id, source_system, active, updated_at)
+        values ${values}
+        on conflict (kind, code) do update set
+          description = excluded.description,
+          source_batch_id = excluded.source_batch_id,
+          source_system = excluded.source_system,
+          active = true,
+          valid_to = null,
+          updated_at = now()
+      `);
     }
   }
 

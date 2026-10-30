@@ -6,9 +6,8 @@ import { registrationOperations, resolvedRegistrationPermissionsForUser, updateR
 import { getOneDriveImportsLink, getOneDriveSourceStatus } from "../onedriveSharedLink";
 import { registrationTypes } from "../../shared/registrationLayouts";
 import { validateCardNumber, validatePersonDocument } from "../personDocumentValidation";
-import { syncOneDriveReferences } from "../oneDriveReferenceSync";
-import { syncOneDriveSb9 } from "../oneDriveCostSync";
 import { listOneDriveFiles, oneDriveStatus } from "../oneDriveOAuth";
+import { getOneDriveSyncJob, startOneDriveSync } from "../oneDriveSyncJob";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 function requestInfo(ctx: { req: { ip?: string } }) { return { ip: ctx.req.ip }; }
@@ -43,9 +42,11 @@ export const portalRouter = router({
   oneDriveConnection: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return oneDriveStatus(ctx.req); }),
   syncOneDriveReferences: publicProcedure.mutation(async ({ ctx }) => {
     await administrator(ctx);
-    const references = await syncOneDriveReferences(ctx.req);
-    const sb9 = await syncOneDriveSb9(ctx.req);
-    return { ...references, results: [...references.results, sb9] };
+    return startOneDriveSync(ctx.req);
+  }),
+  oneDriveSyncStatus: publicProcedure.input(z.object({ jobId: z.string().min(1).max(100) })).query(async ({ ctx, input }) => {
+    await administrator(ctx);
+    return getOneDriveSyncJob(input.jobId);
   }),
   oneDriveFiles: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listOneDriveFiles(ctx.req); }),
   updateUserNodePermission: publicProcedure.input(z.object({ userId: z.string().uuid(), nodeId: z.string().uuid(), permission: nodePermission, allowed: z.boolean() })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return updateUserNodePermission(input, identity); }),
