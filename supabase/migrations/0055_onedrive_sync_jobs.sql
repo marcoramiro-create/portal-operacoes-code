@@ -28,9 +28,12 @@ CREATE INDEX IF NOT EXISTS portal_onedrive_sync_jobs_active_idx
   ON public.portal_onedrive_sync_jobs (status, created_at);
 
 DO $$ BEGIN
-  FOR r IN SELECT rolname FROM pg_roles WHERE rolname IN ('portal_app', 'portal_app_homolog') LOOP
-    EXECUTE format('GRANT SELECT, INSERT, UPDATE ON public.portal_onedrive_sync_jobs TO %I', r);
-  END LOOP;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portal_app') THEN
+    GRANT SELECT, INSERT, UPDATE ON public.portal_onedrive_sync_jobs TO portal_app;
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portal_app_homolog') THEN
+    GRANT SELECT, INSERT, UPDATE ON public.portal_onedrive_sync_jobs TO portal_app_homolog;
+  END IF;
 END $$;
 
 COMMIT;

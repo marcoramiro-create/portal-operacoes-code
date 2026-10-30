@@ -246,6 +246,101 @@ async function attachAutoPartsEstoque(
     if (achado) { item.estoque = achado.stock; item.estoqueValor = achado.valor; }
   }
 }
+
+/**
+ * A importação manual da SB9 é a fonte operacional oficial dos custos mensais.
+ * Bases antigas ainda podem retornar parte dos itens por get_cost_evolution,
+ * mas não devem esconder itens que só existem em operational_source_rows.
+ */
+async function attachSb9MonthlyCosts(
+  portalPool: ReturnType<typeof getSupabasePool>,
+  result: { periodos?: Array<{ period: string }>; items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; descricao?: string; meses: Array<Record<string, unknown>> }> },
+  params: { periodoInicio?: string; periodoFim?: string; filial?: string | null },
+) {
+  const inicio = normalizeSalesPeriod(params.periodoInicio ?? "") ?? null;
+  const fim = normalizeSalesPeriod(params.periodoFim ?? "") ?? null;
+  const rows = await portalPool.query<{
+    branch: string;
+    product: string;
+    aggregate: string;
+    description: string | null;
+    period: string;
+    cost: string | null;
+  }>(
+    `with sb9 as (
+       select trim(r.branch_code) as branch,
+              trim(r.product_code) as product,
+              to_char(r.event_date, 'YYYYMM') as period,
+              max(r.unit_value)::text as cost
+         from public.operational_source_rows r
+         join public.operational_import_batches b on b.id = r.batch_id
+        where b.status = 'processed'
+          and b.source_kind = 'SB9'
+          and r.branch_code is not null
+          and trim(r.branch_code) <> ''
+          and r.product_code is not null
+          and trim(r.product_code) <> ''
+          and r.event_date is not null
+          and r.unit_value is not null
+          and ($1::text is null or r.event_date >= to_date($1, 'YYYYMM'))
+          and ($2::text is null or r.event_date < to_date($2, 'YYYYMM') + interval '1 month')
+          and ($3::text is null or trim(r.branch_code) = $3)
+        group by trim(r.branch_code), trim(r.product_code), to_char(r.event_date, 'YYYYMM')
+     )
+     select s.branch,
+            s.product,
+            coalesce(agg.aggregate_code, s.product) as aggregate,
+            p.name as description,
+            s.period,
+            s.cost
+       from sb9 s
+       left join lateral (
+         select p0.id, p0.name
+           from public.products p0
+          where p0.source_product_code = s.product or p0.product_code = s.product
+          order by (p0.source_product_code = s.product) desc, p0.active desc, p0.updated_at desc
+          limit 1
+       ) p on true
+       left join lateral (
+         select a.aggregate_code
+           from public.product_aggregate_members m
+           join public.product_aggregates a on a.id = m.aggregate_id
+          where m.product_id = p.id and m.active = true and a.active = true
+          order by a.updated_at desc
+          limit 1
+       ) agg on true
+      order by s.branch, aggregate, s.product, s.period`,
+    [inicio, fim, params.filial ?? null],
+  );
+
+  if (!rows.rows.length) return;
+  const periods = new Set(
+    ((result.periodos ?? []) as Array<{ period: string }>)
+      .map(item => normalizeSalesPeriod(String(item.period)))
+      .filter((period): period is string => period != null),
+  );
+  const items = result.items ?? (result.items = []);
+  const findItem = (branch: string, product: string, aggregate: string) => items.find(item =>
+    String(item.filial ?? "") === branch &&
+    [...codeVariants(item.codigo), ...codeVariants(item.cod_agregado), ...codeVariants(product), ...codeVariants(aggregate)]
+      .some(code => code === product || code === aggregate),
+  );
+
+  for (const row of rows.rows) {
+    const period = normalizeSalesPeriod(row.period);
+    if (!period) continue;
+    periods.add(period);
+    let item = findItem(row.branch, row.product, row.aggregate);
+    if (!item) {
+      item = { filial: row.branch, codigo: row.product, cod_agregado: row.aggregate, descricao: row.description ?? row.product, meses: [] };
+      items.push(item);
+    }
+    const existing = item.meses.find(month => normalizeSalesPeriod(String(month.period ?? "")) === period);
+    if (existing) existing.custo_medio = row.cost == null ? null : Number(row.cost);
+    else item.meses.push({ period, custo_medio: row.cost == null ? null : Number(row.cost) });
+  }
+  result.periodos = Array.from(periods).sort().map(period => ({ period }));
+}
 // MAPA DE COLUNAS DAS FONTES DE CONSUMO DA INDÚSTRIA:
 //   FECHAMENTO_ESTOQUE → period = normalized_payload->>'year' + lpad(month,2,'0')
 //                        saldo  = normalized_payload->>'totalValue'
@@ -458,6 +553,7 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   if (params.segment !== "industry") {
     await attachAutoPartsMonthlySales(businessPool, result);
     await attachAutoPartsEstoque(businessPool, result);
+    await attachSb9MonthlyCosts(portalPool, result, { periodoInicio: params.periodoInicio, periodoFim: params.periodoFim, filial });
   }
   const curves = await getCurrentCurveLookup(businessPool, portalPool, params.segment, filial);
   const periods: string[] = ((result.periodos ?? []) as Array<{ period: string }>)

@@ -2,8 +2,9 @@ import { createHash, randomUUID } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { TRPCError } from "@trpc/server";
 import { getSupabasePool } from "./supabasePortal";
-import type { Sb1Row, Sb5Row, Sa2Row, SbzRow } from "./protheusCatalogParsers";
+import type { Sb1Row, Sb5Row, Sa2Row, Sb9Row, SbzRow } from "./protheusCatalogParsers";
 import type { MaterialEntrySourceRow, StockEvolutionSourceRow } from "./operationalSourceParsers";
+import { parseSourceNumber } from "./operationalNormalization";
 
 export type CatalogSourceKind = "SB1" | "SBZ" | "SB5" | "SA2";
 export type CatalogRow = Sb1Row | SbzRow | Sb5Row | Sa2Row;
@@ -114,7 +115,7 @@ async function insertSourceRow(client: PoolClient, batchId: string, rowNumber: n
   await client.query(`insert into public.operational_source_rows (id,batch_id,source_row_number,company_code,branch_code,product_code,aggregate_product_code,supplier_code,supplier_store,raw_payload,normalized_payload,issue_messages) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,'[]'::jsonb)`, [randomUUID(), batchId, rowNumber, null, "branchCode" in mapped ? mapped.branchCode : null, "productCode" in mapped ? mapped.productCode : null, "aggregateProductCode" in mapped ? mapped.aggregateProductCode : null, "supplierCode" in mapped ? mapped.supplierCode : null, "supplierStore" in mapped ? mapped.supplierStore : null, asJson(raw), asJson(mapped.normalizedPayload)]);
 }
 
-export type OperationalSourceKind = "PEDIDO_COMPRA" | "NF_LEGAL" | "NF_NATIVA" | "FECHAMENTO_ESTOQUE" | "ENTRADA_NF";
+export type OperationalSourceKind = "PEDIDO_COMPRA" | "NF_LEGAL" | "NF_NATIVA" | "FECHAMENTO_ESTOQUE" | "ENTRADA_NF" | "SB9";
 const OPERATIONAL_INSERT_BATCH_SIZE = 500;
 type OperationalMappedRow = {
   companyCode: string | null;
@@ -123,16 +124,23 @@ type OperationalMappedRow = {
   aggregateProductCode: string | null;
   supplierCode: string | null;
   supplierStore: string | null;
+  eventDate: string | null;
+  quantity: number | null;
+  unitValue: number | null;
   normalizedPayload: unknown;
 };
 function mapOperationalRow(source: OperationalSourceKind, row: unknown): OperationalMappedRow {
+  if (source === "SB9") {
+    const x = row as Sb9Row;
+    return { companyCode: null, branchCode: x.branchCode, productCode: x.productCode, aggregateProductCode: null, supplierCode: null, supplierStore: null, eventDate: x.balanceDateIso, quantity: parseSourceNumber(x.initialQuantity), unitValue: x.unitCost1aMValue, normalizedPayload: x };
+  }
   if (source === "FECHAMENTO_ESTOQUE") {
     const x = row as StockEvolutionSourceRow;
-    return { companyCode: x.company, branchCode: x.branch, productCode: x.productCode, aggregateProductCode: x.aggregateProductCode, supplierCode: null, supplierStore: null, normalizedPayload: x };
+    return { companyCode: x.company, branchCode: x.branch, productCode: x.productCode, aggregateProductCode: x.aggregateProductCode, supplierCode: null, supplierStore: null, eventDate: null, quantity: null, unitValue: null, normalizedPayload: x };
   }
   if (source === "ENTRADA_NF") {
     const x = row as MaterialEntrySourceRow;
-    return { companyCode: x.company, branchCode: x.branch, productCode: x.productCode, aggregateProductCode: x.aggregateProductCode, supplierCode: x.supplier || null, supplierStore: x.supplierStore || null, normalizedPayload: x };
+    return { companyCode: x.company, branchCode: x.branch, productCode: x.productCode, aggregateProductCode: x.aggregateProductCode, supplierCode: x.supplier || null, supplierStore: x.supplierStore || null, eventDate: null, quantity: null, unitValue: null, normalizedPayload: x };
   }
   throw new Error(`Importação ainda não suportada para ${source}.`);
 }
@@ -187,17 +195,20 @@ async function insertOperationalSourceRowsBatch(
       mapped.aggregateProductCode,
       mapped.supplierCode,
       mapped.supplierStore,
+      mapped.eventDate,
+      mapped.quantity,
+      mapped.unitValue,
       asJson(raw),
       asJson(mapped.normalizedPayload),
     );
-    const placeholders = Array.from({ length: 11 }, (_, valueIndex) => `$${offset + valueIndex + 1}`);
+    const placeholders = Array.from({ length: 14 }, (_, valueIndex) => `$${offset + valueIndex + 1}`);
     return `(${placeholders.join(",")},'[]'::jsonb)`;
   });
   await client.query(
     `insert into public.operational_source_rows
       (id,batch_id,source_row_number,company_code,branch_code,product_code,
-       aggregate_product_code,supplier_code,supplier_store,raw_payload,
-       normalized_payload,issue_messages)
+       aggregate_product_code,supplier_code,supplier_store,event_date,quantity,
+       unit_value,raw_payload,normalized_payload,issue_messages)
      values ${tuples.join(",")}`,
     values,
   );
