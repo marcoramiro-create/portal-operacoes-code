@@ -22,6 +22,8 @@
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
+import { calculateWeightedMonthlyCost, materializeCalendarMonths, type WeightedCurve } from "./costWeightedMonthly";
+import { buildCostSalesHistoryIndex, getCostSalesHistoryQuantity, normalizeCostSalesPeriod, type CostSalesHistoryRow } from "./costSalesHistory";
 import { buildCostCurveLookup } from "./costCurveLookup";
 import { garantirIndicesEconomicos, getIndicesEconomicos } from "./economicIndices";
 type CostEvolutionSegment = "auto_parts" | "industry";
@@ -29,27 +31,8 @@ const INDUSTRY_BRANCH = "0105";
 // B-v14 (22/10/2026): 0105 (Indústria) e 0201 jamais aparecem no Autopeças
 // nem no Compras — decisão do usuário, válida em TODAS as telas do portal.
 const FILIAIS_EXCLUIDAS_AUTOPECAS = new Set(["0105", "0201"]);
-const MONTH_NAMES: Record<string, string> = {
-  jan: "01", janeiro: "01", feb: "02", fevereiro: "02", mar: "03", marco: "03", março: "03",
-  apr: "04", abril: "04", may: "05", maio: "05", jun: "06", junho: "06", jul: "07", julho: "07",
-  aug: "08", ago: "08", agosto: "08", sep: "09", setembro: "09", oct: "10", out: "10", outubro: "10",
-  nov: "11", novembro: "11", dec: "12", dez: "12", dezembro: "12",
-};
 function normalizeSalesPeriod(value: string): string | null {
-  const text = value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  if (/^\d{6}$/.test(text) && Number(text.slice(4, 6)) >= 1 && Number(text.slice(4, 6)) <= 12) return text;
-  const numeric = text.match(/^(\d{1,2})[\/\-](\d{4})$/) ?? text.match(/^(\d{4})[\/\-](\d{1,2})$/);
-  if (numeric) {
-    const year = numeric[1].length === 4 ? numeric[1] : numeric[2];
-    const month = numeric[1].length === 4 ? numeric[2] : numeric[1];
-    return `${year}${month.padStart(2, "0")}`;
-  }
-  const named = text.match(/^([a-z]+)[\s\/\-]?(\d{4})$/) ?? text.match(/^(\d{4})[\s\/\-]?([a-z]+)$/);
-  if (!named) return null;
-  const year = named[1].length === 4 ? named[1] : named[2];
-  const monthName = named[1].length === 4 ? named[2] : named[1];
-  const month = MONTH_NAMES[monthName];
-  return month ? `${year}${month}` : null;
+  return normalizeCostSalesPeriod(value);
 }
 function codeVariants(value: unknown): string[] {
   const raw = String(value ?? "").trim();
@@ -58,6 +41,10 @@ function codeVariants(value: unknown): string[] {
   const withoutSystemSuffix = raw.replace(/[-_]([A-Za-z]+)$/, "");
   const withoutSystemSuffixNormalized = withoutSystemSuffix.replace(/^0+(?=\d)/, "");
   return Array.from(new Set([raw, normalized, withoutSystemSuffix, withoutSystemSuffixNormalized]));
+}
+export function mesmoProdutoSb9(item: { filial?: string; codigo: string }, branch: string, product: string): boolean {
+  return codeVariants(item.filial).some(value => codeVariants(branch).includes(value)) &&
+    codeVariants(item.codigo).some(value => codeVariants(product).includes(value));
 }
 function previousPeriod(period: string): string {
   const year = Number(period.slice(0, 4));
@@ -182,43 +169,32 @@ function temConsumoSemPreco(item: ItemInterno, segment: CostEvolutionSegment): b
   if (temCustoReal(item)) return false;
   return item.meses.some(mes => consumoMensalEmReais(mes, segment) != null);
 }
-async function attachAutoPartsMonthlySales(
+export async function attachAutoPartsMonthlySales(
   businessPool: ReturnType<typeof getBusinessPool>,
   result: { items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; meses: Array<Record<string, unknown>> }> },
 ) {
-  const rows = await businessPool.query<{ branch: string; code: string; codeOriginal: string | null; salesMonths: Record<string, unknown> | null }>(
+  const rows = await businessPool.query<CostSalesHistoryRow>(
     `select trim(a.branch) as branch,
             trim(a.code) as code,
             nullif(trim(a."codeOriginal"), '') as "codeOriginal",
-            a."salesMonths" as "salesMonths"
+            a."salesMonths" as "salesMonths",
+            i."importedAt" as "importedAt",
+            i.id as "importId", a.id as "rowId"
        from public."inventoryAnalytics" a
        join public."protheusImports" i on i.id = a."importId"
-      where i.id = (
-        select latest.id from public."protheusImports" latest
-         where latest.status = 'approved'
-         order by latest."importedAt" desc, latest.id desc limit 1
-      )`,
+      where i.status = 'approved'
+        and a."salesMonths" is not null
+        and a."salesMonths" <> '{}'::jsonb
+      order by i."importedAt" desc, i.id desc, a.id`,
   );
-  const sales = new Map<string, Record<string, number>>();
-  for (const row of rows.rows) {
-    const values: Record<string, number> = {};
-    for (const [period, amount] of Object.entries(row.salesMonths ?? {})) {
-      const normalizedPeriod = normalizeSalesPeriod(period);
-      const numericAmount = Number(amount);
-      if (normalizedPeriod && Number.isFinite(numericAmount)) values[normalizedPeriod] = numericAmount;
-    }
-    for (const code of [...codeVariants(row.code), ...codeVariants(row.codeOriginal)]) {
-      sales.set(`${row.branch}|${code}`, values);
-    }
-  }
+  const sales = buildCostSalesHistoryIndex(rows.rows);
   for (const item of result.items ?? []) {
-    const branch = item.filial ?? "";
-    const codes = [...codeVariants(item.cod_agregado), ...codeVariants(item.codigo)];
-    const monthly = codes.map(code => sales.get(`${branch}|${code}`)).find(Boolean);
-    if (!monthly) continue;
     for (const month of item.meses) {
-      const period = normalizeSalesPeriod(String(month.period ?? ""));
-      if (period && month.quantidade_vendida == null) month.quantidade_vendida = monthly[period] ?? null;
+      // Zero válido permanece zero; apenas ausência permite fallback por produto.
+      const aggregateQuantity = item.cod_agregado
+        ? getCostSalesHistoryQuantity(sales, item.filial, item.cod_agregado, month.period)
+        : null;
+      month.quantidade_vendida = aggregateQuantity ?? getCostSalesHistoryQuantity(sales, item.filial, item.codigo, month.period);
     }
   }
 }
@@ -330,20 +306,33 @@ async function attachSb9MonthlyCosts(
       .filter((period): period is string => period != null),
   );
   const items = result.items ?? (result.items = []);
-  const findItem = (branch: string, product: string, aggregate: string) => items.find(item =>
-    codeVariants(item.filial).some(itemBranch => codeVariants(branch).includes(itemBranch)) &&
-    [...codeVariants(item.codigo), ...codeVariants(item.cod_agregado), ...codeVariants(product), ...codeVariants(aggregate)]
-      .some(code => code === product || code === aggregate),
-  );
+  const porProduto = new Map<string, (typeof items)[number] | null>();
+  const chaveProduto = (branch: unknown, code: string) => `${String(branch ?? "").trim().padStart(4, "0")}|${code}`;
+  const indexarProduto = (item: (typeof items)[number]) => {
+    for (const code of codeVariants(item.codigo)) {
+      const key = chaveProduto(item.filial, code);
+      if (!porProduto.has(key)) porProduto.set(key, item);
+      else if (porProduto.get(key) !== item) porProduto.set(key, null);
+    }
+  };
+  for (const item of items) indexarProduto(item);
+  const findItem = (branch: string, product: string) => {
+    for (const code of codeVariants(product)) {
+      const item = porProduto.get(chaveProduto(branch, code));
+      if (item) return item;
+    }
+    return undefined;
+  };
 
   for (const row of rows.rows) {
     const period = normalizeSalesPeriod(row.period);
     if (!period) continue;
     periods.add(period);
-    let item = findItem(row.branch, row.product, row.aggregate);
+    let item = findItem(row.branch, row.product);
     if (!item) {
       item = { filial: row.branch, codigo: row.product, cod_agregado: row.aggregate, descricao: row.description ?? row.product, meses: [] };
       items.push(item);
+      indexarProduto(item);
     }
     const existing = item.meses.find(month => normalizeSalesPeriod(String(month.period ?? "")) === period);
     if (existing) {
@@ -365,7 +354,7 @@ const REGEX_NUM = "^-?[0-9]+(\\.[0-9]+)?$";
 type ConsumoIndustria = { consumo: Map<string, number>; estoqueAgregado: Map<string, number>; gravadoEm: number };
 const CACHE_CONSUMO_TTL_MS = 10 * 60 * 1000;
 const cacheConsumoIndustria = new Map<string, ConsumoIndustria>();
-async function obterConsumoIndustria(
+export async function obterConsumoIndustria(
   portalPool: ReturnType<typeof getSupabasePool>,
   periods: string[],
   branch: string = INDUSTRY_BRANCH,
@@ -387,7 +376,7 @@ async function obterConsumoIndustria(
           FROM public.operational_source_rows r
           JOIN public.operational_import_batches b ON b.id = r.batch_id
          WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
-           AND r.branch_code = $1 AND r.product_code IS NOT NULL
+           AND r.branch_code = $3 AND r.product_code IS NOT NULL
            AND r.normalized_payload->>'totalValue' ~ '${REGEX_NUM}'
          GROUP BY 1, 2, 3, 4
      ),
@@ -425,7 +414,9 @@ async function obterConsumoIndustria(
   const consumo = new Map<string, number>();
   for (const row of consumoRows.rows) {
     const valor = Number(row.consumo);
-    if (Number.isFinite(valor)) consumo.set(`${row.branch}|${row.agregado}|${row.period}`, valor);
+    if (Number.isFinite(valor)) {
+      for (const code of codeVariants(row.agregado)) consumo.set(`${row.branch.trim().padStart(4, "0")}|${code}|${row.period}`, valor);
+    }
   }
   const estoqueRows = await portalPool.query<{ branch: string; agregado: string; saldo: string }>(
     `WITH fotos AS (
@@ -436,7 +427,7 @@ async function obterConsumoIndustria(
           FROM public.operational_source_rows r
           JOIN public.operational_import_batches b ON b.id = r.batch_id
          WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
-           AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
+           AND r.branch_code = $1 AND r.product_code IS NOT NULL
            AND r.normalized_payload->>'totalValue' ~ '${REGEX_NUM}'
          GROUP BY 1, 2, 3
      ),
@@ -462,11 +453,11 @@ async function attachIndustryMonthlyConsumption(
   if (!periods.length) return new Map();
   const { consumo, estoqueAgregado } = await obterConsumoIndustria(portalPool, periods);
   for (const item of result.items ?? []) {
-    const branch = item.filial ?? INDUSTRY_BRANCH;
+    const branch = String(item.filial ?? INDUSTRY_BRANCH).trim().padStart(4, "0");
     const aggregateVariants = [...codeVariants(item.cod_agregado), ...codeVariants(item.codigo)];
     for (const month of item.meses) {
       const period = normalizeSalesPeriod(String(month.period ?? ""));
-      if (!period || month.valor_consumo != null) continue;
+      if (!period) continue;
       const value = aggregateVariants.map(aggregate => consumo.get(`${branch}|${aggregate}|${period}`)).find(item => item != null);
       month.valor_consumo = value ?? null;
     }
@@ -564,9 +555,6 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   if (params.segment !== "industry" && Array.isArray(result.items)) {
     result.items = result.items.filter((item: { filial?: string }) => !FILIAIS_EXCLUIDAS_AUTOPECAS.has(String(item.filial ?? "")));
   }
-  const estoqueIndustria = params.segment === "industry"
-    ? await attachIndustryMonthlyConsumption(portalPool, result)
-    : null;
   try {
     await attachSb9MonthlyCosts(portalPool, result, { periodoInicio: params.periodoInicio, periodoFim: params.periodoFim, filial });
   } catch (error) {
@@ -574,6 +562,25 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     // para diagnóstico, enquanto a consulta antiga continua sendo apresentada.
     console.warn("[Custos] SB9 não incorporada à evolução", error instanceof Error ? error.message : error);
   }
+  const periodosDisponiveis = (result.periodos ?? []).map((entry: { period: string }) => normalizeSalesPeriod(String(entry.period))).filter((period: string | null): period is string => period != null).sort();
+  const inicioEfetivo = normalizeSalesPeriod(params.periodoInicio ?? "") ?? periodosDisponiveis[0];
+  const fimEfetivo = normalizeSalesPeriod(params.periodoFim ?? "") ?? periodosDisponiveis[periodosDisponiveis.length - 1];
+  const calendario = inicioEfetivo && fimEfetivo ? materializeCalendarMonths([inicioEfetivo, fimEfetivo]) : [];
+  result.periodos = calendario.map(period => ({ period }));
+  for (const item of result.items ?? []) {
+    const porMes = new Map<string, Record<string, unknown>>();
+    for (const month of item.meses ?? []) {
+      const period = normalizeSalesPeriod(String(month.period ?? ""));
+      if (period) porMes.set(period, { ...month, period });
+    }
+    item.meses = calendario.map(period => porMes.get(period) ?? { period, custo_medio: null });
+  }
+  if (params.segment !== "industry") {
+    result.items = (result.items ?? []).filter((item: { filial?: string }) => !FILIAIS_EXCLUIDAS_AUTOPECAS.has(String(item.filial ?? "").padStart(4, "0")));
+  }
+  const estoqueIndustria = params.segment === "industry"
+    ? await attachIndustryMonthlyConsumption(portalPool, result)
+    : null;
   if (params.segment !== "industry") {
     await attachAutoPartsMonthlySales(businessPool, result);
     await attachAutoPartsEstoque(businessPool, result);
@@ -624,7 +631,8 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
   // B-v15: ITEM SEM CURVA NÃO CALCULA E NÃO MOSTRA (regra do usuário).
   // Aplicado nos dois segmentos: se a exportação está correta, não haverá
   // item sem curva; se aparecer, é anomalia real que deve ficar visível.
-  const itemsComCurva = itemsComBase.filter(item => Boolean(item.curve));
+  const curvasPermitidas = params.segment === "industry" ? ["A", "B", "C"] : ["A", "B", "C", "D", "E"];
+  const itemsComCurva = itemsComBase.filter(item => curvasPermitidas.includes(item.curve ?? ""));
   const relatorio = analisado.benchmarkReport as unknown as Record<string, unknown>;
   relatorio.ipcaPercent = ipcaPercent;
   relatorio.dolarVariationPercent = dolarVariationPercent;
@@ -654,20 +662,24 @@ function filtrarPorDescricao(items: ItemInterno[], descricao?: string, searchTyp
     return termos.every(t => texto.includes(t) || codigo.includes(t));
   });
 }
-// Custo total: consumo/venda do período × custo médio, deduplicado por
-// filial|agregado|mês (o consumo é por AGREGADO — não soma em dobro).
-function calcularCustoTotal(items: ItemInterno[], segment: CostEvolutionSegment): number {
-  const porChave = new Map<string, number>();
+// Custo total: soma item a item e mês a mês de consumo/venda × custo médio.
+// A quantidade mensal do agregado é aplicada a cada item do agregado, conforme
+// a regra de negócio da análise; não deduplicar por filial|agregado|mês.
+export function calcularCustoTotal(items: ItemInterno[], segment: CostEvolutionSegment): number {
+  let total = 0;
+  const consumoIndustrialContado = new Set<string>();
   for (const item of items) {
-    const chaveItem = `${item.filial ?? ""}|${(item.cod_agregado ?? item.codigo).trim()}`;
     for (const mes of item.meses) {
       const valor = consumoMensalEmReais(mes, segment);
       if (valor == null) continue;
-      const chave = `${chaveItem}|${mes.period}`;
-      if (!porChave.has(chave)) porChave.set(chave, valor);
+      if (segment === "industry") {
+        const chave = `${item.filial ?? INDUSTRY_BRANCH}|${item.cod_agregado ?? item.codigo}|${mes.period}`;
+        if (consumoIndustrialContado.has(chave)) continue;
+        consumoIndustrialContado.add(chave);
+      }
+      total += valor;
     }
   }
-  const total = Array.from(porChave.values()).reduce((acc, valor) => acc + valor, 0);
   return Number(total.toFixed(2));
 }
 export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?: string; limitesAlerta?: Partial<LimitesAlerta> | null }) {
@@ -681,8 +693,8 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
   const contagemAcima: Record<string, number> = {};
   const impactoPorCurva: Record<string, number> = {};
   const consumoPorCurva: Record<string, number> = {};
-  const chavesConsumoCurva: Record<string, Set<string>> = {};
   const itensPorCurva: Record<string, number> = {};
+  const consumoIndustrialContado = new Set<string>();
   for (const item of filtrados) {
     const valores = serieCusto(item, periods).filter((valor): valor is number => valor != null);
     if (valores.length) {
@@ -701,19 +713,29 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
       impactoPorCurva[item.curve] = (impactoPorCurva[item.curve] ?? 0) + item.impactoEstimado;
       somaImpacto += item.impactoEstimado;
     }
-    const chaves = chavesConsumoCurva[item.curve] ?? (chavesConsumoCurva[item.curve] = new Set());
-    const chaveItem = `${item.filial ?? ""}|${(item.cod_agregado ?? item.codigo).trim()}`;
     for (const mes of item.meses) {
       const valor = consumoMensalEmReais(mes, segment);
       if (valor == null) continue;
-      const chave = `${chaveItem}|${mes.period}`;
-      if (!chaves.has(chave)) {
-        chaves.add(chave);
-        consumoPorCurva[item.curve] = (consumoPorCurva[item.curve] ?? 0) + valor;
+      if (segment === "industry") {
+        const chave = `${item.filial ?? INDUSTRY_BRANCH}|${item.cod_agregado ?? item.codigo}|${mes.period}`;
+        if (consumoIndustrialContado.has(chave)) continue;
+        consumoIndustrialContado.add(chave);
       }
+      consumoPorCurva[item.curve] = (consumoPorCurva[item.curve] ?? 0) + valor;
     }
   }
-  const variacaoPonderada = custoTotal > 0 ? Number(((somaImpacto / custoTotal) * 100).toFixed(4)) : null;
+  const ponderado = calculateWeightedMonthlyCost({
+    segment,
+    periods,
+    aggregates: filtrados.filter(item => Boolean(item.curve)).map(item => ({
+      branch: item.filial ?? "",
+      aggregateCode: item.cod_agregado ?? item.codigo,
+      curve: item.curve as WeightedCurve,
+      monthlyCosts: Object.fromEntries(item.meses.map(mes => [mes.period, mes.custo_medio])),
+      monthlyWeights: Object.fromEntries(item.meses.map(mes => [mes.period, segment === "industry" ? mes.valor_consumo : mes.quantidade_vendida])),
+    })),
+  });
+  const variacaoPonderada = ponderado.total.weight > 0 ? Number(ponderado.total.weightedVariationPercent.toFixed(4)) : null;
   const byCurveNovo: Record<string, { itemCount: number; itemsWithBase: number; averageVariationPercent: number | null; weightedVariationPercent?: number | null; estimatedImpact: number | null; highAlerts: number }> = {};
   for (const curve of Object.keys(itensPorCurva)) {
     const consumo = consumoPorCurva[curve] ?? 0;
@@ -722,7 +744,7 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
       itemCount: itensPorCurva[curve],
       itemsWithBase: itensPorCurva[curve],
       averageVariationPercent: null,
-      weightedVariationPercent: consumo > 0 ? Number(((impacto / consumo) * 100).toFixed(4)) : null,
+      weightedVariationPercent: (ponderado.byCurve[curve]?.weight ?? 0) > 0 ? Number(ponderado.byCurve[curve].weightedVariationPercent.toFixed(4)) : null,
       estimatedImpact: Number(impacto.toFixed(2)),
       highAlerts: contagemAcima[curve] ?? 0,
     };
