@@ -7,12 +7,17 @@ it('mantém o pool de custos separado do pool de autenticação, sem abrir conex
   try {
     const auth = getSupabasePool();
     const cost = getCostSourcePool();
+    const industry = getCostSourcePool("industry");
+    expect(industry).not.toBe(cost);
+    expect(industry).not.toBe(auth);
+    expect(industry.options.application_name).toBe("portal-industry-sources");
     expect(cost).not.toBe(auth);
     expect(getCostSourcePool()).toBe(cost);
     expect(cost.options.application_name).toBe('portal-cost-sources');
     expect(cost.options.connectionString).toBe(auth.options.connectionString);
     expect(cost.totalCount).toBe(0);
     expect(auth.totalCount).toBe(0);
+    await industry.end();
     await cost.end();
     await auth.end();
   } finally {
