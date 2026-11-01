@@ -297,6 +297,7 @@ async function attachSb9MonthlyCosts(
           and r.unit_value is not null
           and ($1::text is null or r.event_date >= to_date($1, 'YYYYMM'))
           and ($2::text is null or r.event_date < to_date($2, 'YYYYMM') + interval '1 month')
+          and ($3::text is null or trim(r.branch_code) = $3)
         group by trim(r.branch_code), trim(r.product_code), to_char(r.event_date, 'YYYYMM')
      ), sb1 as (
        select distinct on (trim(r.product_code))
@@ -318,8 +319,8 @@ async function attachSb9MonthlyCosts(
             s.cost
        from sb9 s
        left join sb1 on sb1.product = s.product
-      order by s.branch, aggregate, s.product, s.period`,
-    [inicio, fim],
+     order by s.branch, aggregate, s.product, s.period`,
+    [inicio, fim, params.filial?.trim() || null],
   );
 
   if (!rows.rows.length) return;
@@ -367,8 +368,9 @@ const cacheConsumoIndustria = new Map<string, ConsumoIndustria>();
 async function obterConsumoIndustria(
   portalPool: ReturnType<typeof getSupabasePool>,
   periods: string[],
+  branch: string = INDUSTRY_BRANCH,
 ): Promise<{ consumo: Map<string, number>; estoqueAgregado: Map<string, number> }> {
-  const chave = `${periods[0]}:${periods[periods.length - 1]}`;
+  const chave = `${branch}:${periods[0]}:${periods[periods.length - 1]}`;
   const existente = cacheConsumoIndustria.get(chave);
   if (existente && Date.now() - existente.gravadoEm < CACHE_CONSUMO_TTL_MS) {
     return { consumo: existente.consumo, estoqueAgregado: existente.estoqueAgregado };
@@ -385,7 +387,7 @@ async function obterConsumoIndustria(
           FROM public.operational_source_rows r
           JOIN public.operational_import_batches b ON b.id = r.batch_id
          WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
-           AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
+           AND r.branch_code = $1 AND r.product_code IS NOT NULL
            AND r.normalized_payload->>'totalValue' ~ '${REGEX_NUM}'
          GROUP BY 1, 2, 3, 4
      ),
@@ -398,7 +400,7 @@ async function obterConsumoIndustria(
           FROM public.operational_source_rows r
           JOIN public.operational_import_batches b ON b.id = r.batch_id
          WHERE b.status = 'processed' AND b.source_kind = 'ENTRADA_NF'
-           AND r.branch_code IS NOT NULL AND r.product_code IS NOT NULL
+           AND r.branch_code = $3 AND r.product_code IS NOT NULL
            AND r.normalized_payload->>'quantity' ~ '${REGEX_NUM}'
            AND r.normalized_payload->>'itemValue' ~ '${REGEX_NUM}'
          GROUP BY 1, 2, 3, 4
@@ -418,7 +420,7 @@ async function obterConsumoIndustria(
       WHERE s.saldo_anterior IS NOT NULL
         AND s.period BETWEEN $1 AND $2
       GROUP BY s.branch_code, s.agregado, s.period`,
-    [inicio, fim],
+    [inicio, fim, branch],
   );
   const consumo = new Map<string, number>();
   for (const row of consumoRows.rows) {
@@ -442,6 +444,7 @@ async function obterConsumoIndustria(
      SELECT f.branch_code AS branch, f.agregado, SUM(f.saldo) AS saldo
        FROM fotos f JOIN ultimo u ON f.period = u.period
       GROUP BY f.branch_code, f.agregado`,
+    [branch],
   );
   const estoqueAgregado = new Map<string, number>();
   for (const row of estoqueRows.rows) {
