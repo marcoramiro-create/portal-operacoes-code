@@ -30,4 +30,14 @@ describe("cost curve lookup", () => {
     expect(findCostCurve(lookup, "0105", "3545")).toBe("A");
     expect(findCostCurve(lookup, "0105", "03545-MGT")).toBeUndefined();
   });
+
+  it("keeps the most recent valid historical curve for the same branch and code", () => {
+    const lookup = buildCostCurveLookup([
+      { code: "899", branchCode: "0101", curve: "C" },
+      { code: "00899", branchCode: "0101", curve: "D" },
+    ]);
+
+    expect(findCostCurve(lookup, "0101", "00899")).toBe("D");
+    expect(findCostCurve(lookup, "0101", "899")).toBe("D");
+  });
 });

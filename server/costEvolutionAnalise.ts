@@ -472,21 +472,17 @@ async function getCurrentCurveLookup(
     try {
       // A coluna a.curve é o enum inventory_curve; cast ::text obrigatório.
       const result = await businessPool.query<{ code: string; codeOriginal: string | null; branchCode: string; curve: string }>(
-        `select trim(a.code) as code,
+        `select distinct on (trim(a.branch), trim(a.code))
+                trim(a.code) as code,
                 nullif(trim(a."codeOriginal"), '') as "codeOriginal",
                 trim(a.branch) as "branchCode",
                 trim(a.curve::text) as curve
            from public."inventoryAnalytics" a
            join public."protheusImports" i on i.id = a."importId"
-          where i.id = (
-            select latest.id
-              from public."protheusImports" latest
-             where latest.status = 'approved'
-             order by latest."importedAt" desc, latest.id desc
-             limit 1
-          )
+          where i.status = 'approved'
             and ($1::text is null or trim(a.branch) = $1)
-            and a.curve::text in ('A', 'B', 'C', 'D', 'E')`,
+            and a.curve::text in ('A', 'B', 'C', 'D', 'E')
+          order by trim(a.branch), trim(a.code), i."importedAt" desc, i.id desc, a.id desc`,
         [branch],
       );
       for (const row of result.rows) {
