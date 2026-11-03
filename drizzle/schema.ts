@@ -1,4 +1,4 @@
-import { date, decimal, integer, jsonb, pgEnum, pgTable, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
+import { boolean, date, decimal, index, integer, jsonb, pgEnum, pgTable, primaryKey, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
 export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]);
 export const stockMovementTypeEnum = pgEnum("stock_movement_type", ["entrada", "saida"]);
@@ -106,6 +106,41 @@ export const inventoryAnalytics = pgTable(
   },
   (table) => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
 );
+export const purchaseSalesMonthlyVersions = pgTable(
+  "purchase_sales_monthly_versions",
+  {
+    id: uuid("id").primaryKey(),
+    status: varchar("status", { length: 16 }).notNull(),
+    sourceFingerprint: varchar("source_fingerprint", { length: 64 }).notNull(),
+    sourceManifest: jsonb("source_manifest").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    sourceRows: integer("source_rows").notNull().default(0),
+    factRows: integer("fact_rows").notNull().default(0),
+    minPeriod: varchar("min_period", { length: 6 }),
+    maxPeriod: varchar("max_period", { length: 6 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    error: varchar("error", { length: 2000 }),
+  },
+  table => [index("purchase_sales_monthly_versions_ready_idx").on(table.status, table.publishedAt)],
+);
+export const purchaseSalesMonthlyFacts = pgTable(
+  "purchase_sales_monthly_facts",
+  {
+    versionId: uuid("version_id").notNull().references(() => purchaseSalesMonthlyVersions.id, { onDelete: "cascade" }),
+    branchCode: varchar("branch_code", { length: 24 }).notNull(),
+    salesCode: varchar("sales_code", { length: 120 }).notNull(),
+    period: varchar("period", { length: 6 }).notNull(),
+    quantity: decimal("quantity", { precision: 24, scale: 6 }).notNull(),
+    sourceImportId: integer("source_import_id").notNull().references(() => protheusImports.id),
+    sourceRowId: integer("source_row_id").notNull().references(() => inventoryAnalytics.id),
+    sourceImportedAt: timestamp("source_imported_at", { withTimezone: true }).notNull(),
+  },
+  table => [primaryKey({ name: "purchase_sales_monthly_facts_pkey", columns: [table.versionId, table.branchCode, table.salesCode, table.period] })],
+);
+export const purchaseSalesMonthlyHead = pgTable("purchase_sales_monthly_head", {
+  singleton: boolean("singleton").primaryKey().default(true),
+  versionId: uuid("version_id").notNull().references(() => purchaseSalesMonthlyVersions.id),
+});
 export const costEvolutionImports = pgTable("costEvolutionImports", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   segment: costEvolutionSegmentEnum("segment").notNull(),

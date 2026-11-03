@@ -110,7 +110,7 @@ export function normalizeCostSalesPeriod(value: unknown): string | null {
   return month ? validPeriod(year, month) : null;
 }
 
-function parseQuantity(value: unknown): number | null {
+export function parseCostSalesQuantity(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
   const raw = value.trim();
@@ -174,7 +174,7 @@ export function buildCostSalesHistoryIndex(rows: CostSalesHistoryRow[]): CostSal
 
     for (const [rawPeriod, rawValue] of Object.entries(row.salesMonths)) {
       const period = normalizeCostSalesPeriod(rawPeriod);
-      const value = parseQuantity(rawValue);
+      const value = parseCostSalesQuantity(rawValue);
       if (!period || value == null) continue;
 
       for (const code of aliases) {
