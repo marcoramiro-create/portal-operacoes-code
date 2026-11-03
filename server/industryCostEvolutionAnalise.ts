@@ -29,6 +29,7 @@ import { calculateWeightedMonthlyCost, materializeCalendarMonths, type WeightedC
 import { buildCostSalesHistoryIndex, getCostSalesHistoryQuantity, normalizeCostSalesPeriod, type CostSalesHistoryRow } from "./costSalesHistory";
 import { buildCostCurveLookup } from "./costCurveLookup";
 import { addLatestHistoricalIndustryCurves } from "./costCurveHistory";
+import { filterCostEvolutionItems, scopeCostEvolutionItems, typedAggregateSearch } from "./costEvolutionItemFilter";
 import { garantirIndicesEconomicos, getIndicesEconomicos } from "./economicIndices";
 type CostEvolutionSegment = "auto_parts" | "industry";
 const INDUSTRY_BRANCH = "0105";
@@ -248,21 +249,22 @@ export async function attachSb9MonthlyCosts(
   const inicio = normalizeSalesPeriod(params.periodoInicio ?? "") ?? null;
   const fim = normalizeSalesPeriod(params.periodoFim ?? "") ?? null;
   // Catálogo separado, sem DISTINCT/ORDER BY sobre toda a tabela operacional.
-  const catalog = await portalPool.query<{ product: string; aggregate: string | null; importedAt: Date | string; sourceRow: number }>(
+  const catalog = await portalPool.query<{ product: string; aggregate: string | null; importedAt: Date | string; sourceRow: number; description?: string | null }>(
     `select trim(r.product_code) as product,
             nullif(trim(r.aggregate_product_code), '') as aggregate,
-            b.imported_at as "importedAt", r.source_row_number as "sourceRow"
+            b.imported_at as "importedAt", r.source_row_number as "sourceRow",
+            nullif(trim(r.normalized_payload->>'description'), '') as description
        from public.operational_import_batches b
        join public.operational_source_rows r on r.batch_id = b.id
       where b.status = 'processed' and b.source_kind = 'SB1'
         and r.product_code is not null`,
   );
-  const aggregates = new Map<string, { code: string | null; time: number; sourceRow: number }>();
+  const aggregates = new Map<string, { code: string | null; time: number; sourceRow: number; description: string }>();
   for (const row of catalog.rows) {
     const time = new Date(row.importedAt).getTime();
     const current = aggregates.get(row.product);
     if (!current || time > current.time || (time === current.time && row.sourceRow > current.sourceRow)) {
-      aggregates.set(row.product, { code: row.aggregate, time, sourceRow: row.sourceRow });
+      aggregates.set(row.product, { code: row.aggregate, time, sourceRow: row.sourceRow, description: row.description?.trim() || "" });
     }
   }
   let selectedProducts: string[] | null = null;
@@ -323,13 +325,18 @@ export async function attachSb9MonthlyCosts(
     const period = normalizeSalesPeriod(row.period);
     const observedCost = Number(row.cost);
     if (!period || !Number.isFinite(observedCost)) continue;
-    periods.add(period);
     const aggregate = aggregates.get(row.product)?.code ?? row.product;
+    if (params.codAgregado?.trim() && aggregate !== params.codAgregado.trim()) continue;
+    periods.add(period);
     let item = findItem(row.branch, row.product);
     if (!item) {
-      item = { filial: row.branch, codigo: row.product, cod_agregado: aggregate, descricao: row.product, meses: [] };
+      item = { filial: row.branch, codigo: row.product, cod_agregado: aggregate, descricao: aggregates.get(row.product)?.description || "", meses: [] };
       items.push(item);
       indexarProduto(item);
+    }
+    const catalogDescription = aggregates.get(row.product)?.description;
+    if (catalogDescription && (!item.descricao?.trim() || item.descricao.trim() === item.codigo)) {
+      item.descricao = catalogDescription;
     }
     let costs = monthlyCost.get(item);
     if (!costs) { costs = new Map(); monthlyCost.set(item, costs); }
@@ -483,6 +490,8 @@ type ParamsBase = {
   descricao?: string;
 };
 async function carregarBase(params: ParamsBase, limites: LimitesAlerta) {
+  const typedAggregate = !params.codAgregado?.trim() ? typedAggregateSearch(params.descricao) : null;
+  if (typedAggregate) params = { ...params, codAgregado: typedAggregate, descricao: undefined };
   const businessPool = getBusinessPool();
   const portalPool = getCostSourcePool(params.segment ?? "auto_parts");
   const filial = params.segment === "industry" && !params.filial?.trim() ? INDUSTRY_BRANCH : (params.filial ?? null);
@@ -502,6 +511,7 @@ async function carregarBase(params: ParamsBase, limites: LimitesAlerta) {
     // Na Indústria, não apresentar como completo um resultado cuja fonte falhou.
     throw new Error(`BASE_INDUSTRIAL_INCOMPLETA: falha ao ler custos SB9: ${error instanceof Error ? error.message : error}`);
   }
+  result.items = scopeCostEvolutionItems(result.items ?? [], { codAgregado: params.codAgregado, filial });
   const periodosDisponiveis = (result.periodos ?? []).map((entry: { period: string }) => normalizeSalesPeriod(String(entry.period))).filter((period: string | null): period is string => period != null).sort();
   const inicioEfetivo = normalizeSalesPeriod(params.periodoInicio ?? "") ?? periodosDisponiveis[0];
   const fimEfetivo = normalizeSalesPeriod(params.periodoFim ?? "") ?? periodosDisponiveis[periodosDisponiveis.length - 1];
@@ -600,21 +610,6 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     basesEmAndamento.delete(chave);
   }
 }
-// Busca multi-termo: TODAS as palavras devem aparecer na descrição OU no código
-// do agregado ("pneu 600" acha "PNEU DIAGONAL 600/50-22,5").
-function filtrarPorDescricao(items: ItemInterno[], descricao?: string, searchType?: string): ItemInterno[] {
-  const termo = (descricao ?? "").trim().toLowerCase();
-  if (!termo) return items;
-  const tipo = searchType ?? "contem";
-  if (tipo === "inicia") return items.filter(item => (item.descricao ?? "").toLowerCase().startsWith(termo));
-  if (tipo === "termina") return items.filter(item => (item.descricao ?? "").toLowerCase().endsWith(termo));
-  const termos = termo.split(/\s+/).filter(Boolean);
-  return items.filter(item => {
-    const texto = (item.descricao ?? "").toLowerCase();
-    const codigo = String(item.cod_agregado ?? "").toLowerCase();
-    return termos.every(t => texto.includes(t) || codigo.includes(t));
-  });
-}
 // Custo total: soma item a item e mês a mês de consumo/venda × custo médio.
 // A quantidade mensal do agregado é aplicada a cada item do agregado, conforme
 // a regra de negócio da análise; não deduplicar por filial|agregado|mês.
@@ -639,7 +634,7 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
   const limites = sanitizarLimites(params.limitesAlerta);
   const { analisado, items, periods, limites: limitesAplicados } = await obterBase(params, limites);
   const segment = params.segment ?? "auto_parts";
-  const filtrados = filtrarPorDescricao(items, params.descricao, params.searchType);
+  const filtrados = filterCostEvolutionItems(items, params.descricao, params.searchType);
   const custoTotal = calcularCustoTotal(filtrados, segment);
   let comCusto = 0, alta = 0, reducao = 0;
   let somaImpacto = 0;
@@ -731,7 +726,7 @@ export async function getCostEvolutionItens(params: ParamsBase & {
 }) {
   const limites = sanitizarLimites(params.limitesAlerta);
   const { items } = await obterBase(params, limites);
-  let lista = filtrarPorDescricao(items, params.descricao, params.searchType);
+  let lista = filterCostEvolutionItems(items, params.descricao, params.searchType);
   if (params.curvaFiltro) lista = lista.filter(item => item.curve === params.curvaFiltro);
   const criterio = params.criterio ?? "todos";
   if (criterio === "sem-base") lista = lista.filter(item => item.costStatus === "SEM_BASE_CUSTO");

@@ -232,7 +232,13 @@ async function compareAutoRuntime(
   const candidateResult = await candidate[method](input as never);
   const candidateTrace = traceSnapshot();
   expect(candidateResult).toEqual(baselineResult);
-  expect(candidateTrace).toEqual(baselineTrace);
+
+  // Somente a coluna descritiva SB1 foi acrescentada; filtros, parâmetros e
+  // resultados financeiros do baseline continuam sendo comparados.
+  const comparable = (calls: SqlTrace) => calls.map(call => ({ ...call, sql: call.sql
+    .replace(/,\s*nullif\(trim\(r\.normalized_payload->>'description'\), ''\) as description/g, "")
+    .replace(/\s+/g, " ").trim() }));
+  expect(comparable(candidateTrace)).toEqual(comparable(baselineTrace));
   return { baselineResult, baselineTrace };
 }
 

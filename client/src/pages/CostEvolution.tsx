@@ -264,13 +264,13 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     pagina: grid.pagina,
     itensPorPagina: 50,
   }), [input, grid]);
-  const itens = trpc.costEvolution.itensEvolutivos.useQuery(itensInput, { retry: false, enabled: runAnalysis && grid.open, placeholderData: prev => prev });
+  const itens = trpc.costEvolution.itensEvolutivos.useQuery(itensInput, { retry: false, enabled: runAnalysis && grid.open });
   const chartItems = trpc.costEvolution.itensEvolutivos.useQuery({ ...input, criterio: "todos" as const, ordenacao: "codigo" as const, direcao: "asc" as const, pagina: 1, itensPorPagina: 200 }, { retry: false, enabled: runAnalysis && Boolean(applied.codAgregado) });
   // B-v12: família do agregado — TODOS os itens do agregado do item clicado,
   // em qualquer filial, listados dentro do card de detalhe.
   const familia = trpc.costEvolution.itensEvolutivos.useQuery(
     { ...input, descricao: undefined, filial: undefined, codAgregado: agregadoDetalhe ?? undefined, criterio: "todos" as const, ordenacao: "codigo" as const, direcao: "asc" as const, pagina: 1, itensPorPagina: 100 },
-    { retry: false, enabled: runAnalysis && Boolean(expandido && agregadoDetalhe), placeholderData: prev => prev },
+    { retry: false, enabled: runAnalysis && Boolean(expandido && agregadoDetalhe) },
   );
   const abrirDetalhe = (item: ItemRow) => {
     const chave = chaveItem(item);

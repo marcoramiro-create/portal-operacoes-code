@@ -28,7 +28,7 @@ import { calculateWeightedMonthlyCost, materializeCalendarMonths, type WeightedC
 import { buildCostSalesHistoryIndex, getCostSalesHistoryQuantity, normalizeCostSalesPeriod, type CostSalesHistoryRow } from "./costSalesHistory";
 import { buildCostCurveLookup } from "./costCurveLookup";
 import { addLatestHistoricalCostCurves } from "./costCurveHistory";
-import { filterCostEvolutionItems } from "./costEvolutionItemFilter";
+import { filterCostEvolutionItems, scopeCostEvolutionItems, typedAggregateSearch } from "./costEvolutionItemFilter";
 import { garantirIndicesEconomicos, getIndicesEconomicos } from "./economicIndices";
 type CostEvolutionSegment = "auto_parts" | "industry";
 const INDUSTRY_BRANCH = "0105";
@@ -243,28 +243,35 @@ async function attachAutoPartsEstoque(
 export async function attachSb9MonthlyCosts(
   portalPool: ReturnType<typeof getSupabasePool>,
   result: { periodos?: Array<{ period: string }>; items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; descricao?: string; meses: Array<Record<string, unknown>> }> },
-  params: { periodoInicio?: string; periodoFim?: string; filial?: string | null },
+  params: { periodoInicio?: string; periodoFim?: string; filial?: string | null; codAgregado?: string },
 ) {
   const inicio = normalizeSalesPeriod(params.periodoInicio ?? "") ?? null;
   const fim = normalizeSalesPeriod(params.periodoFim ?? "") ?? null;
   // Catálogo separado, sem DISTINCT/ORDER BY sobre toda a tabela operacional.
-  const catalog = await portalPool.query<{ product: string; aggregate: string | null; importedAt: Date | string; sourceRow: number }>(
+  const catalog = await portalPool.query<{ product: string; aggregate: string | null; importedAt: Date | string; sourceRow: number; description?: string | null }>(
     `select trim(r.product_code) as product,
             nullif(trim(r.aggregate_product_code), '') as aggregate,
-            b.imported_at as "importedAt", r.source_row_number as "sourceRow"
+            b.imported_at as "importedAt", r.source_row_number as "sourceRow",
+            nullif(trim(r.normalized_payload->>'description'), '') as description
        from public.operational_import_batches b
        join public.operational_source_rows r on r.batch_id = b.id
       where b.status = 'processed' and b.source_kind = 'SB1'
         and r.product_code is not null`,
   );
-  const aggregates = new Map<string, { code: string | null; time: number; sourceRow: number }>();
+  const aggregates = new Map<string, { code: string | null; time: number; sourceRow: number; description: string }>();
   for (const row of catalog.rows) {
     const time = new Date(row.importedAt).getTime();
     const current = aggregates.get(row.product);
     if (!current || time > current.time || (time === current.time && row.sourceRow > current.sourceRow)) {
-      aggregates.set(row.product, { code: row.aggregate, time, sourceRow: row.sourceRow });
+      aggregates.set(row.product, { code: row.aggregate, time, sourceRow: row.sourceRow, description: row.description?.trim() || "" });
     }
   }
+  const requestedAggregate = params.codAgregado?.trim();
+  const requestedProducts = requestedAggregate ? [...new Set([
+    ...[...aggregates].filter(([product, metadata]) => (metadata.code || product) === requestedAggregate).map(([product]) => product),
+    ...(result.items ?? []).filter(item => (item.cod_agregado?.trim() || item.codigo.trim()) === requestedAggregate).map(item => item.codigo.trim()),
+  ])] : null;
+  const requestedProductSet = requestedProducts ? new Set(requestedProducts) : null;
   const records = streamCostSourceRows<{ branch: string; product: string; period: string; cost: string }>(
     portalPool,
     `select trim(r.branch_code) as branch, trim(r.product_code) as product,
@@ -280,8 +287,9 @@ export async function attachSb9MonthlyCosts(
         and r.event_date is not null and r.unit_value is not null
         and ($1::text is null or r.event_date >= to_date($1, 'YYYYMM'))
         and ($2::text is null or r.event_date < to_date($2, 'YYYYMM') + interval '1 month')
-        and ($3::text is null or trim(r.branch_code) = $3)`,
-    [inicio, fim, params.filial?.trim() || null],
+        and ($3::text is null or trim(r.branch_code) = $3)
+        ${requestedProducts ? 'and trim(r.product_code) = any($4::text[])' : ''}`,
+    requestedProducts ? [inicio, fim, params.filial?.trim() || null, requestedProducts] : [inicio, fim, params.filial?.trim() || null],
   );
   const periods = new Set(
     ((result.periodos ?? []) as Array<{ period: string }>)
@@ -312,13 +320,20 @@ export async function attachSb9MonthlyCosts(
     const period = normalizeSalesPeriod(row.period);
     const observedCost = Number(row.cost);
     if (!period || !Number.isFinite(observedCost)) continue;
-    periods.add(period);
     const aggregate = aggregates.get(row.product)?.code ?? row.product;
+    // Guarda anterior ao matching de aliases: um item de outro agregado não
+    // pode sobrescrever o custo de um membro legítimo via código parecido.
+    if (requestedProductSet && !requestedProductSet.has(row.product)) continue;
+    periods.add(period);
     let item = findItem(row.branch, row.product);
     if (!item) {
-      item = { filial: row.branch, codigo: row.product, cod_agregado: aggregate, descricao: row.product, meses: [] };
+      item = { filial: row.branch, codigo: row.product, cod_agregado: aggregate, descricao: aggregates.get(row.product)?.description || "", meses: [] };
       items.push(item);
       indexarProduto(item);
+    }
+    const catalogDescription = aggregates.get(row.product)?.description;
+    if (catalogDescription && (!item.descricao?.trim() || item.descricao.trim() === item.codigo)) {
+      item.descricao = catalogDescription;
     }
     let costs = monthlyCost.get(item);
     if (!costs) { costs = new Map(); monthlyCost.set(item, costs); }
@@ -549,6 +564,8 @@ type ParamsBase = {
   descricao?: string;
 };
 async function carregarBase(params: ParamsBase, limites: LimitesAlerta) {
+  const typedAggregate = !params.codAgregado?.trim() ? typedAggregateSearch(params.descricao) : null;
+  if (typedAggregate) params = { ...params, codAgregado: typedAggregate, descricao: undefined };
   const businessPool = getBusinessPool();
   const portalPool = getCostSourcePool();
   const filial = params.segment === "industry" && !params.filial?.trim() ? INDUSTRY_BRANCH : (params.filial ?? null);
@@ -563,12 +580,15 @@ async function carregarBase(params: ParamsBase, limites: LimitesAlerta) {
     result.items = result.items.filter((item: { filial?: string }) => !FILIAIS_EXCLUIDAS_AUTOPECAS.has(String(item.filial ?? "")));
   }
   try {
-    await attachSb9MonthlyCosts(portalPool, result, { periodoInicio: params.periodoInicio, periodoFim: params.periodoFim, filial });
+    await attachSb9MonthlyCosts(portalPool, result, { periodoInicio: params.periodoInicio, periodoFim: params.periodoFim, filial, codAgregado: params.codAgregado });
   } catch (error) {
     // A SB9 indisponível não pode derrubar a análise legada. O erro fica no log
     // para diagnóstico, enquanto a consulta antiga continua sendo apresentada.
     console.warn("[Custos] SB9 não incorporada à evolução", error instanceof Error ? error.message : error);
   }
+  // A SB9 acrescenta produtos depois do filtro SQL. Não permitir que esse
+  // enriquecimento reintroduza outras filiais/agregados nos cartões ou grid.
+  result.items = scopeCostEvolutionItems(result.items ?? [], { codAgregado: params.codAgregado, filial });
   const periodosDisponiveis = (result.periodos ?? []).map((entry: { period: string }) => normalizeSalesPeriod(String(entry.period))).filter((period: string | null): period is string => period != null).sort();
   const inicioEfetivo = normalizeSalesPeriod(params.periodoInicio ?? "") ?? periodosDisponiveis[0];
   const fimEfetivo = normalizeSalesPeriod(params.periodoFim ?? "") ?? periodosDisponiveis[periodosDisponiveis.length - 1];
