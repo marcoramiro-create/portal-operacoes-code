@@ -11,7 +11,7 @@ if [[ "$(pwd -P)" != "$ROOT" || ! -f "$ROOT/package.json" ]]; then
   echo "ERRO: execute somente de dentro do diretório físico de Homologação." >&2
   exit 1
 fi
-if [[ ! -x "$NODE" || ! -f "$TSX" || ! -r "$ENV_FILE" ]]; then
+if [[ ! -x "$NODE" || ! -f "$TSX" ]] || ! sudo -n test -r "$ENV_FILE"; then
   echo "ERRO: Node 22, tsx local ou arquivo de ambiente da Homologação indisponível." >&2
   exit 1
 fi
