@@ -12,6 +12,10 @@ export type PurchaseSalesSourceManifestEntry = {
   importedAt: string;
   rowCount: number;
 };
+type PurchaseSalesSourceState = {
+  revision: string;
+  imports: PurchaseSalesSourceManifestEntry[];
+};
 
 type SourceDbRow = {
   sourceImportId: number;
@@ -23,7 +27,7 @@ type SourceDbRow = {
   salesMonths: Record<string, unknown> | null;
 };
 
-function fingerprint(manifest: PurchaseSalesSourceManifestEntry[]): string {
+function fingerprint(manifest: PurchaseSalesSourceState): string {
   return createHash("sha256").update(JSON.stringify(manifest)).digest("hex");
 }
 
@@ -84,9 +88,11 @@ async function insertFactBatch(client: PoolClient, versionId: string, facts: Pur
 }
 
 async function* streamApprovedPurchaseRows(client: PoolClient): AsyncGenerator<PurchaseSalesSourceRow> {
-  await client.query("BEGIN READ ONLY");
-  await client.query("SET LOCAL statement_timeout = '90s'");
-  await client.query(
+  let committed = false;
+  try {
+    await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    await client.query("SET LOCAL statement_timeout = '90s'");
+    await client.query(
     `DECLARE portal_purchase_sales_cursor NO SCROLL CURSOR FOR
        select i.id as "sourceImportId",
               a.id as "sourceRowId",
@@ -101,8 +107,7 @@ async function* streamApprovedPurchaseRows(client: PoolClient): AsyncGenerator<P
           and a."salesMonths" is not null
           and a."salesMonths" <> '{}'::jsonb
         order by i.id, a.id`,
-  );
-  try {
+    );
     while (true) {
       const batch = await client.query<SourceDbRow>(`FETCH FORWARD ${FETCH_SIZE} FROM portal_purchase_sales_cursor`);
       if (!batch.rows.length) break;
@@ -120,30 +125,33 @@ async function* streamApprovedPurchaseRows(client: PoolClient): AsyncGenerator<P
     }
     await client.query("CLOSE portal_purchase_sales_cursor");
     await client.query("COMMIT");
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
+    committed = true;
+  } finally {
+    if (!committed) await client.query("ROLLBACK").catch(() => undefined);
   }
 }
 
-async function getApprovedSourceManifest(client: PoolClient): Promise<PurchaseSalesSourceManifestEntry[]> {
+async function getApprovedSourceManifest(client: Pick<Pool, "query">): Promise<PurchaseSalesSourceState> {
   const result = await client.query<{
     id: number;
     fileName: string;
     importedAt: Date | string;
     rowCount: number;
+    revision: string;
   }>(
-    `select i.id, i."fileName", i."importedAt", i."rowCount"
+    `select i.id, i."fileName", i."importedAt", i."rowCount", r.revision::text as revision
        from public."protheusImports" i
+       join public.purchase_sales_source_revision r on r.singleton = true
       where i.status = 'approved'
       order by i.id`,
   );
-  return result.rows.map(row => ({
-    id: Number(row.id),
-    fileName: row.fileName,
-    importedAt: importedAtText(row.importedAt),
-    rowCount: Number(row.rowCount),
-  }));
+  return {
+    revision: result.rows[0]?.revision ?? "none",
+    imports: result.rows.map(row => ({
+      id: Number(row.id), fileName: row.fileName,
+      importedAt: importedAtText(row.importedAt), rowCount: Number(row.rowCount),
+    })),
+  };
 }
 
 async function tableExists(client: PoolClient): Promise<boolean> {
@@ -180,23 +188,7 @@ export async function getPurchaseSalesMonthlyHead(pool: Pick<Pool, "query">): Pr
 export async function isPurchaseSalesMonthlySnapshotCurrent(pool: Pick<Pool, "query">): Promise<boolean> {
   const head = await getPurchaseSalesMonthlyHead(pool);
   if (!head || head.status !== "ready") return false;
-  const result = await pool.query<{
-    id: number;
-    fileName: string;
-    importedAt: Date | string;
-    rowCount: number;
-  }>(
-    `select i.id, i."fileName", i."importedAt", i."rowCount"
-       from public."protheusImports" i
-      where i.status = 'approved'
-      order by i.id`,
-  );
-  const manifest = result.rows.map(row => ({
-    id: Number(row.id),
-    fileName: row.fileName,
-    importedAt: importedAtText(row.importedAt),
-    rowCount: Number(row.rowCount),
-  }));
+  const manifest = await getApprovedSourceManifest(pool);
   return fingerprint(manifest) === head.sourceFingerprint;
 }
 
@@ -238,13 +230,17 @@ export async function rebuildPurchaseSalesMonthly(pool: Pool): Promise<{
   maxPeriod: string | null;
   sourceFingerprint: string;
 }> {
+  if ((pool.options?.max ?? 2) < 2) {
+    throw new Error("O rebuild exige pool próprio com capacidade mínima de duas conexões (leitura e escrita).");
+  }
   const lockClient = await pool.connect();
   let locked = false;
   let versionId: string | null = null;
   let factCount = 0;
+  let sourceRows = 0;
   let batch: PurchaseSalesMonthlyFact[] = [];
   const periodBounds = { min: "", max: "" };
-  let manifest: PurchaseSalesSourceManifestEntry[] = [];
+  let manifest: PurchaseSalesSourceState = { revision: "none", imports: [] };
   const sourceClient = await pool.connect().catch(async error => {
     lockClient.release();
     throw error;
@@ -262,8 +258,7 @@ export async function rebuildPurchaseSalesMonthly(pool: Pool): Promise<{
     locked = true;
 
     manifest = await getApprovedSourceManifest(lockClient);
-    if (!manifest.length) throw new Error("Não há cargas de Compras aprovadas para materializar.");
-    const actualSourceRows = manifest.reduce((sum, entry) => sum + entry.rowCount, 0);
+    if (!manifest.imports.length) throw new Error("Não há cargas de Compras aprovadas para materializar.");
     const sourceFingerprint = fingerprint(manifest);
     versionId = randomUUID();
     await lockClient.query(
@@ -273,7 +268,13 @@ export async function rebuildPurchaseSalesMonthly(pool: Pool): Promise<{
       [versionId, sourceFingerprint, JSON.stringify(manifest)],
     );
 
-    for await (const fact of materializePurchaseSalesFacts(streamApprovedPurchaseRows(sourceClient))) {
+    const countedRows = async function* () {
+      for await (const row of streamApprovedPurchaseRows(sourceClient)) {
+        sourceRows += 1;
+        yield row;
+      }
+    };
+    for await (const fact of materializePurchaseSalesFacts(countedRows())) {
       batch.push(fact);
       if (!periodBounds.min || fact.period < periodBounds.min) periodBounds.min = fact.period;
       if (!periodBounds.max || fact.period > periodBounds.max) periodBounds.max = fact.period;
@@ -295,9 +296,10 @@ export async function rebuildPurchaseSalesMonthly(pool: Pool): Promise<{
 
     await lockClient.query("BEGIN");
     try {
-      // Serializa a publicação com aprovações/arquivamentos concorrentes.
+      // O mesmo registro é atualizado pelos triggers das fontes. O bloqueio
+      // curto serializa commits de correções, aprovações e exclusões.
       await lockClient.query(
-        `select id from public."protheusImports" where status = 'approved' for share`,
+        `select public.lock_purchase_sales_source_revision()`,
       );
       const finalManifest = await getApprovedSourceManifest(lockClient);
       const finalFingerprint = fingerprint(finalManifest);
@@ -309,7 +311,7 @@ export async function rebuildPurchaseSalesMonthly(pool: Pool): Promise<{
             set status = 'ready', source_rows = $2, fact_rows = $3,
                 min_period = $4, max_period = $5, published_at = now(), error = null
           where id = $1::uuid`,
-        [versionId, actualSourceRows, factCount, periodBounds.min || null, periodBounds.max || null],
+        [versionId, sourceRows, factCount, periodBounds.min || null, periodBounds.max || null],
       );
       await lockClient.query(
         `insert into public.purchase_sales_monthly_head (singleton, version_id)
@@ -322,7 +324,7 @@ export async function rebuildPurchaseSalesMonthly(pool: Pool): Promise<{
       await lockClient.query("ROLLBACK").catch(() => undefined);
       throw error;
     }
-    return { versionId, sourceRows: actualSourceRows, factRows: factCount, minPeriod: periodBounds.min || null, maxPeriod: periodBounds.max || null, sourceFingerprint };
+    return { versionId, sourceRows, factRows: factCount, minPeriod: periodBounds.min || null, maxPeriod: periodBounds.max || null, sourceFingerprint };
   } catch (error) {
     if (versionId) {
       await lockClient.query(

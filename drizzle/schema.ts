@@ -1,6 +1,6 @@
-import { boolean, date, decimal, index, integer, jsonb, pgEnum, pgTable, primaryKey, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { bigint, boolean, date, decimal, index, integer, jsonb, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 export const userRoleEnum = pgEnum("user_role", ["user", "admin"]);
-export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido", "cancelado"]);
+export const purchaseOrderStatusEnum = pgEnum("purchase_order_status", ["rascunho", "aprovado", "enviado", "recebido"]);
 export const stockMovementTypeEnum = pgEnum("stock_movement_type", ["entrada", "saida"]);
 export const deliveryStatusEnum = pgEnum("delivery_status", ["pendente", "recebido"]);
 export const protheusImportStatusEnum = pgEnum("protheus_import_status", ["pending", "approved", "archived"]);
@@ -106,33 +106,37 @@ export const inventoryAnalytics = pgTable(
   },
   (table) => [uniqueIndex("inventoryAnalytics_import_code_branch_unique").on(table.importId, table.code, table.branch)],
 );
+export const purchaseSalesSourceRevision = pgTable("purchase_sales_source_revision", {
+  singleton: boolean("singleton").primaryKey().default(true),
+  revision: bigint("revision", { mode: "bigint" }).notNull().default(0n),
+});
 export const purchaseSalesMonthlyVersions = pgTable(
   "purchase_sales_monthly_versions",
   {
     id: uuid("id").primaryKey(),
-    status: varchar("status", { length: 16 }).notNull(),
-    sourceFingerprint: varchar("source_fingerprint", { length: 64 }).notNull(),
-    sourceManifest: jsonb("source_manifest").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    status: text("status").notNull(),
+    sourceFingerprint: text("source_fingerprint").notNull(),
+    sourceManifest: jsonb("source_manifest").$type<{ revision?: string; imports?: Array<Record<string, unknown>> }>().notNull().default({}),
     sourceRows: integer("source_rows").notNull().default(0),
     factRows: integer("fact_rows").notNull().default(0),
-    minPeriod: varchar("min_period", { length: 6 }),
-    maxPeriod: varchar("max_period", { length: 6 }),
+    minPeriod: text("min_period"),
+    maxPeriod: text("max_period"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }),
-    error: varchar("error", { length: 2000 }),
+    error: text("error"),
   },
-  table => [index("purchase_sales_monthly_versions_ready_idx").on(table.status, table.publishedAt)],
+  table => [index("purchase_sales_monthly_versions_ready_idx").on(table.status, table.publishedAt.desc())],
 );
 export const purchaseSalesMonthlyFacts = pgTable(
   "purchase_sales_monthly_facts",
   {
     versionId: uuid("version_id").notNull().references(() => purchaseSalesMonthlyVersions.id, { onDelete: "cascade" }),
-    branchCode: varchar("branch_code", { length: 24 }).notNull(),
-    salesCode: varchar("sales_code", { length: 120 }).notNull(),
-    period: varchar("period", { length: 6 }).notNull(),
-    quantity: decimal("quantity", { precision: 24, scale: 6 }).notNull(),
-    sourceImportId: integer("source_import_id").notNull().references(() => protheusImports.id),
-    sourceRowId: integer("source_row_id").notNull().references(() => inventoryAnalytics.id),
+    branchCode: text("branch_code").notNull(),
+    salesCode: text("sales_code").notNull(),
+    period: text("period").notNull(),
+    quantity: decimal("quantity").notNull(),
+    sourceImportId: integer("source_import_id").notNull(),
+    sourceRowId: integer("source_row_id").notNull(),
     sourceImportedAt: timestamp("source_imported_at", { withTimezone: true }).notNull(),
   },
   table => [primaryKey({ name: "purchase_sales_monthly_facts_pkey", columns: [table.versionId, table.branchCode, table.salesCode, table.period] })],

@@ -52,6 +52,7 @@ export async function* materializePurchaseSalesFacts(
 ): AsyncGenerator<PurchaseSalesMonthlyFact> {
   let currentImportId: number | null = null;
   let lastImportId = 0;
+  let lastRowId = 0;
   let seenInImport = new Map<string, number>();
 
   for await (const row of rows) {
@@ -61,7 +62,8 @@ export async function* materializePurchaseSalesFacts(
     if (!Number.isSafeInteger(row.sourceRowId) || row.sourceRowId < 1) {
       throw new Error(`id de linha inválido na carga ${row.sourceImportId}.`);
     }
-    if (row.sourceImportId < lastImportId) {
+    if (row.sourceImportId < lastImportId ||
+      (row.sourceImportId === currentImportId && row.sourceRowId < lastRowId)) {
       throw new Error("As linhas de origem precisam estar ordenadas por importId e id da linha.");
     }
     if (row.sourceImportId !== currentImportId) {
@@ -69,6 +71,7 @@ export async function* materializePurchaseSalesFacts(
       lastImportId = row.sourceImportId;
       seenInImport = new Map();
     }
+    lastRowId = row.sourceRowId;
 
     const branchCode = normalizeCostSalesBranch(row.branch);
     const aliases = costSalesCodeAliases(row.code, row.codeOriginal);

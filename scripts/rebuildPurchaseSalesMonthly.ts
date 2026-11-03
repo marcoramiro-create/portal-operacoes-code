@@ -1,5 +1,10 @@
 import { Pool } from "pg";
+import { realpathSync } from "node:fs";
 import { rebuildPurchaseSalesMonthly } from "../server/purchaseSalesMonthlyStore";
+
+if (realpathSync(process.cwd()) !== "/home/ubuntu/portal-operacoes-homolog") {
+  throw new Error("Reconstrução bloqueada: execute somente na pasta física portal-operacoes-homolog autorizada.");
+}
 
 if (process.env.PURCHASE_SALES_REBUILD_CONFIRM !== "HOMOLOGACAO") {
   throw new Error("Reconstrução bloqueada. Defina PURCHASE_SALES_REBUILD_CONFIRM=HOMOLOGACAO somente ao executar na VM de Homologação.");

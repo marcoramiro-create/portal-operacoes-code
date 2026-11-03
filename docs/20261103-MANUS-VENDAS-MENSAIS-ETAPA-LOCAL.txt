@@ -1,0 +1,93 @@
+ORIGEM: MANUS
+DATA/HORA: 03/11/2026, 10:04, horário de São Paulo
+PROJETO: Portal de Operações Megatec
+AMBIENTE: repositório no Sandbox Manus; testes SQL descartáveis
+ESCOPO: primeira etapa local da persistência de vendas mensais de Autopeças
+STATUS: estrutura e rebuild locais preparados/testados; NÃO INSTALADOS e NÃO INTEGRADOS AO FILTRO
+ALTERAÇÕES NA VM ORACLE, HOMOLOGAÇÃO OU PRODUÇÃO: Não
+
+1. EVIDÊNCIAS FORNECIDAS PELO USUÁRIO NA HOMOLOGAÇÃO
+27 cargas aprovadas de Compras.
+338.877 linhas de origem.
+781.404 valores mensais no JSON salesMonths.
+926.107 linhas derivadas estimadas, contando códigos literais e aliases sem zeros iniciais.
+A estimativa não é a contagem final do snapshot: meses inválidos, aliases repetidos e a seleção da carga mais recente podem reduzi-la.
+Nenhuma duplicidade da chave literal (importId, code, branch) foi encontrada pelo diagnóstico do usuário.
+A VM tinha apenas o índice da chave primária de inventoryAnalytics. O índice composto declarado no esquema local não estava presente. Nenhum índice foi criado na VM por este trabalho.
+
+2. O QUE FOI CONSTRUÍDO LOCALMENTE
+server/purchaseSalesFacts.ts:
+- materializePurchaseSalesFacts: transforma linhas aprovadas fornecidas em fatos mensais, em streaming.
+- buildPurchaseSalesFactSnapshot: construtor puro de referência para selecionar o fato mais recente por chave.
+- reutiliza as regras existentes de normalização e parsing; nenhuma venda é inventada.
+
+server/purchaseSalesMonthlyStore.ts:
+- rebuildPurchaseSalesMonthly: cursor de 1.000 linhas, gravações em lotes de até 500 fatos e pool operacional de duas conexões.
+- dados de uma versão em construção não são o head utilizado na leitura.
+- publicação de status ready e head na mesma transação.
+- fonte alterada durante o rebuild impede a publicação.
+- erro mantém o head anterior e registra a versão como failed.
+- getPurchaseSalesMonthlyHead, isPurchaseSalesMonthlySnapshotCurrent e readPurchaseSalesMonthlyFacts: helpers para futura integração, NÃO chamados atualmente pela tela.
+
+supabase/migrations/0057_purchase_sales_monthly_store.sql:
+- purchase_sales_monthly_versions: versões, manifesto, fingerprint e contadores.
+- purchase_sales_monthly_facts: chave primária (version_id, branch_code, sales_code, period), que também é o índice principal de leitura.
+- purchase_sales_monthly_head: ponteiro da versão publicada.
+- purchase_sales_source_revision: contador transacional de alterações nas fontes.
+- triggers nas duas tabelas de origem invalidam a revisão após mudança de cargas ou dados mensais, inclusive uma correção na carga 51.
+- lock_purchase_sales_source_revision: bloqueio restrito do contador na publicação, sem exigir UPDATE direto pelo papel de aplicação.
+- IDs de origem são guardados como proveniência; sua existência posterior não bloqueia exclusões de cargas do caminho antigo.
+- migração ainda NÃO aplicada em ambiente real.
+
+scripts/rebuildPurchaseSalesMonthly.ts:
+- comando administrativo futuro; exige pasta física /home/ubuntu/portal-operacoes-homolog, confirmação HOMOLOGACAO e banco portal_operacoes.
+- NÃO executado na Oracle.
+
+drizzle/schema.ts:
+- entidades correspondentes adicionadas localmente; precisão numeric livre para não arredondar quantidades derivadas a seis casas.
+
+server/costSalesHistory.ts:
+- única mudança: exportar/renomear o parser existente como parseCostSalesQuantity, sem alterar sua lógica.
+
+3. REGRAS PRESERVADAS
+- origem: inventoryAnalytics.salesMonths das cargas protheusImports com status approved.
+- seleção: última observação válida por filial+código/alias+mês; importedAt tem prioridade e importId desempata.
+- zero é uma quantidade válida; mês ausente ou inválido não apaga uma observação válida anterior.
+- zeros literais e sufixos de códigos permanecem preservados como aliases.
+- duplicidade conflitante dentro da mesma carga aborta a materialização.
+- versões antigas dos fatos não são apagadas por esta rotina.
+- aliases NÃO representam produtos adicionais: não se deve somar indiscriminadamente todas as linhas derivadas para obter vendas ou custo total.
+- não houve mudança de fórmula financeira, curva ABC/ABCDE, herança mensal de custos, ponderação ou critério de custo total.
+
+4. VALIDAÇÕES LOCAIS
+TypeScript --noEmit: aprovado.
+Diff --check: aprovado.
+11 arquivos / 56 testes focados: aprovados, incluindo seis testes novos do materializador puro.
+SQL PostgreSQL real em PGlite descartável: produção de 516 fatos únicos a partir de 1.022 linhas de teste sintéticas, em múltiplos lotes. Isso é fixture de correção, NÃO uma medição da base Megatec.
+Verificado: quantidade zero, ausência, casas decimais, sufixos, prioridade entre cargas, correção da origem invalidando o snapshot, falha por duplicidade preservando o head, e liberação das conexões.
+O SQL de gravação e permissões foi executado com papel portal_app em banco descartável; a validação usa duas instâncias descartáveis para simular as conexões independentes. NÃO constitui teste de concorrência ou desempenho no servidor real.
+
+Ressalva da suíte ampliada: em execução anterior de 18 arquivos houve 81 testes aprovados e 1 falha em server/costEvolution.test.ts, no teste que lê planilhas externas de /home/ubuntu/upload: esperava 8.679 itens e recebeu 3.460. O teste e seu parser não foram alterados neste trabalho; a causa dessa falha não foi investigada nesta etapa. Não declaro a suíte inteira aprovada.
+
+5. ESTADO DA APLICAÇÃO E PRÓXIMOS PASSOS
+Os motores server/costEvolutionAnalise.ts e server/industryCostEvolutionAnalise.ts e o router de custos permanecem iguais ao checkpoint ab906b5 anterior a esta etapa. O filtro ainda NÃO usa o read model novo.
+A aplicação Oracle continua na versão previamente instalada pelo usuário. Não envio agora comando de instalação, migração, índice ou rebuild.
+O travamento atual do filtro e os balões amarelos NÃO foram declarados resolvidos por esta construção local.
+A referência financeira observada antes foi R$ 202.896.704,97, para todas as filiais elegíveis de Autopeças no período 01/2025 a 09/2026. Esse valor não foi novamente conciliado nem medido nesta etapa.
+
+Sequência de integração proposta, ainda pendente:
+1. preparar pacote restrito de preparação de Homologação, sem substituir o caminho financeiro atual;
+2. executar migração/backfill pelo usuário na VM e comparar as quantidades mensais contra a regra antiga, incluindo a carga 51;
+3. validar volumes, tempo e memória reais; interromper em caso de diferença;
+4. só então encaminhar as leituras mensais ao snapshot validado, recusando versão desatualizada;
+5. preparar atualização automática após importação/aprovação/arquivamento/correção, sem disparar rebuild dentro do filtro;
+6. otimizar separadamente curva histórica e custos SB9; preservar auditoria dos itens realmente sem vínculo.
+
+6. GUARDAR FORA DO CHAT
+Os fontes estão em /home/ubuntu/gestao-suprimentos-logistica no Sandbox Manus, não no seu Desktop nem automaticamente na Oracle.
+O ZIP portal-vendas-mensais-local contém os fontes desta etapa, migração não aplicada, script, teste SQL descartável e registro TXT. É um kit de revisão/backup, NÃO um instalador nem um snapshot completo de todo o portal.
+O runner SQL de validação contém caminhos absolutos do ambiente de testes; sua portabilidade será tratada antes de uma entrega operacional.
+Nenhum .env, credencial, token ou planilha de negócio está incluído no kit.
+
+BLOCO PARA MANUS
+Primeira materialização local preparada; tela e VM intocadas. Não reimplantar pacotes antigos nem substituir motores financeiros neste escopo. Próxima entrega deve primeiro construir e conciliar a base na Homologação antes de ativar sua leitura. Priorizar poucas alterações, dados mensais reais, paridade e proteção contra resultados parciais/desatualizados.

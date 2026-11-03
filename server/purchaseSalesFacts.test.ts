@@ -77,6 +77,12 @@ describe("purchaseSalesFacts", () => {
       ])) { /* consume stream */ }
     }).rejects.toThrow(/ordenadas por importId/);
   });
+  it("requires ascending rowId inside the same import", async () => {
+    await expect(buildPurchaseSalesFactSnapshot([
+      row(2, 21, "0101", "1", "1", { "2025-01": 1 }),
+      row(2, 20, "0101", "2", "2", { "2025-01": 2 }),
+    ])).rejects.toThrow(/ordenadas por importId e id da linha/);
+  });
 });
 
 function snapshotToIndex(snapshot: Map<string, { quantity: number }>): Map<string, number> {
