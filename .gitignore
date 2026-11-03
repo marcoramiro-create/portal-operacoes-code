@@ -7,3 +7,4 @@ dist/
 _txt-export/
 backup-*/
 *.bak
+.project-config.json
