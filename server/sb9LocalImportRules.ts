@@ -7,7 +7,6 @@ export const EXPECTED_SB9_VALID_ROWS = 1_478_403;
 export const EXPECTED_SB9_BRANCH_0105_ROWS = 428_907;
 export const EXPECTED_SB9_DISTINCT_PRODUCTS = 41_839;
 export const EXPECTED_SB9_MONTHS = 21;
-export const EXPECTED_SB9_NONEMPTY_UNIT_COSTS = 225_873;
 
 export function assertApprovedSb9ReducedFile(filePath: string, sizeBytes: number) {
   const resolved = path.resolve(filePath);
@@ -48,14 +47,12 @@ export function assertExpectedSb9Structure(input: {
   rowsInBranch0105: number;
   distinctProducts: number;
   distinctMonths: number;
-  nonemptyUnitCosts: number;
 }) {
   const expected = {
     validRows: EXPECTED_SB9_VALID_ROWS,
     rowsInBranch0105: EXPECTED_SB9_BRANCH_0105_ROWS,
     distinctProducts: EXPECTED_SB9_DISTINCT_PRODUCTS,
     distinctMonths: EXPECTED_SB9_MONTHS,
-    nonemptyUnitCosts: EXPECTED_SB9_NONEMPTY_UNIT_COSTS,
   };
   for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
     if (input[key] !== expected[key]) {

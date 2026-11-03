@@ -7,7 +7,6 @@ import {
   EXPECTED_SB9_BRANCH_0105_ROWS,
   EXPECTED_SB9_DISTINCT_PRODUCTS,
   EXPECTED_SB9_MONTHS,
-  EXPECTED_SB9_NONEMPTY_UNIT_COSTS,
   EXPECTED_SB9_REDUCED_PATH,
   EXPECTED_SB9_SIZE_BYTES,
   EXPECTED_SB9_VALID_ROWS,
@@ -47,17 +46,27 @@ describe("sb9LocalImportRules", () => {
     expect(() => assertNoSkippedSb9Rows(1)).toThrow(/linhas SB9 inválidas/);
   });
 
-  it("exige filial 0105, produtos, meses e custos não vazios conforme inventário", () => {
+  it("exige contagens brutas de linhas, filial 0105, produtos e meses", () => {
     const exact = {
       validRows: EXPECTED_SB9_VALID_ROWS,
       rowsInBranch0105: EXPECTED_SB9_BRANCH_0105_ROWS,
       distinctProducts: EXPECTED_SB9_DISTINCT_PRODUCTS,
       distinctMonths: EXPECTED_SB9_MONTHS,
-      nonemptyUnitCosts: EXPECTED_SB9_NONEMPTY_UNIT_COSTS,
     };
     expect(() => assertExpectedSb9Structure(exact)).not.toThrow();
     expect(() => assertExpectedSb9Structure({ ...exact, distinctProducts: exact.distinctProducts - 1 })).toThrow(
       /distinctProducts/,
     );
+  });
+
+  it("não compara contagem de células não vazias do original com valores '0' materializados no reduzido", () => {
+    expect(() =>
+      assertExpectedSb9Structure({
+        validRows: EXPECTED_SB9_VALID_ROWS,
+        rowsInBranch0105: EXPECTED_SB9_BRANCH_0105_ROWS,
+        distinctProducts: EXPECTED_SB9_DISTINCT_PRODUCTS,
+        distinctMonths: EXPECTED_SB9_MONTHS,
+      }),
+    ).not.toThrow();
   });
 });

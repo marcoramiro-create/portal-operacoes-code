@@ -30,7 +30,6 @@ type ScanResult = {
   validRows: number;
   skippedRows: number;
   rowsInBranch0105: number;
-  nonemptyUnitCosts: number;
   positiveCosts: number;
   branches: Set<string>;
   products: Set<string>;
@@ -80,7 +79,6 @@ async function scanSb9File(): Promise<ScanResult> {
   const periods = new Set<string>();
   let validRows = 0;
   let rowsInBranch0105 = 0;
-  let nonemptyUnitCosts = 0;
   let positiveCosts = 0;
   let bytesRead = 0;
   const parser = createSb9StreamParser((row: Sb9Row) => {
@@ -89,7 +87,6 @@ async function scanSb9File(): Promise<ScanResult> {
     branches.add(row.branchCode);
     products.add(row.productCode);
     periods.add(row.balanceDateIso.slice(0, 7));
-    if (row.unitCost1aM.trim() !== "") nonemptyUnitCosts += 1;
     if ((row.unitCost1aMValue ?? 0) > 0) positiveCosts += 1;
   }, 0);
 
@@ -111,7 +108,6 @@ async function scanSb9File(): Promise<ScanResult> {
     rowsInBranch0105,
     distinctProducts: products.size,
     distinctMonths: periods.size,
-    nonemptyUnitCosts,
   });
   if (result.sourceRows !== validRows + result.skippedRows) {
     throw new Error("Pré-verificação cancelada: contadores do parser SB9 não conferem.");
@@ -122,7 +118,6 @@ async function scanSb9File(): Promise<ScanResult> {
     validRows,
     skippedRows: result.skippedRows,
     rowsInBranch0105,
-    nonemptyUnitCosts,
     positiveCosts,
     branches,
     products,
@@ -156,8 +151,8 @@ async function readDatabaseStatus(client: PoolClient) {
 }
 
 async function runPreflight(client: PoolClient) {
-  const scan = await scanSb9File();
   const db = await readDatabaseStatus(client);
+  const scan = await scanSb9File();
   const freeDiskBytes = filesystemFreeBytes();
   const report = {
     mode: "read-only-preflight",
@@ -169,7 +164,6 @@ async function runPreflight(client: PoolClient) {
     validRows: scan.validRows,
     skippedRows: scan.skippedRows,
     rowsInBranch0105: scan.rowsInBranch0105,
-    nonemptyUnitCosts: scan.nonemptyUnitCosts,
     positiveCosts: scan.positiveCosts,
     branches: [...scan.branches].sort(),
     distinctProducts: scan.products.size,
@@ -416,7 +410,6 @@ async function runImport(client: PoolClient, scan: ScanResult) {
           products: scan.products.size,
           months: [...scan.periods].sort(),
           rowsInBranch0105: scan.rowsInBranch0105,
-          nonemptyUnitCosts: scan.nonemptyUnitCosts,
           positiveCosts: scan.positiveCosts,
           oldBatchesDeleted: 0,
           sourceFileDeleted: false,
