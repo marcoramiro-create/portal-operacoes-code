@@ -82,6 +82,7 @@ async function scanSb9File(): Promise<ScanResult> {
   let rowsInBranch0105 = 0;
   let nonemptyUnitCosts = 0;
   let positiveCosts = 0;
+  let bytesRead = 0;
   const parser = createSb9StreamParser((row: Sb9Row) => {
     validRows += 1;
     if (row.branchCode === "0105") rowsInBranch0105 += 1;
@@ -94,8 +95,12 @@ async function scanSb9File(): Promise<ScanResult> {
 
   for await (const chunk of createReadStream(sourcePath, { highWaterMark: 256 * 1024 })) {
     const buffer = chunk as Buffer;
+    bytesRead += buffer.length;
     hash.update(buffer);
     parser.push(buffer);
+    if (bytesRead >= 1024 * 1024 && !parser.headerFound) {
+      throw new Error("Pré-verificação cancelada: cabeçalho SB9 não reconhecido nos primeiros 1 MiB; nenhuma gravação foi iniciada.");
+    }
   }
   const result = parser.finish();
   const after = checkFileSnapshot(sourcePath, { size: before.size, mtimeMs: before.mtimeMs });
@@ -260,6 +265,7 @@ async function importRows(client: PoolClient, batchId: string, expected: ScanRes
   const pending: Array<{ rowNumber: number; row: Sb9Row }> = [];
   let validRows = 0;
   let committedRows = 0;
+  let bytesRead = 0;
   const parser = createSb9StreamParser(row => {
     validRows += 1;
     pending.push({ rowNumber: validRows, row });
@@ -281,8 +287,12 @@ async function importRows(client: PoolClient, batchId: string, expected: ScanRes
 
   for await (const chunk of createReadStream(sourcePath, { highWaterMark: 256 * 1024 })) {
     const buffer = chunk as Buffer;
+    bytesRead += buffer.length;
     hash.update(buffer);
     parser.push(buffer);
+    if (bytesRead >= 1024 * 1024 && !parser.headerFound) {
+      throw new Error("Importação cancelada: cabeçalho SB9 não reconhecido nos primeiros 1 MiB.");
+    }
     while (pending.length >= COMMIT_ROWS) {
       await commit(pending.splice(0, COMMIT_ROWS));
     }

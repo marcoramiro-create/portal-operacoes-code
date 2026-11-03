@@ -323,11 +323,6 @@ function normalizeSb9Date(value: string) {
   return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
 }
 
-function decodeSb9(content: Buffer | string) {
-  if (typeof content === "string") return content.replace(/^\uFEFF/, "");
-  return new TextDecoder("windows-1252").decode(content).replace(/^\uFEFF/, "");
-}
-
 /**
  * Lê SB9 em pedaços e entrega cada linha válida ao callback. Isso evita manter
  * a exportação inteira em memória na atualização do OneDrive.
@@ -338,7 +333,25 @@ export function createSb9StreamParser(
 ) {
   let pending = "";
   let headerMap: Map<string, number> | null = null;
+  let byteEncoding: "unknown" | "utf-8" | "windows-1252" = "unknown";
+  let bytePrefix = Buffer.alloc(0);
+  let decoder: TextDecoder | null = null;
   const result = emptyResult<Sb9Row>();
+
+  const decodeChunk = (chunk: Buffer | string) => {
+    if (typeof chunk === "string") return chunk.replace(/^\uFEFF/, "");
+    let bytes = Buffer.from(chunk);
+    if (byteEncoding === "unknown") {
+      bytePrefix = Buffer.concat([bytePrefix, bytes]);
+      if (bytePrefix.length < 3) return "";
+      const hasUtf8Bom = bytePrefix[0] === 0xef && bytePrefix[1] === 0xbb && bytePrefix[2] === 0xbf;
+      byteEncoding = hasUtf8Bom ? "utf-8" : "windows-1252";
+      decoder = new TextDecoder(byteEncoding);
+      bytes = hasUtf8Bom ? bytePrefix.subarray(3) : bytePrefix;
+      bytePrefix = Buffer.alloc(0);
+    }
+    return decoder!.decode(bytes, { stream: true });
+  };
 
   const consumeLine = (line: string) => {
     const rows = parseCsv(line.replace(/\r$/, ""));
@@ -384,7 +397,7 @@ export function createSb9StreamParser(
 
   return {
     push(chunk: Buffer | string) {
-      pending += decodeSb9(chunk);
+      pending += decodeChunk(chunk);
       let newline = pending.indexOf("\n");
       while (newline >= 0) {
         consumeLine(pending.slice(0, newline));
@@ -392,7 +405,23 @@ export function createSb9StreamParser(
         newline = pending.indexOf("\n");
       }
     },
+    get headerFound() {
+      return headerMap !== null;
+    },
     finish() {
+      if (byteEncoding === "unknown" && bytePrefix.length) {
+        byteEncoding = "windows-1252";
+        decoder = new TextDecoder(byteEncoding);
+        pending += decoder.decode(bytePrefix, { stream: true });
+        bytePrefix = Buffer.alloc(0);
+      }
+      if (decoder) pending += decoder.decode();
+      let newline = pending.indexOf("\n");
+      while (newline >= 0) {
+        consumeLine(pending.slice(0, newline));
+        pending = pending.slice(newline + 1);
+        newline = pending.indexOf("\n");
+      }
       if (pending.trim()) consumeLine(pending);
       if (!headerMap) throw new Error("SB9: cabeçalho não encontrado. Esperadas as colunas Filial, Produto, Data Saldo e C Unit 1a M.");
       return result;

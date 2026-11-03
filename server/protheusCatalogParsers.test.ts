@@ -47,6 +47,27 @@ describe("protheusCatalogParsers", () => {
     expect(result.sourceRows).toBe(2);
   });
 
+  it("detecta cabeçalho do CSV UTF-8 com BOM, mesmo quando o BOM é dividido entre chunks", () => {
+    const content = Buffer.from(
+      "\uFEFFFilial;Produto;Armazém;Data Saldo;C Unit 1a M\r\n0105;000123-MGT;01;31/01/2025;12,34\r\n",
+      "utf8",
+    );
+    const parser = createSb9StreamParser();
+    expect(parser.headerFound).toBe(false);
+    for (let start = 0; start < content.length; start += 1) {
+      parser.push(content.subarray(start, start + 1));
+    }
+    expect(parser.headerFound).toBe(true);
+    const result = parser.finish();
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]).toMatchObject({
+      branchCode: "0105",
+      productCode: "000123-MGT",
+      warehouseCode: "01",
+      unitCost1aMValue: 12.34,
+    });
+  });
+
   it("pode contar linhas SB9 inválidas sem acumular mensagens de erro em importação massiva", () => {
     const parser = createSb9StreamParser(() => undefined, 0);
     parser.push("Filial;Produto;Data Saldo;C Unit 1a M\n;0001;31/01/2025;1,00\n");
