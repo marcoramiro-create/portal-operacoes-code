@@ -247,6 +247,7 @@ export async function attachSb9MonthlyCosts(
 ) {
   const inicio = normalizeSalesPeriod(params.periodoInicio ?? "") ?? null;
   const fim = normalizeSalesPeriod(params.periodoFim ?? "") ?? null;
+  const requestedAggregate = params.codAgregado?.trim();
   // Catálogo separado, sem DISTINCT/ORDER BY sobre toda a tabela operacional.
   const catalog = await portalPool.query<{ product: string; aggregate: string | null; importedAt: Date | string; sourceRow: number; description?: string | null }>(
     `select trim(r.product_code) as product,
@@ -257,6 +258,7 @@ export async function attachSb9MonthlyCosts(
        join public.operational_source_rows r on r.batch_id = b.id
       where b.status = 'processed' and b.source_kind = 'SB1'
         and r.product_code is not null`,
+    requestedAggregate ? [requestedAggregate] : [],
   );
   const aggregates = new Map<string, { code: string | null; time: number; sourceRow: number; description: string }>();
   for (const row of catalog.rows) {

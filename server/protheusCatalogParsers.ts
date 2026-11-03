@@ -332,7 +332,10 @@ function decodeSb9(content: Buffer | string) {
  * Lê SB9 em pedaços e entrega cada linha válida ao callback. Isso evita manter
  * a exportação inteira em memória na atualização do OneDrive.
  */
-export function createSb9StreamParser(onRow?: (row: Sb9Row) => void) {
+export function createSb9StreamParser(
+  onRow?: (row: Sb9Row) => void,
+  maxIssueSamples = Number.POSITIVE_INFINITY,
+) {
   let pending = "";
   let headerMap: Map<string, number> | null = null;
   const result = emptyResult<Sb9Row>();
@@ -354,7 +357,9 @@ export function createSb9StreamParser(onRow?: (row: Sb9Row) => void) {
     const productCode = normalizeProductCode(rawProduct);
     if (!branchCode || !productCode || !balanceDate || !normalizeSb9Date(balanceDate) || invalidScientific(rawProduct)) {
       result.skippedRows += 1;
-      result.issues.push({ row: result.sourceRows + 3, field: "Filial/Produto/Data Saldo", message: "Linha SB9 sem filial, produto ou data de saldo válida." });
+      if (result.issues.length < maxIssueSamples) {
+        result.issues.push({ row: result.sourceRows + 3, field: "Filial/Produto/Data Saldo", message: "Linha SB9 sem filial, produto ou data de saldo válida." });
+      }
       return;
     }
 

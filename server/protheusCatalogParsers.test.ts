@@ -46,4 +46,13 @@ describe("protheusCatalogParsers", () => {
     expect(result.rows).toHaveLength(0);
     expect(result.sourceRows).toBe(2);
   });
+
+  it("pode contar linhas SB9 inválidas sem acumular mensagens de erro em importação massiva", () => {
+    const parser = createSb9StreamParser(() => undefined, 0);
+    parser.push("Filial;Produto;Data Saldo;C Unit 1a M\n;0001;31/01/2025;1,00\n");
+    const result = parser.finish();
+    expect(result.sourceRows).toBe(1);
+    expect(result.skippedRows).toBe(1);
+    expect(result.issues).toHaveLength(0);
+  });
 });
