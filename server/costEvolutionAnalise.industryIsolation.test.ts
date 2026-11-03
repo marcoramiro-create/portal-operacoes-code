@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
   const mode = {
     sb9: "valid" as "valid" | "failure",
     curve: "current" as "current" | "historical",
+    salesSnapshot: false,
   };
   const industryAnalise = vi.fn();
   const industryItens = vi.fn();
@@ -37,6 +38,17 @@ const mocks = vi.hoisted(() => {
       trace.push({ source: "businessPool", sql: text, ...(params === undefined ? {} : { params: structuredClone(params) }) });
       if (text.includes("get_cost_evolution")) return { rows: [{ result: cloneBaseResult() }] };
       if (text.includes('select id::text as id')) return { rows: [{ id: "63" }] };
+      if (text.includes("purchase_sales_monthly_head") && mode.salesSnapshot) {
+        return { rows: [{ versionId: "sales-version-1", status: "ready", sourceFingerprint: "b1a92eeb5d0cd48f6f1f3d612bc3a31e8b04f0f9d3dee263c083c6cc1dd2005b", factRows: 2, publishedAt: "2026-11-03T00:00:00Z" }] };
+      }
+      if (text.includes("purchase_sales_monthly_head")) return { rows: [] };
+      if (text.includes("purchase_sales_source_revision")) return { rows: [] };
+      if (text.includes("purchase_sales_monthly_facts")) {
+        return { rows: [
+          { branchCode: "0101", code: "AGG-1", period: "202501", quantity: "2" },
+          { branchCode: "0101", code: "AGG-1", period: "202502", quantity: "3" },
+        ] };
+      }
       if (text.includes("with requested as")) {
         return { rows: [{ code: "AGG-1", branchCode: "0101", curve: "D" }] };
       }
@@ -69,6 +81,10 @@ const mocks = vi.hoisted(() => {
     query: vi.fn(async (sql: unknown, params?: unknown[]) => {
       const text = String(sql);
       trace.push({ source: "costSourcePool", sql: text, ...(params === undefined ? {} : { params: structuredClone(params) }) });
+      if (text.includes("source_kind = 'SB9'") && text.includes("file_hash")) {
+        return { rows: [{ id: "sb9-batch-1", file_hash: "hash-1" }] };
+      }
+      if (text.includes("cost_evolution_sb9_head")) return { rows: [] };
       if (text.includes("operational_import_batches") && text.includes("aggregate_product_code") && text.includes("source_row_number")) {
         return {
           rows: [{
@@ -133,6 +149,7 @@ const mocks = vi.hoisted(() => {
     resetMocks() {
       mode.sb9 = "valid";
       mode.curve = "current";
+      mode.salesSnapshot = false;
       trace.splice(0, trace.length);
       businessPool.query.mockClear();
       costSourcePool.query.mockClear();
@@ -233,12 +250,18 @@ async function compareAutoRuntime(
   const candidateTrace = traceSnapshot();
   expect(candidateResult).toEqual(baselineResult);
 
-  // Somente a coluna descritiva SB1 foi acrescentada; filtros, parâmetros e
-  // resultados financeiros do baseline continuam sendo comparados.
-  const comparable = (calls: SqlTrace) => calls.map(call => ({ ...call, sql: call.sql
+  // O novo resolver/builder altera as consultas de apoio, mas não o contrato
+  // nem os demais cálculos financeiros comparados com o baseline independente.
+  const isNewReadPath = (call: SqlTrace[number]) =>
+    call.source === "costSourceCursor" ||
+    (call.source === "costSourcePool" && (call.sql.includes("file_hash") || call.sql.includes("cost_evolution_sb9_head") || call.sql.includes("source_row_number"))) ||
+    (call.source === "businessPool" && call.sql.includes("purchase_sales_monthly_head"));
+  const comparable = (calls: SqlTrace) => calls.filter(call => !isNewReadPath(call)).map(call => ({ ...call, sql: call.sql
     .replace(/,\s*nullif\(trim\(r\.normalized_payload->>'description'\), ''\) as description/g, "")
     .replace(/\s+/g, " ").trim() }));
   expect(comparable(candidateTrace)).toEqual(comparable(baselineTrace));
+  expect(candidateTrace.some(call => call.source === "costSourcePool" && call.sql.includes("file_hash"))).toBe(true);
+  expect(candidateTrace.some(call => call.source === "costSourceCursor" && call.params?.[0] === "sb9-batch-1" && !call.sql.includes("trim(r.branch_code)") && !call.sql.includes("trim(r.product_code)"))).toBe(true);
   return { baselineResult, baselineTrace };
 }
 
@@ -324,6 +347,20 @@ describe("isolamento industrial e paridade do caminho Autopeças", () => {
       expect.objectContaining({ period: "202501", custo_medio: 11, quantidade_vendida: 2 }),
       expect.objectContaining({ period: "202502", custo_medio: 13, quantidade_vendida: 3 }),
     ]);
+  });
+
+  it("usa facts de vendas mensais indexados sem consultar inventoryAnalytics.salesMonths", async () => {
+    mocks.mode.salesSnapshot = true;
+    const result = await candidate.getCostEvolutionItens({
+      periodoInicio: "202501", periodoFim: "202502", filial: "0101",
+      curvaFiltro: "A", ordenacao: "codigo", direcao: "asc", pagina: 1, itensPorPagina: 10,
+    } as never);
+    expect(result.items[0].meses).toEqual([
+      expect.objectContaining({ period: "202501", quantidade_vendida: 2 }),
+      expect.objectContaining({ period: "202502", quantidade_vendida: 3 }),
+    ]);
+    expect(mocks.businessPool.query.mock.calls.some(([sql]) => String(sql).includes("purchase_sales_monthly_facts"))).toBe(true);
+    expect(mocks.businessPool.query.mock.calls.some(([sql]) => String(sql).includes('"salesMonths"'))).toBe(false);
   });
 
   it("encaminha a análise industrial inteira para o módulo industrial", async () => {

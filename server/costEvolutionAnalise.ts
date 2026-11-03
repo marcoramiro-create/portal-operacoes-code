@@ -24,12 +24,15 @@ import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { getCostSourcePool } from "./costSourcePool";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
 import { streamCostSourceRows } from "./costSourceCursor";
+import { buildSb9CostSourceQuery } from "./sb9CostQuery";
+import { resolveSb9CostReadSource } from "./sb9CostSource";
 import { calculateWeightedMonthlyCost, materializeCalendarMonths, type WeightedCurve } from "./costWeightedMonthly";
-import { buildCostSalesHistoryIndex, getCostSalesHistoryQuantity, normalizeCostSalesPeriod, type CostSalesHistoryRow } from "./costSalesHistory";
+import { buildCostSalesHistoryIndex, buildCostSalesHistoryIndexFromFacts, costSalesCodeAliases, getCostSalesHistoryQuantity, normalizeCostSalesBranch, normalizeCostSalesPeriod, type CostSalesHistoryRow } from "./costSalesHistory";
 import { buildCostCurveLookup } from "./costCurveLookup";
 import { addLatestHistoricalCostCurves } from "./costCurveHistory";
 import { filterCostEvolutionItems, scopeCostEvolutionItems, typedAggregateSearch } from "./costEvolutionItemFilter";
 import { garantirIndicesEconomicos, getIndicesEconomicos } from "./economicIndices";
+import { getPurchaseSalesMonthlyHead, isPurchaseSalesMonthlySnapshotCurrent, readPurchaseSalesMonthlyFacts } from "./purchaseSalesMonthlyStore";
 type CostEvolutionSegment = "auto_parts" | "industry";
 const INDUSTRY_BRANCH = "0105";
 // B-v14 (22/10/2026): 0105 (Indústria) e 0201 jamais aparecem no Autopeças
@@ -177,6 +180,34 @@ export async function attachAutoPartsMonthlySales(
   businessPool: ReturnType<typeof getBusinessPool>,
   result: { items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; meses: Array<Record<string, unknown>> }> },
 ) {
+  const items = result.items ?? [];
+  if (!items.length) return;
+  let sales: ReturnType<typeof buildCostSalesHistoryIndex>;
+  try {
+    const head = await getPurchaseSalesMonthlyHead(businessPool);
+    const periods = [...new Set(items.flatMap(item => item.meses.map(month => normalizeSalesPeriod(String(month.period ?? ""))).filter((period): period is string => period != null)))];
+    const branches = [...new Set(items.map(item => normalizeCostSalesBranch(item.filial)).filter(Boolean))];
+    const codes = [...new Set(items.flatMap(item => [
+      ...costSalesCodeAliases(item.cod_agregado),
+      ...costSalesCodeAliases(item.codigo),
+    ]))];
+    if (head?.status === "ready" && await isPurchaseSalesMonthlySnapshotCurrent(businessPool)) {
+      const facts = await readPurchaseSalesMonthlyFacts(businessPool, { versionId: head.versionId, branches, codes, periods });
+      sales = buildCostSalesHistoryIndexFromFacts(facts);
+      for (const item of items) {
+        for (const month of item.meses) {
+          const aggregateQuantity = item.cod_agregado
+            ? getCostSalesHistoryQuantity(sales, item.filial, item.cod_agregado, month.period)
+            : null;
+          month.quantidade_vendida = aggregateQuantity ?? getCostSalesHistoryQuantity(sales, item.filial, item.codigo, month.period);
+        }
+      }
+      return;
+    }
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+    if (code !== "42P01") throw error;
+  }
   const rows = await businessPool.query<CostSalesHistoryRow>(
     `select trim(a.branch) as branch,
             trim(a.code) as code,
@@ -191,8 +222,8 @@ export async function attachAutoPartsMonthlySales(
         and a."salesMonths" <> '{}'::jsonb
       order by i."importedAt" desc, i.id desc, a.id`,
   );
-  const sales = buildCostSalesHistoryIndex(rows.rows);
-  for (const item of result.items ?? []) {
+  sales = buildCostSalesHistoryIndex(rows.rows);
+  for (const item of items) {
     for (const month of item.meses) {
       // Zero válido permanece zero; apenas ausência permite fallback por produto.
       const aggregateQuantity = item.cod_agregado
@@ -248,6 +279,7 @@ export async function attachSb9MonthlyCosts(
   const inicio = normalizeSalesPeriod(params.periodoInicio ?? "") ?? null;
   const fim = normalizeSalesPeriod(params.periodoFim ?? "") ?? null;
   const requestedAggregate = params.codAgregado?.trim();
+  const aggregateCodes = requestedAggregate ? [requestedAggregate] : null;
   // Catálogo separado, sem DISTINCT/ORDER BY sobre toda a tabela operacional.
   const catalog = await portalPool.query<{ product: string; aggregate: string | null; importedAt: Date | string; sourceRow: number; description?: string | null }>(
     `select trim(r.product_code) as product,
@@ -256,9 +288,16 @@ export async function attachSb9MonthlyCosts(
             nullif(trim(r.normalized_payload->>'description'), '') as description
        from public.operational_import_batches b
        join public.operational_source_rows r on r.batch_id = b.id
-      where b.status = 'processed' and b.source_kind = 'SB1'
-        and r.product_code is not null`,
-    requestedAggregate ? [requestedAggregate] : [],
+      where b.id = (
+          select id from public.operational_import_batches
+           where status = 'processed' and source_kind = 'SB1'
+           order by imported_at desc, id desc limit 1
+        )
+        and r.product_code is not null
+        and ($1::text[] is null
+          or r.aggregate_product_code = any($1::text[])
+          or r.product_code = any($1::text[]))`,
+    [aggregateCodes],
   );
   const aggregates = new Map<string, { code: string | null; time: number; sourceRow: number; description: string }>();
   for (const row of catalog.rows) {
@@ -268,30 +307,24 @@ export async function attachSb9MonthlyCosts(
       aggregates.set(row.product, { code: row.aggregate, time, sourceRow: row.sourceRow, description: row.description?.trim() || "" });
     }
   }
-  const requestedAggregate = params.codAgregado?.trim();
   const requestedProducts = requestedAggregate ? [...new Set([
     ...[...aggregates].filter(([product, metadata]) => (metadata.code || product) === requestedAggregate).map(([product]) => product),
     ...(result.items ?? []).filter(item => (item.cod_agregado?.trim() || item.codigo.trim()) === requestedAggregate).map(item => item.codigo.trim()),
   ])] : null;
   const requestedProductSet = requestedProducts ? new Set(requestedProducts) : null;
+  const source = await resolveSb9CostReadSource(portalPool);
+  if (!source) return;
+  const query = buildSb9CostSourceQuery(source.source, {
+    batchId: source.batchId,
+    periodStart: inicio,
+    periodEnd: fim,
+    branch: params.filial?.trim() || null,
+    productCodes: requestedProducts,
+  });
   const records = streamCostSourceRows<{ branch: string; product: string; period: string; cost: string }>(
     portalPool,
-    `select trim(r.branch_code) as branch, trim(r.product_code) as product,
-            to_char(r.event_date, 'YYYYMM') as period, r.unit_value::text as cost
-       from public.operational_source_rows r
-      where r.batch_id = (
-        select id from public.operational_import_batches
-         where status = 'processed' and source_kind = 'SB9'
-         order by imported_at desc, id desc limit 1
-      )
-        and r.branch_code is not null and trim(r.branch_code) <> ''
-        and r.product_code is not null and trim(r.product_code) <> ''
-        and r.event_date is not null and r.unit_value is not null
-        and ($1::text is null or r.event_date >= to_date($1, 'YYYYMM'))
-        and ($2::text is null or r.event_date < to_date($2, 'YYYYMM') + interval '1 month')
-        and ($3::text is null or trim(r.branch_code) = $3)
-        ${requestedProducts ? 'and trim(r.product_code) = any($4::text[])' : ''}`,
-    requestedProducts ? [inicio, fim, params.filial?.trim() || null, requestedProducts] : [inicio, fim, params.filial?.trim() || null],
+    query.text,
+    query.values,
   );
   const periods = new Set(
     ((result.periodos ?? []) as Array<{ period: string }>)

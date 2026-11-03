@@ -2,8 +2,8 @@ BEGIN;
 
 DO $$
 BEGIN
-  IF current_database() <> 'portal_operacoes' THEN
-    RAISE EXCEPTION 'Migração autorizada somente para portal_operacoes';
+  IF current_database() NOT IN ('portal_operacoes', 'portal_negocio') THEN
+    RAISE EXCEPTION 'Migração autorizada somente para portal_operacoes ou portal_negocio';
   END IF;
 END
 $$;

@@ -247,8 +247,8 @@ export async function rebuildPurchaseSalesMonthly(pool: Pool): Promise<{
   });
   try {
     const dbName = await lockClient.query<{ db: string }>("select current_database() as db");
-    if (dbName.rows[0]?.db !== "portal_operacoes") {
-      throw new Error("Reconstrução bloqueada: somente o banco portal_operacoes da Homologação é permitido nesta fase.");
+    if (!new Set(["portal_operacoes", "portal_negocio"]).has(dbName.rows[0]?.db ?? "")) {
+      throw new Error("Reconstrução bloqueada: somente portal_operacoes ou portal_negocio da Homologação são permitidos nesta fase.");
     }
     if (!(await tableExists(lockClient))) {
       throw new Error("Base de vendas mensais não preparada; aplique a migração aprovada antes do rebuild.");
@@ -293,6 +293,7 @@ export async function rebuildPurchaseSalesMonthly(pool: Pool): Promise<{
     );
     factCount = Number(storedCount.rows[0]?.count ?? 0);
     if (!factCount) throw new Error("As cargas aprovadas não produziram fatos mensais válidos.");
+    await lockClient.query("ANALYZE public.purchase_sales_monthly_facts");
 
     await lockClient.query("BEGIN");
     try {

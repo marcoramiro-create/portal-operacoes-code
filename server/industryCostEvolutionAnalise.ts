@@ -24,6 +24,8 @@ import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { getCostSourcePool } from "./industryCostSourcePool";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
 import { streamCostSourceRows } from "./costSourceCursor";
+import { buildSb9CostSourceQuery } from "./sb9CostQuery";
+import { resolveSb9CostReadSource } from "./sb9CostSource";
 import { readIndustryConsumption } from "./industryConsumptionStore";
 import { calculateWeightedMonthlyCost, materializeCalendarMonths, type WeightedCurve } from "./costWeightedMonthly";
 import { buildCostSalesHistoryIndex, getCostSalesHistoryQuantity, normalizeCostSalesPeriod, type CostSalesHistoryRow } from "./costSalesHistory";
@@ -248,6 +250,7 @@ export async function attachSb9MonthlyCosts(
 ) {
   const inicio = normalizeSalesPeriod(params.periodoInicio ?? "") ?? null;
   const fim = normalizeSalesPeriod(params.periodoFim ?? "") ?? null;
+  const aggregateAliases = params.codAgregado?.trim() ? codeVariants(params.codAgregado) : null;
   // Catálogo separado, sem DISTINCT/ORDER BY sobre toda a tabela operacional.
   const catalog = await portalPool.query<{ product: string; aggregate: string | null; importedAt: Date | string; sourceRow: number; description?: string | null }>(
     `select trim(r.product_code) as product,
@@ -256,8 +259,16 @@ export async function attachSb9MonthlyCosts(
             nullif(trim(r.normalized_payload->>'description'), '') as description
        from public.operational_import_batches b
        join public.operational_source_rows r on r.batch_id = b.id
-      where b.status = 'processed' and b.source_kind = 'SB1'
-        and r.product_code is not null`,
+      where b.id = (
+          select id from public.operational_import_batches
+           where status = 'processed' and source_kind = 'SB1'
+           order by imported_at desc, id desc limit 1
+        )
+        and r.product_code is not null
+        and ($1::text[] is null
+          or r.aggregate_product_code = any($1::text[])
+          or r.product_code = any($1::text[]))`,
+    [aggregateAliases],
   );
   const aggregates = new Map<string, { code: string | null; time: number; sourceRow: number; description: string }>();
   for (const row of catalog.rows) {
@@ -277,24 +288,19 @@ export async function attachSb9MonthlyCosts(
     }
     selectedProducts = [...selected];
   }
+  const source = await resolveSb9CostReadSource(portalPool);
+  if (!source) return;
+  const query = buildSb9CostSourceQuery(source.source, {
+    batchId: source.batchId,
+    periodStart: inicio,
+    periodEnd: fim,
+    branch: params.filial?.trim() || null,
+    productCodes: selectedProducts,
+  });
   const records = streamCostSourceRows<{ branch: string; product: string; period: string; cost: string }>(
     portalPool,
-    `select trim(r.branch_code) as branch, trim(r.product_code) as product,
-            to_char(r.event_date, 'YYYYMM') as period, r.unit_value::text as cost
-       from public.operational_source_rows r
-      where r.batch_id = (
-        select id from public.operational_import_batches
-         where status = 'processed' and source_kind = 'SB9'
-         order by imported_at desc, id desc limit 1
-      )
-        and r.branch_code is not null and trim(r.branch_code) <> ''
-        and r.product_code is not null and trim(r.product_code) <> ''
-        and r.event_date is not null and r.unit_value is not null
-        and ($1::text is null or r.event_date >= to_date($1, 'YYYYMM'))
-        and ($2::text is null or r.event_date < to_date($2, 'YYYYMM') + interval '1 month')
-        and ($3::text is null or trim(r.branch_code) = $3)
-        and ($4::text[] is null or trim(r.product_code) = any($4::text[]))`,
-    [inicio, fim, params.filial?.trim() || null, selectedProducts],
+    query.text,
+    query.values,
   );
   const periods = new Set(
     ((result.periodos ?? []) as Array<{ period: string }>)

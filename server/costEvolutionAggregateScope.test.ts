@@ -46,6 +46,7 @@ const fixtures = vi.hoisted(() => {
           } }],
         };
       }
+      if (text.includes("purchase_sales_monthly_head")) return { rows: [] };
       if (text.includes('"salesMonths"')) {
         return {
           rows: [{
@@ -67,6 +68,10 @@ const fixtures = vi.hoisted(() => {
 
   const costSourcePool = { query: vi.fn(async (sql: unknown) => {
     const text = String(sql);
+    if (text.includes("source_kind = 'SB9'") && text.includes("file_hash")) {
+      return { rows: [{ id: "sb9-batch-1", file_hash: "sb9-hash-1" }] };
+    }
+    if (text.includes("cost_evolution_sb9_head")) return { rows: [] };
     if (text.includes("operational_import_batches") && text.includes("aggregate_product_code")) {
       return { rows: structuredClone(catalogRows) };
     }
@@ -171,9 +176,9 @@ describe("escopo exato de codAgregado após attach da SB9 (auto_parts)", () => {
     const filtered = await getCostEvolutionAnalise({ periodoInicio: "202501", periodoFim: "202501", filial: "0101", descricao: "00899" });
     expect(filtered.cards.custoTotal).toBe(165);
     const [pool, sql, params] = fixtures.sourceCursor.mock.calls.at(-1) as unknown as [unknown, string, unknown[]];
-    expect(sql).toContain("any($4::text[])");
-    expect(params[3]).toEqual(expect.arrayContaining(["00899", "OUTRO", "M001"]));
-    expect(params[3]).not.toContain("100899");
+    expect(sql).toContain("any($5::text[])");
+    expect(params[4]).toEqual(expect.arrayContaining(["00899", "OUTRO", "M001"]));
+    expect(params[4]).not.toContain("100899");
   });
   it("preenche descrição da SB1 sem ocultar membros sem descrição", async () => {
     const result = await getCostEvolutionItens({ periodoInicio: "202501", periodoFim: "202501", filial: "0101", codAgregado: "00899" });

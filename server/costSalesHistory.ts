@@ -11,6 +11,13 @@ export type CostSalesHistoryRow = {
 /** Índice plano: filial normalizada | código (ou alias) | período YYYYMM. */
 export type CostSalesHistoryIndex = Map<string, number>;
 
+export type CostSalesMonthlyFactRow = {
+  branchCode: string;
+  code: string;
+  period: string;
+  quantity: number;
+};
+
 const MONTH_NAMES: Record<string, string> = {
   jan: "01",
   janeiro: "01",
@@ -199,6 +206,20 @@ export function buildCostSalesHistoryIndex(rows: CostSalesHistoryRow[]): CostSal
   }
 
   for (const [key, candidate] of selected) index.set(key, candidate.value);
+  return index;
+}
+
+/** Indexa fatos mensais já deduplicados e versionados, preservando zero como valor válido. */
+export function buildCostSalesHistoryIndexFromFacts(rows: CostSalesMonthlyFactRow[]): CostSalesHistoryIndex {
+  const index: CostSalesHistoryIndex = new Map();
+  for (const row of rows) {
+    const branch = normalizeCostSalesBranch(row.branchCode);
+    const period = normalizeCostSalesPeriod(row.period);
+    if (!branch || !period || !Number.isFinite(row.quantity)) continue;
+    for (const code of costSalesCodeAliases(row.code)) {
+      index.set(indexKey(branch, code, period), row.quantity);
+    }
+  }
   return index;
 }
 

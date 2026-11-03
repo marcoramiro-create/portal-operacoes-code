@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildCostSalesHistoryIndex,
+  buildCostSalesHistoryIndexFromFacts,
   costSalesCodeAliases,
   getCostSalesHistoryQuantity,
   normalizeCostSalesBranch,
@@ -108,6 +109,19 @@ describe("costSalesHistory", () => {
     ]);
 
     expect(getCostSalesHistoryQuantity(index, "0101", "00004-MGT", "202501")).toBe(11);
+  });
+
+  it("lê fatos mensais materializados com as mesmas chaves e preserva zero", () => {
+    const index = buildCostSalesHistoryIndexFromFacts([
+      { branchCode: "0101", code: "00004-MGT", period: "202501", quantity: 51 },
+      { branchCode: "0101", code: "4-MGT", period: "202502", quantity: 0 },
+      { branchCode: "0105", code: "00899", period: "202501", quantity: 99 },
+    ]);
+
+    expect(getCostSalesHistoryQuantity(index, "101", "00004-MGT", "01/2025")).toBe(51);
+    expect(getCostSalesHistoryQuantity(index, "0101", "4-MGT", "202502")).toBe(0);
+    expect(getCostSalesHistoryQuantity(index, "0101", "123-MGT", "202501")).toBeNull();
+    expect(getCostSalesHistoryQuantity(index, "0105", "899", "202501")).toBe(99);
   });
 
   it("falha claramente para duplicidade conflitante na mesma carga, chave e mês", () => {

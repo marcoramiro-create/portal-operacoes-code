@@ -13,8 +13,9 @@ if (process.env.PURCHASE_SALES_REBUILD_CONFIRM !== "HOMOLOGACAO") {
 const connectionString = process.env.BUSINESS_DATABASE_URL
   ?? process.env.PORTAL_DATABASE_URL
   ?? process.env.SUPABASE_DATABASE_URL;
-if (!connectionString || new URL(connectionString).pathname.replace(/^\//, "") !== "portal_operacoes") {
-  throw new Error("Reconstrução bloqueada: conexão ausente ou banco diferente de portal_operacoes.");
+const databaseName = connectionString ? decodeURIComponent(new URL(connectionString).pathname.replace(/^\//, "")) : "";
+if (!connectionString || !new Set(["portal_operacoes", "portal_negocio"]).has(databaseName)) {
+  throw new Error("Reconstrução bloqueada: conexão ausente ou banco diferente de portal_operacoes/portal_negocio.");
 }
 
 const pool = new Pool({
