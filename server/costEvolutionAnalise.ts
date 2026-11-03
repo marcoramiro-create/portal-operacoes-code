@@ -28,6 +28,7 @@ import { calculateWeightedMonthlyCost, materializeCalendarMonths, type WeightedC
 import { buildCostSalesHistoryIndex, getCostSalesHistoryQuantity, normalizeCostSalesPeriod, type CostSalesHistoryRow } from "./costSalesHistory";
 import { buildCostCurveLookup } from "./costCurveLookup";
 import { addLatestHistoricalCostCurves } from "./costCurveHistory";
+import { filterCostEvolutionItems } from "./costEvolutionItemFilter";
 import { garantirIndicesEconomicos, getIndicesEconomicos } from "./economicIndices";
 type CostEvolutionSegment = "auto_parts" | "industry";
 const INDUSTRY_BRANCH = "0105";
@@ -666,21 +667,6 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     basesEmAndamento.delete(chave);
   }
 }
-// Busca multi-termo: TODAS as palavras devem aparecer na descrição OU no código
-// do agregado ("pneu 600" acha "PNEU DIAGONAL 600/50-22,5").
-function filtrarPorDescricao(items: ItemInterno[], descricao?: string, searchType?: string): ItemInterno[] {
-  const termo = (descricao ?? "").trim().toLowerCase();
-  if (!termo) return items;
-  const tipo = searchType ?? "contem";
-  if (tipo === "inicia") return items.filter(item => (item.descricao ?? "").toLowerCase().startsWith(termo));
-  if (tipo === "termina") return items.filter(item => (item.descricao ?? "").toLowerCase().endsWith(termo));
-  const termos = termo.split(/\s+/).filter(Boolean);
-  return items.filter(item => {
-    const texto = (item.descricao ?? "").toLowerCase();
-    const codigo = String(item.cod_agregado ?? "").toLowerCase();
-    return termos.every(t => texto.includes(t) || codigo.includes(t));
-  });
-}
 // Custo total: soma item a item e mês a mês de consumo/venda × custo médio.
 // A quantidade mensal do agregado é aplicada a cada item do agregado, conforme
 // a regra de negócio da análise; não deduplicar por filial|agregado|mês.
@@ -705,7 +691,7 @@ export async function getCostEvolutionAnalise(params: ParamsBase & { searchType?
   const limites = sanitizarLimites(params.limitesAlerta);
   const { analisado, items, periods, limites: limitesAplicados } = await obterBase(params, limites);
   const segment = params.segment ?? "auto_parts";
-  const filtrados = filtrarPorDescricao(items, params.descricao, params.searchType);
+  const filtrados = filterCostEvolutionItems(items, params.descricao, params.searchType);
   const custoTotal = calcularCustoTotal(filtrados, segment);
   let comCusto = 0, alta = 0, reducao = 0;
   let somaImpacto = 0;
@@ -797,7 +783,7 @@ export async function getCostEvolutionItens(params: ParamsBase & {
 }) {
   const limites = sanitizarLimites(params.limitesAlerta);
   const { items } = await obterBase(params, limites);
-  let lista = filtrarPorDescricao(items, params.descricao, params.searchType);
+  let lista = filterCostEvolutionItems(items, params.descricao, params.searchType);
   if (params.curvaFiltro) lista = lista.filter(item => item.curve === params.curvaFiltro);
   const criterio = params.criterio ?? "todos";
   if (criterio === "sem-base") lista = lista.filter(item => item.costStatus === "SEM_BASE_CUSTO");
