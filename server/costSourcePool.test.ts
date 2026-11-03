@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { getCostSourcePool } from './costSourcePool';
+import { getCostSourcePool as getIndustryPool } from './industryCostSourcePool';
 import { getSupabasePool } from './supabasePortal';
 
 it('mantém o pool de custos separado do pool de autenticação, sem abrir conexão externa', async () => {
@@ -7,7 +8,7 @@ it('mantém o pool de custos separado do pool de autenticação, sem abrir conex
   try {
     const auth = getSupabasePool();
     const cost = getCostSourcePool();
-    const industry = getCostSourcePool("industry");
+    const industry = getIndustryPool("industry");
     expect(industry).not.toBe(cost);
     expect(industry).not.toBe(auth);
     expect(industry.options.application_name).toBe("portal-industry-sources");

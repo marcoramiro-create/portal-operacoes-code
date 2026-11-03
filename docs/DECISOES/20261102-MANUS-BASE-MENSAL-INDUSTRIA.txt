@@ -1,0 +1,53 @@
+ORIGEM: MANUS
+DATA: 02/11/2026
+PROJETO: Portal de Operações Megatec
+ESCOPO: Homologação Oracle; base mensal persistida do consumo industrial
+STATUS: implementação e testes locais concluídos; VM ainda NÃO atualizada nesta entrega
+
+O QUE MUDA
+O consumo da Indústria deixa de ser calculado no filtro a partir de FECHAMENTO_ESTOQUE/ENTRADA_NF. Um comando fora do HTTP lê essas fontes, calcula e publica fatos mensais versionados no PostgreSQL existente.
+O banco guarda versões, consumo por filial/agregado/mês, saldo por filial/produto/mês e ponteiro da versão publicada. São fatos de análise, NÃO novos cadastros paralelos. Empresas, filiais, produtos e hierarquia corporativa não são alterados.
+Custos mensais existentes em cost_records, curva industrial e regras de ponderação permanecem no fluxo. Esta primeira etapa não materializa todos os cruzamentos de todas as aplicações; remove o gargalo comprovado do consumo industrial. A integração industrial ainda consulta custos e curvas existentes.
+
+PRESERVAÇÃO DE AUTOPEÇAS
+server/costEvolutionAnalise.ts, costSourcePool.ts, costSalesHistory.ts e costSourceCursor.ts NÃO são substituídos. O instalador exige seus hashes idênticos ao pacote validado 0a43d476.
+O router existente recebe somente a troca do import para costEvolutionDispatch. Chamadas Autopeças continuam no motor original; somente segment=industry vai para o módulo industrial.
+Referência observada 02/11 14:31: Autopeças 202501-202609, todas filiais, R$ 202.896.704,97, 6822 itens com custo, 378 sem curva. Tempo informado inferior a um minuto. Ainda exige confirmar após instalação.
+
+REGRAS E PUBLICAÇÃO
+Consumo: max(0, saldo do mês imediatamente anterior + entradas do mês - saldo atual). Sem salto sobre fechamento ausente; soma por agregado/mês; estoque usa o último fechamento de cada produto DENTRO do intervalo consultado.
+Não altera a regra de custo herdado: nenhum custo anterior ao início do filtro pode virar base artificial.
+Reconstruções têm lock e snapshot; cursores de 1000 e inserções de 500. Publicação do head acontece somente após todas as gravações. Falha mantém a versão anterior no banco.
+Se fontes mudaram desde a publicação, a tela recusa apresentar a base como atual e solicita reconstrução. Não mistura versões. Se a leitura SB9 falhar na Indústria, retorna erro em vez de resultado parcial. O fallback de Autopeças é conhecido e NÃO é alterado neste pacote para preservar a referência validada; será tratado em etapa própria.
+
+INSTALAÇÃO
+Somente /home/ubuntu/portal-operacoes-homolog, serviço portal-operacoes, runtime tsx standalone e banco efetivo portal_operacoes. Produção intocada.
+O instalador aplica a migração 0056 pelo stdin do psql (evita o problema de permissão de leitura em /home/ubuntu), copia módulos e executa a primeira reconstrução com o ambiente efetivo do serviço e usuário ubuntu. Não grava nem imprime credenciais. Memória do processo de reconstrução limitada a 384MB e prioridade reduzida.
+Mantenha terminal aberto e não execute filtros durante a primeira preparação. Há progresso a cada 10000 linhas.
+O router só é ativado depois de publicar a primeira versão. Depois reinicia apenas portal-operacoes. Não há build frontend, importação de arquivo nem instalação de ferramenta nova.
+Saída esperada: HOMOLOG_INDUSTRY_STORE_OK, HOMOLOG_HTTP=200, BACKUP e comando ROLLBACK.
+Abortará antes de modificar fontes se os quatro hashes Autopeças não forem os esperados. Não contorne esse bloqueio.
+
+RECONSTRUÇÃO APÓS IMPORTAÇÕES
+Nesta primeira etapa o comando é manual, NÃO há cron nem automação de importações criada:
+sudo -n python3 /home/ubuntu/portal-operacoes-homolog/scripts/runIndustryConsumptionRebuild.py
+A automatização será integrada ao ciclo de importações somente após homologação da primeira base real. Se fontes forem atualizadas, reconstruir antes de consultar a Indústria.
+A execução leva o tempo de processar as fontes uma vez; não é possível garantir sua duração na VM antes do primeiro teste.
+
+ACEITE NA VM
+1. Instalar sem acionar filtros durante a preparação; enviar o resumo de publicação e a saída final.
+2. Conferir Autopeças com os mesmos filtros e total da referência.
+3. Testar Indústria para um mês/item; em seguida ampliar o período e conferir os totais com a origem.
+4. Verificar se consultas de consumo bruto WITH fotos/GROUP BY/LAG não voltam a ocorrer ao filtrar a Indústria.
+5. Não remover a tarja de sem curva nem alterar regras de vínculo neste teste.
+Se falhar, guardar a saída completa. O instalador restaura fontes/router anteriores. Tabelas e histórico salvos não são excluídos. Rollback manual fica na pasta BACKUP e não mexe em dados.
+
+TESTES LOCAIS EXECUTADOS
+53 testes focados em 12 arquivos aprovados; TypeScript estrito --noEmit aprovado.
+Teste diferencial runtime do caminho Autopeças contra baseline independente: respostas e chamadas SQL equivalentes com SB9 disponível e com fallback. Não é prova de completude do fallback nem conciliação dos dados reais.
+SQL PostgreSQL em PGlite descartável: guard de banco, migração idempotente, grants, 3300 linhas de fontes, cursores >1000, inserts >500, totais calculados, filtro, base ausente/desatualizada e falha sem trocar head aprovados. Somente no ambiente descartável, substituiu-se a condição do nome do banco para executar a migração porque PGlite usa database postgres; o guard original foi testado separadamente e recusou o banco errado.
+Instalador ensaiado com sucesso, falha de reconstrução, falha HTTP, fonte inesperado e falha de migração; fontes/router restaurados e rollback manual aprovado nos testes simulados.
+Desempenho e totais reais da Indústria ainda NÃO validados. Nenhuma alteração foi executada na VM por Manus.
+
+PERSISTÊNCIA DA ENTREGA
+O pacote com SHA256 e este documento constituem a referência desta entrega, fora do chat. Não foi feito push novo ao GitHub nem acionado deploy Vercel nesta etapa; o inventário do Maestro apontou publicação automática e não vamos dispará-la silenciosamente.

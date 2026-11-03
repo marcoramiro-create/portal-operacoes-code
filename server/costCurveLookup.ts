@@ -8,6 +8,12 @@ export type CurveLookupRow = {
 
 export type CurveLookup = Record<string, CurveCode>;
 
+export type CurveLookupItem = {
+  branchCode: string | null | undefined;
+  aggregateCode?: string | null;
+  productCode: string;
+};
+
 const normalize = (value: string | null | undefined) => {
   const text = String(value ?? "").trim();
   if (!text) return "";
@@ -39,4 +45,33 @@ export function buildCostCurveLookup(rows: CurveLookupRow[]): CurveLookup {
 
 export function findCostCurve(lookup: CurveLookup, branchCode: string | null | undefined, code: string) {
   return lookup[curveLookupKey(branchCode, code)];
+}
+
+/**
+ * Retorna somente os códigos ainda não encontrados na curva prioritária.
+ * O agregado é investigado primeiro; o código do produto é consultado como
+ * fallback quando não há curva atual para o agregado.
+ */
+export function findMissingCurveCodes(items: CurveLookupItem[], current: CurveLookup) {
+  const missing = new Map<string, { branchCode: string; code: string }>();
+  for (const item of items) {
+    const branchCode = String(item.branchCode ?? "").trim();
+    const aggregateCode = String(item.aggregateCode ?? "").trim();
+    const productCode = String(item.productCode ?? "").trim();
+    if (!branchCode || !productCode) continue;
+
+    const aggregateCurve = aggregateCode ? findCostCurve(current, branchCode, aggregateCode) : undefined;
+    const productCurve = findCostCurve(current, branchCode, productCode);
+    if (aggregateCurve || productCurve) continue;
+    if (aggregateCode) {
+      missing.set(curveLookupKey(branchCode, aggregateCode), { branchCode, code: aggregateCode });
+    }
+    missing.set(curveLookupKey(branchCode, productCode), { branchCode, code: productCode });
+  }
+  return Array.from(missing.values());
+}
+
+/** Curvas primárias nunca são substituídas pelo resultado de um fallback. */
+export function mergeCostCurveLookups(current: CurveLookup, fallback: CurveLookup): CurveLookup {
+  return { ...fallback, ...current };
 }

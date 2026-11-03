@@ -24,10 +24,10 @@ import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { getCostSourcePool } from "./costSourcePool";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
 import { streamCostSourceRows } from "./costSourceCursor";
-import { IndustryConsumptionAccumulator } from "./industryConsumptionMonthly";
 import { calculateWeightedMonthlyCost, materializeCalendarMonths, type WeightedCurve } from "./costWeightedMonthly";
 import { buildCostSalesHistoryIndex, getCostSalesHistoryQuantity, normalizeCostSalesPeriod, type CostSalesHistoryRow } from "./costSalesHistory";
 import { buildCostCurveLookup } from "./costCurveLookup";
+import { addLatestHistoricalCostCurves } from "./costCurveHistory";
 import { garantirIndicesEconomicos, getIndicesEconomicos } from "./economicIndices";
 type CostEvolutionSegment = "auto_parts" | "industry";
 const INDUSTRY_BRANCH = "0105";
@@ -242,7 +242,7 @@ async function attachAutoPartsEstoque(
 export async function attachSb9MonthlyCosts(
   portalPool: ReturnType<typeof getSupabasePool>,
   result: { periodos?: Array<{ period: string }>; items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; descricao?: string; meses: Array<Record<string, unknown>> }> },
-  params: { periodoInicio?: string; periodoFim?: string; filial?: string | null; codAgregado?: string },
+  params: { periodoInicio?: string; periodoFim?: string; filial?: string | null },
 ) {
   const inicio = normalizeSalesPeriod(params.periodoInicio ?? "") ?? null;
   const fim = normalizeSalesPeriod(params.periodoFim ?? "") ?? null;
@@ -264,16 +264,6 @@ export async function attachSb9MonthlyCosts(
       aggregates.set(row.product, { code: row.aggregate, time, sourceRow: row.sourceRow });
     }
   }
-  let selectedProducts: string[] | null = null;
-  if (params.codAgregado?.trim()) {
-    const requested = new Set(codeVariants(params.codAgregado));
-    const selected = new Set<string>(codeVariants(params.codAgregado));
-    for (const item of result.items ?? []) for (const code of codeVariants(item.codigo)) selected.add(code);
-    for (const [product, definition] of aggregates) {
-      if ([...codeVariants(definition.code ?? product)].some(code => requested.has(code))) selected.add(product);
-    }
-    selectedProducts = [...selected];
-  }
   const records = streamCostSourceRows<{ branch: string; product: string; period: string; cost: string }>(
     portalPool,
     `select trim(r.branch_code) as branch, trim(r.product_code) as product,
@@ -289,9 +279,8 @@ export async function attachSb9MonthlyCosts(
         and r.event_date is not null and r.unit_value is not null
         and ($1::text is null or r.event_date >= to_date($1, 'YYYYMM'))
         and ($2::text is null or r.event_date < to_date($2, 'YYYYMM') + interval '1 month')
-        and ($3::text is null or trim(r.branch_code) = $3)
-        and ($4::text[] is null or trim(r.product_code) = any($4::text[]))`,
-    [inicio, fim, params.filial?.trim() || null, selectedProducts],
+        and ($3::text is null or trim(r.branch_code) = $3)`,
+    [inicio, fim, params.filial?.trim() || null],
   );
   const periods = new Set(
     ((result.periodos ?? []) as Array<{ period: string }>)
@@ -358,68 +347,100 @@ export async function obterConsumoIndustria(
   portalPool: ReturnType<typeof getSupabasePool>,
   periods: string[],
   branch: string = INDUSTRY_BRANCH,
-  productCodes: string[] | null = null,
 ): Promise<{ consumo: Map<string, number>; estoqueAgregado: Map<string, number> }> {
-  if (!periods.length) return { consumo: new Map(), estoqueAgregado: new Map() };
-  const codes = productCodes ? [...new Set(productCodes)].sort() : null;
-  const chave = JSON.stringify([branch, periods[0], periods[periods.length - 1], codes]);
+  const chave = `${branch}:${periods[0]}:${periods[periods.length - 1]}`;
   const existente = cacheConsumoIndustria.get(chave);
   if (existente && Date.now() - existente.gravadoEm < CACHE_CONSUMO_TTL_MS) {
     return { consumo: existente.consumo, estoqueAgregado: existente.estoqueAgregado };
   }
-  const begin = periods[0];
-  const end = periods[periods.length - 1];
-  const accumulator = new IndustryConsumptionAccumulator(begin, end);
-  const closings = streamCostSourceRows<{ branch: string; product: string; aggregate: string; period: string; value: string }>(
-    portalPool,
-    `select trim(r.branch_code) as branch, trim(r.product_code) as product,
-            coalesce(nullif(trim(r.aggregate_product_code), ''), trim(r.product_code)) as aggregate,
-            (r.normalized_payload->>'year') || lpad(r.normalized_payload->>'month', 2, '0') as period,
-            r.normalized_payload->>'totalValue' as value
-       from public.operational_import_batches b
-       join public.operational_source_rows r on r.batch_id = b.id
-      where b.status = 'processed' and b.source_kind = 'FECHAMENTO_ESTOQUE'
-        and r.branch_code = $1 and r.product_code is not null
-        and ((r.normalized_payload->>'year') || lpad(r.normalized_payload->>'month', 2, '0')) between $2 and $3
-        and ($4::text[] is null or trim(r.product_code) = any($4::text[]) or trim(r.aggregate_product_code) = any($4::text[]))
-        and r.normalized_payload->>'totalValue' ~ '${REGEX_NUM}'`,
-    [branch, previousPeriod(begin), end, codes],
+  const inicio = previousPeriod(periods[0]);
+  const fim = periods[periods.length - 1];
+  const consumoRows = await portalPool.query<{ branch: string; agregado: string; period: string; consumo: string }>(
+    `WITH fotos AS (
+        SELECT r.branch_code,
+               r.product_code AS produto,
+               COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
+               (r.normalized_payload->>'year') || lpad(r.normalized_payload->>'month', 2, '0') AS period,
+               SUM((r.normalized_payload->>'totalValue')::numeric) AS saldo
+          FROM public.operational_source_rows r
+          JOIN public.operational_import_batches b ON b.id = r.batch_id
+         WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
+           AND r.branch_code = $3 AND r.product_code IS NOT NULL
+           AND r.normalized_payload->>'totalValue' ~ '${REGEX_NUM}'
+         GROUP BY 1, 2, 3, 4
+     ),
+     entradas AS (
+        SELECT r.branch_code,
+               r.product_code AS produto,
+               COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
+               replace(substring(r.normalized_payload->>'entryDate' from 1 for 7), '-', '') AS period,
+               SUM((r.normalized_payload->>'quantity')::numeric * (r.normalized_payload->>'itemValue')::numeric) AS valor
+          FROM public.operational_source_rows r
+          JOIN public.operational_import_batches b ON b.id = r.batch_id
+         WHERE b.status = 'processed' AND b.source_kind = 'ENTRADA_NF'
+           AND r.branch_code = $3 AND r.product_code IS NOT NULL
+           AND r.normalized_payload->>'quantity' ~ '${REGEX_NUM}'
+           AND r.normalized_payload->>'itemValue' ~ '${REGEX_NUM}'
+         GROUP BY 1, 2, 3, 4
+     ),
+     serie AS (
+        SELECT f.branch_code, f.produto, f.agregado, f.period, f.saldo,
+               CASE WHEN f.period = to_char(to_date(LAG(f.period) OVER (PARTITION BY f.branch_code, f.produto ORDER BY f.period), 'YYYYMM') + INTERVAL '1 month', 'YYYYMM')
+                    THEN LAG(f.saldo) OVER (PARTITION BY f.branch_code, f.produto ORDER BY f.period)
+               END AS saldo_anterior
+          FROM fotos f
+     )
+     SELECT s.branch_code AS branch, s.agregado, s.period,
+            SUM(GREATEST(0, s.saldo_anterior + COALESCE(e.valor, 0) - s.saldo)) AS consumo
+       FROM serie s
+       LEFT JOIN entradas e
+         ON e.branch_code = s.branch_code AND e.produto = s.produto AND e.period = s.period
+      WHERE s.saldo_anterior IS NOT NULL
+        AND s.period BETWEEN $1 AND $2
+      GROUP BY s.branch_code, s.agregado, s.period`,
+    [inicio, fim, branch],
   );
-  for await (const row of closings) accumulator.addClosing({ ...row, value: Number(row.value) });
-  const entries = streamCostSourceRows<{ branch: string; product: string; period: string; quantity: string; unitValue: string }>(
-    portalPool,
-    `select trim(r.branch_code) as branch, trim(r.product_code) as product,
-            replace(substring(r.normalized_payload->>'entryDate' from 1 for 7), '-', '') as period,
-            r.normalized_payload->>'quantity' as quantity, r.normalized_payload->>'itemValue' as "unitValue"
-       from public.operational_import_batches b
-       join public.operational_source_rows r on r.batch_id = b.id
-      where b.status = 'processed' and b.source_kind = 'ENTRADA_NF'
-        and r.branch_code = $1 and r.product_code is not null
-        and replace(substring(r.normalized_payload->>'entryDate' from 1 for 7), '-', '') between $2 and $3
-        and ($4::text[] is null or trim(r.product_code) = any($4::text[]) or trim(r.aggregate_product_code) = any($4::text[]))
-        and r.normalized_payload->>'quantity' ~ '${REGEX_NUM}'
-        and r.normalized_payload->>'itemValue' ~ '${REGEX_NUM}'`,
-    [branch, begin, end, codes],
-  );
-  for await (const row of entries) accumulator.addEntry({ branch: row.branch, product: row.product, period: row.period, value: Number(row.quantity) * Number(row.unitValue) });
-  const result = accumulator.finish();
   const consumo = new Map<string, number>();
-  for (const [key, value] of result.consumo) {
-    const [rowBranch, aggregate, period] = key.split('|');
-    for (const code of codeVariants(aggregate)) consumo.set(`${rowBranch}|${code}|${period}`, value);
+  for (const row of consumoRows.rows) {
+    const valor = Number(row.consumo);
+    if (Number.isFinite(valor)) {
+      for (const code of codeVariants(row.agregado)) consumo.set(`${row.branch.trim().padStart(4, "0")}|${code}|${row.period}`, valor);
+    }
   }
-  if (cacheConsumoIndustria.size >= 2) cacheConsumoIndustria.clear();
-  cacheConsumoIndustria.set(chave, { consumo, estoqueAgregado: result.estoqueAgregado, gravadoEm: Date.now() });
-  return { consumo, estoqueAgregado: result.estoqueAgregado };
+  const estoqueRows = await portalPool.query<{ branch: string; agregado: string; saldo: string }>(
+    `WITH fotos AS (
+        SELECT r.branch_code,
+               COALESCE(nullif(r.aggregate_product_code, ''), r.product_code) AS agregado,
+               (r.normalized_payload->>'year') || lpad(r.normalized_payload->>'month', 2, '0') AS period,
+               SUM((r.normalized_payload->>'totalValue')::numeric) AS saldo
+          FROM public.operational_source_rows r
+          JOIN public.operational_import_batches b ON b.id = r.batch_id
+         WHERE b.status = 'processed' AND b.source_kind = 'FECHAMENTO_ESTOQUE'
+           AND r.branch_code = $1 AND r.product_code IS NOT NULL
+           AND r.normalized_payload->>'totalValue' ~ '${REGEX_NUM}'
+         GROUP BY 1, 2, 3
+     ),
+     ultimo AS (SELECT max(period) AS period FROM fotos)
+     SELECT f.branch_code AS branch, f.agregado, SUM(f.saldo) AS saldo
+       FROM fotos f JOIN ultimo u ON f.period = u.period
+      GROUP BY f.branch_code, f.agregado`,
+    [branch],
+  );
+  const estoqueAgregado = new Map<string, number>();
+  for (const row of estoqueRows.rows) {
+    const valor = Number(row.saldo);
+    if (Number.isFinite(valor)) estoqueAgregado.set(`${row.branch}|${row.agregado}`, valor);
+  }
+  cacheConsumoIndustria.set(chave, { consumo, estoqueAgregado, gravadoEm: Date.now() });
+  return { consumo, estoqueAgregado };
 }
 async function attachIndustryMonthlyConsumption(
   portalPool: ReturnType<typeof getSupabasePool>,
   result: { periodos?: Array<{ period: string }>; items?: Array<{ filial?: string; cod_agregado?: string | null; codigo: string; meses: Array<Record<string, unknown>> }> },
-  filteredProducts: string[] | null = null,
 ): Promise<Map<string, number>> {
   const periods = (result.periodos ?? []).map(item => normalizeSalesPeriod(item.period)).filter((item): item is string => item != null).sort();
   if (!periods.length) return new Map();
-  const { consumo, estoqueAgregado } = await obterConsumoIndustria(portalPool, periods, INDUSTRY_BRANCH, filteredProducts);
+  const { consumo, estoqueAgregado } = await obterConsumoIndustria(portalPool, periods);
   for (const item of result.items ?? []) {
     const branch = String(item.filial ?? INDUSTRY_BRANCH).trim().padStart(4, "0");
     const aggregateVariants = [...codeVariants(item.cod_agregado), ...codeVariants(item.codigo)];
@@ -438,6 +459,7 @@ async function getCurrentCurveLookup(
   portalPool: ReturnType<typeof getSupabasePool>,
   segment: CostEvolutionSegment | undefined,
   branch: string | null,
+  items: Array<{ filial?: string; cod_agregado?: string | null; codigo: string }> = [],
 ) {
   const rows: Array<{ code: string; codeOriginal?: string | null; branchCode: string; curve: string }> = [];
   try {
@@ -499,7 +521,23 @@ async function getCurrentCurveLookup(
       // Uma base sem o histórico de Compras continua sem vínculo.
     }
   }
-  return buildCostCurveLookup(rows);
+  const currentLookup = buildCostCurveLookup(rows);
+  if (segment !== "industry") {
+    try {
+      return await addLatestHistoricalCostCurves(
+        businessPool,
+        currentLookup,
+        items.map(item => ({
+          branchCode: item.filial ?? "",
+          aggregateCode: item.cod_agregado,
+          productCode: item.codigo,
+        })),
+      );
+    } catch (error) {
+      console.error("[Custos] Fallback histórico de curvas indisponível; mantendo vínculos atuais", error);
+    }
+  }
+  return currentLookup;
 }
 type ParamsBase = {
   segment?: CostEvolutionSegment;
@@ -511,7 +549,7 @@ type ParamsBase = {
 };
 async function carregarBase(params: ParamsBase, limites: LimitesAlerta) {
   const businessPool = getBusinessPool();
-  const portalPool = getCostSourcePool(params.segment ?? "auto_parts");
+  const portalPool = getCostSourcePool();
   const filial = params.segment === "industry" && !params.filial?.trim() ? INDUSTRY_BRANCH : (params.filial ?? null);
   const { rows } = await businessPool.query(
     `select get_cost_evolution($1, $2, $3, $4, $5) as result`,
@@ -524,7 +562,7 @@ async function carregarBase(params: ParamsBase, limites: LimitesAlerta) {
     result.items = result.items.filter((item: { filial?: string }) => !FILIAIS_EXCLUIDAS_AUTOPECAS.has(String(item.filial ?? "")));
   }
   try {
-    await attachSb9MonthlyCosts(portalPool, result, { periodoInicio: params.periodoInicio, periodoFim: params.periodoFim, filial, codAgregado: params.segment === "industry" ? params.codAgregado : undefined });
+    await attachSb9MonthlyCosts(portalPool, result, { periodoInicio: params.periodoInicio, periodoFim: params.periodoFim, filial });
   } catch (error) {
     // A SB9 indisponível não pode derrubar a análise legada. O erro fica no log
     // para diagnóstico, enquanto a consulta antiga continua sendo apresentada.
@@ -547,13 +585,13 @@ async function carregarBase(params: ParamsBase, limites: LimitesAlerta) {
     result.items = (result.items ?? []).filter((item: { filial?: string }) => !FILIAIS_EXCLUIDAS_AUTOPECAS.has(String(item.filial ?? "").padStart(4, "0")));
   }
   const estoqueIndustria = params.segment === "industry"
-    ? await attachIndustryMonthlyConsumption(portalPool, result, params.codAgregado ? [...new Set<string>((result.items ?? []).flatMap((item: { codigo: string; cod_agregado?: string | null }) => [...codeVariants(item.codigo), ...codeVariants(item.cod_agregado)]))] : null)
+    ? await attachIndustryMonthlyConsumption(portalPool, result)
     : null;
   if (params.segment !== "industry") {
     await attachAutoPartsMonthlySales(businessPool, result);
     await attachAutoPartsEstoque(businessPool, result);
   }
-  const curves = await getCurrentCurveLookup(businessPool, portalPool, params.segment, filial);
+  const curves = await getCurrentCurveLookup(businessPool, portalPool, params.segment, filial, result.items ?? []);
   const periods: string[] = ((result.periodos ?? []) as Array<{ period: string }>)
     .map((entry: { period: string }) => normalizeSalesPeriod(String(entry.period)))
     .filter((entry): entry is string => entry != null)

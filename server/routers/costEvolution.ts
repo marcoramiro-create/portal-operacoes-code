@@ -3,7 +3,7 @@ import { publicProcedure, router } from "../_core/trpc";
 import { previewCostEvolutionWorkbook } from "../costEvolution";
 import { commitCostEvolutionImport, getCostEvolutionFilterOptions, getCostEvolutionItems, getCostEvolutionSummary, listCostEvolutionImports, updateCostEvolutionImportStatus } from "../costEvolutionService";
 import { assertApplicationPermission, getPortalIdentity, getSupabasePool, listObservacoes, recordPortalAudit, upsertObservacao } from "../supabasePortal";
-import { getCodAgregados, getCodAgregadosComDescricao, getCostEvolutionAnalise, getCostEvolutionItens, getFiliais, getPeriodos } from "../costEvolutionAnalise";
+import { getCodAgregados, getCodAgregadosComDescricao, getCostEvolutionAnalise, getCostEvolutionItens, getFiliais, getPeriodos } from "../costEvolutionDispatch";
 import { garantirIndicesEconomicos } from "../economicIndices";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) {

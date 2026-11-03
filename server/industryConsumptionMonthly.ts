@@ -96,24 +96,22 @@ export class IndustryConsumptionAccumulator {
     const consumo = new Map<string, number>();
     const estoqueAgregado = new Map<string, number>();
     const products = new Set<string>();
+    const latestByProduct = new Map<string, Closing>();
 
     for (const closing of this.closings.values()) {
-      products.add(`${closing.branch}\u0000${closing.product}`);
+      const productKey = `${closing.branch}\u0000${closing.product}`;
+      products.add(productKey);
+      if (closing.period >= this.beginYYYYMM && closing.period <= this.endYYYYMM) {
+        const latest = latestByProduct.get(productKey);
+        if (!latest || closing.period > latest.period) latestByProduct.set(productKey, closing);
+      }
     }
 
     for (const productKey of products) {
       const separator = productKey.indexOf("\u0000");
       const branch = productKey.slice(0, separator);
       const product = productKey.slice(separator + 1);
-      const currentClosingKey = keyFor(branch, product, this.beginYYYYMM);
-      let closing = this.closings.get(currentClosingKey);
-      let lastAvailable: Closing | undefined;
-
-      for (const candidate of this.closings.values()) {
-        if (candidate.branch !== branch || candidate.product !== product) continue;
-        if (candidate.period < this.beginYYYYMM || candidate.period > this.endYYYYMM) continue;
-        if (!lastAvailable || candidate.period > lastAvailable.period) lastAvailable = candidate;
-      }
+      const lastAvailable = latestByProduct.get(productKey);
 
       if (lastAvailable) {
         const stockKey = aggregateKey(branch, lastAvailable.aggregate);
@@ -121,7 +119,7 @@ export class IndustryConsumptionAccumulator {
       }
 
       for (let period = this.beginYYYYMM; period <= this.endYYYYMM; period = nextPeriod(period)) {
-        closing = this.closings.get(keyFor(branch, product, period));
+        const closing = this.closings.get(keyFor(branch, product, period));
         if (!closing) continue;
 
         const previous = this.closings.get(keyFor(branch, product, previousPeriod(period)));
