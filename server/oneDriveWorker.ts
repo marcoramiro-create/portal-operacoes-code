@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "./db";
 import { syncOneDriveReferences } from "./oneDriveReferenceSync";
-import { syncOneDriveSb9 } from "./oneDriveCostSync";
 import { createOneDriveWorkerRequest } from "./oneDriveOAuth";
 
 type JobRow = { id: string; requested_by: string };
@@ -57,12 +56,10 @@ async function processJob(job: JobRow) {
   const req = createOneDriveWorkerRequest(job.requested_by);
   await updateJob(job.id, { currentStep: "references", progress: { step: "references" } });
   const references = await syncOneDriveReferences(req);
-  await updateJob(job.id, { currentStep: "SB9", progress: { step: "SB9", references: references.results } });
-  const sb9 = await syncOneDriveSb9(req);
   await updateJob(job.id, {
     currentStep: "finished",
     progress: { step: "finished" },
-    result: { ...references, results: [...references.results, sb9] },
+    result: references,
     status: "completed",
   });
 }
