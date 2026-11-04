@@ -171,7 +171,7 @@ function DashboardLayoutContent({ children, setSidebarWidth }: { children: React
           className={`min-w-0 flex-1 ${isActive ? "bg-slate-950 text-white hover:bg-slate-950 hover:text-white" : "text-slate-700 hover:bg-white hover:text-slate-950"}`}
         >
           <item.icon className="h-4 w-4 shrink-0" />
-          <span className="min-w-0 truncate"><span className="block truncate">{item.label}</span>{item.description && !isCollapsed && <span className={`block truncate text-[10px] font-medium ${isActive ? "text-slate-300" : "text-slate-400"}`}>{item.description}</span>}</span>
+          <span className="min-w-0 truncate">{item.label}</span>
         </SidebarMenuButton>
         {!isCollapsed && <button type="button" aria-label={isFav ? `Remover ${item.label} dos favoritos` : `Adicionar ${item.label} aos favoritos`} onClick={() => toggleFavorite(item.path)} className={`shrink-0 rounded-md p-1.5 transition-colors hover:bg-white hover:text-amber-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 ${isFav ? "text-amber-500" : "text-slate-400 opacity-0 group-hover/item:opacity-100 group-focus-within/item:opacity-100"}`}><Star className={`h-3.5 w-3.5 ${isFav ? "fill-amber-500" : ""}`} /></button>}
       </SidebarMenuItem>
