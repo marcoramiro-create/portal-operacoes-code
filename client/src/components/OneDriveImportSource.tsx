@@ -25,7 +25,7 @@ export default function OneDriveImportSource() {
     setConnecting(true);
     setConnectError(null);
     try {
-      const { data } = await supabase.auth.getSession();
+      const data = supabase ? (await supabase.auth.getSession()).data : { session: null };
       const headers: Record<string, string> = { Accept: "application/json" };
       // A Homologação também usa a sessão própria por cookie. Quando houver
       // sessão Supabase, o Bearer continua sendo enviado; caso contrário, o

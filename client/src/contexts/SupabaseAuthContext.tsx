@@ -23,6 +23,10 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
   const ownLogout = trpc.auth.logout.useMutation();
 
   useEffect(() => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
