@@ -34,9 +34,14 @@ sudo -n cp -a "$ROOT/server/economicIndices.ts" "$BACKUP/"
 sudo -n cp -a "$ROOT/server/industryConsumptionStore.ts" "$BACKUP/"
 sudo -n bash -c "tar --exclude='./node_modules' -czf '$BACKUP/code-before.tar.gz' -C '$ROOT' ."
 
+# As migrações abaixo são DDL; ainda assim, a contagem do Recebimento é
+# registrada e conferida para tornar a proteção observável.
+before_receipts="$(sudo -n -u postgres psql -X -At -d portal_operacoes_prod -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.nf_receipts')"
 # DDL aditivo somente no banco operacional da Produção. Nenhuma linha é inserida.
 sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d portal_operacoes_prod -f "$MIGRATIONS/0060_economic_indices_prod.sql"
 sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d portal_operacoes_prod -f "$MIGRATIONS/0061_industry_consumption_store_prod.sql"
+after_migration_receipts="$(sudo -n -u postgres psql -X -At -d portal_operacoes_prod -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.nf_receipts')"
+[[ "$after_migration_receipts" == "$before_receipts" ]] || fail "nf_receipts mudou durante o DDL: antes=$before_receipts depois=$after_migration_receipts"
 
 sudo -n cp -a "$PACKAGE_DIR/server/costEvolutionAnalise.ts" "$ROOT/server/"
 sudo -n cp -a "$PACKAGE_DIR/server/industryCostEvolutionAnalise.ts" "$ROOT/server/"
@@ -68,6 +73,7 @@ done
 
 echo "PRODUCAO_SALESMONTHS_HOTFIX_OK"
 echo "BACKUP=$BACKUP"
+echo "NF_RECEIPTS=$after_migration_receipts"
 echo "DADOS_COPIADOS=NAO"
 echo "MIGRACOES=NAO"
 echo "ROLLBACK=tar -xzf $BACKUP/code-before.tar.gz -C $ROOT && systemctl restart $SERVICE"

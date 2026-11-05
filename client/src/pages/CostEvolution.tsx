@@ -253,7 +253,18 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     searchType: applied.descricao ? ("contem" as const) : undefined,
     limitesAlerta: applied.limitesAlerta,
   }), [segment, isIndustry, applied]);
-  const analise = trpc.costEvolution.analise.useQuery(input, { retry: false, enabled: runAnalysis });
+  // A análise é pesada e deve ocorrer somente após ação explícita do usuário.
+  // Sem estas opções, o TanStack Query refaz a consulta ao voltar o foco da
+  // janela, inclusive quando a última tentativa terminou com erro.
+  const analysisQueryOptions = {
+    retry: false,
+    enabled: runAnalysis,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+  } as const;
+  const analise = trpc.costEvolution.analise.useQuery(input, analysisQueryOptions);
   const itensInput = useMemo(() => ({
     ...input,
     filial: grid.filial !== "todas" ? grid.filial : input.filial,
@@ -264,13 +275,13 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
     pagina: grid.pagina,
     itensPorPagina: 50,
   }), [input, grid]);
-  const itens = trpc.costEvolution.itensEvolutivos.useQuery(itensInput, { retry: false, enabled: runAnalysis && grid.open });
-  const chartItems = trpc.costEvolution.itensEvolutivos.useQuery({ ...input, criterio: "todos" as const, ordenacao: "codigo" as const, direcao: "asc" as const, pagina: 1, itensPorPagina: 200 }, { retry: false, enabled: runAnalysis && Boolean(applied.codAgregado) });
+  const itens = trpc.costEvolution.itensEvolutivos.useQuery(itensInput, { ...analysisQueryOptions, enabled: runAnalysis && grid.open });
+  const chartItems = trpc.costEvolution.itensEvolutivos.useQuery({ ...input, criterio: "todos" as const, ordenacao: "codigo" as const, direcao: "asc" as const, pagina: 1, itensPorPagina: 200 }, { ...analysisQueryOptions, enabled: runAnalysis && Boolean(applied.codAgregado) });
   // B-v12: família do agregado — TODOS os itens do agregado do item clicado,
   // em qualquer filial, listados dentro do card de detalhe.
   const familia = trpc.costEvolution.itensEvolutivos.useQuery(
     { ...input, descricao: undefined, filial: undefined, codAgregado: agregadoDetalhe ?? undefined, criterio: "todos" as const, ordenacao: "codigo" as const, direcao: "asc" as const, pagina: 1, itensPorPagina: 100 },
-    { retry: false, enabled: runAnalysis && Boolean(expandido && agregadoDetalhe) },
+    { ...analysisQueryOptions, enabled: runAnalysis && Boolean(expandido && agregadoDetalhe) },
   );
   const abrirDetalhe = (item: ItemRow) => {
     const chave = chaveItem(item);
