@@ -33,6 +33,7 @@ grep -Eq 'portal_negocio_prod' "$ENV_FILE" || fail "portal_negocio_prod não enc
 [[ -d "$RELEASE" && -f "$RELEASE/package.json" ]] || fail "release do pacote incompleto: package.json ausente."
 [[ -f "$MIGRATIONS/0057_purchase_sales_monthly_store_prod.sql" ]] || fail "migração produtiva 0057 ausente."
 [[ -f "$MIGRATIONS/0058_sb9_monthly_cost_store_prod.sql" ]] || fail "migração produtiva 0058 ausente."
+[[ -f "$MIGRATIONS/0059_get_cost_evolution_function_prod.sql" ]] || fail "migração produtiva 0059 ausente."
 command -v sudo >/dev/null || fail "sudo indisponível."
 command -v psql >/dev/null || fail "psql indisponível."
 [[ -x "$NODE_BIN/node" && -x "$NODE_BIN/npx" ]] || fail "Node 22/npx esperados não encontrados."
@@ -55,6 +56,7 @@ environment="$(sudo -n -u postgres psql -X -At -d "$DB" -v ON_ERROR_STOP=1 -c "S
 # As migrações são DDL aditivo no único banco autorizado. Nenhuma carga/rebuild é chamado.
 sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$DB" -f "$MIGRATIONS/0057_purchase_sales_monthly_store_prod.sql"
 sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$DB" -f "$MIGRATIONS/0058_sb9_monthly_cost_store_prod.sql"
+sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$DB" -f "$MIGRATIONS/0059_get_cost_evolution_function_prod.sql"
 
 after_migration_receipts="$(sudo -n -u postgres psql -X -At -d "$DB" -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.nf_receipts')"
 [[ "$after_migration_receipts" == "$before_receipts" ]] || fail "nf_receipts mudou durante as migrações: antes=$before_receipts depois=$after_migration_receipts"
@@ -66,13 +68,13 @@ ln -s "$ROOT/node_modules" "$WORK/release/node_modules"
 cd "$WORK/release"
 export PATH="$NODE_BIN:$PATH"
 export NODE_OPTIONS="--max-old-space-size=1400"
-# Vite incorpora VITE_* no bundle. O arquivo produtivo já foi validado acima;
-# carregá-lo aqui evita compilar o frontend com autenticação vazia.
+# Carregar o ambiente produtivo para o build e para qualquer configuração
+# pública eventualmente disponível. O frontend aceita autenticação própria
+# quando as variáveis legadas do Supabase não existem.
 set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
-[[ -n "${VITE_SUPABASE_URL:-}" && -n "${VITE_SUPABASE_ANON_KEY:-}" ]] || fail "VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY ausentes no ambiente produtivo."
 npx --no-install vite build
 npx --no-install esbuild server/_core/index.ts \
   --platform=node --packages=external --bundle --format=esm \
@@ -106,7 +108,7 @@ echo "PRODUCAO_OK"
 echo "REF=$EXPECTED_REF"
 echo "BACKUP=$BACKUP"
 echo "NF_RECEIPTS=$final_receipts"
-echo "MIGRACOES=0057-prod,0058-prod"
+echo "MIGRACOES=0057-prod,0058-prod,0059-prod"
 echo "DADOS_COPIADOS=NAO"
 echo "REBUILD_EXECUTADO=NAO"
 echo "ROLLBACK_CODIGO=tar -xzf $BACKUP/code-before.tar.gz -C $ROOT"
