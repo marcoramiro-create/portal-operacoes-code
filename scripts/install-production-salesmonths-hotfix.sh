@@ -2,6 +2,7 @@
 set -euo pipefail
 
 PACKAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MIGRATIONS="$PACKAGE_DIR/migrations/production"
 ROOT="${PROD_ROOT:-/home/ubuntu/portal-operacoes-production}"
 SERVICE="${PROD_SERVICE:-portal-operacoes-prod}"
 ENV_FILE="${PROD_ENV_FILE:-/etc/portal-operacoes/portal-prod.env}"
@@ -17,6 +18,9 @@ fail() { echo "ERRO: $*" >&2; exit 1; }
 [[ -f "$PACKAGE_DIR/server/costEvolutionAnalise.ts" ]] || fail "fonte Autopeças ausente."
 [[ -f "$PACKAGE_DIR/server/industryCostEvolutionAnalise.ts" ]] || fail "fonte Indústria ausente."
 [[ -f "$PACKAGE_DIR/server/economicIndices.ts" ]] || fail "fonte de índices econômicos ausente."
+[[ -f "$PACKAGE_DIR/server/industryConsumptionStore.ts" ]] || fail "fonte do read model industrial ausente."
+[[ -f "$MIGRATIONS/0060_economic_indices_prod.sql" ]] || fail "migração de índices econômicos ausente."
+[[ -f "$MIGRATIONS/0061_industry_consumption_store_prod.sql" ]] || fail "migração do read model industrial ausente."
 [[ -x "$NODE_BIN/npx" ]] || fail "npx Node 22 não encontrado."
 command -v sudo >/dev/null || fail "sudo indisponível."
 
@@ -27,11 +31,17 @@ sudo -n chmod 700 "$BACKUP"
 sudo -n cp -a "$ROOT/server/costEvolutionAnalise.ts" "$BACKUP/"
 sudo -n cp -a "$ROOT/server/industryCostEvolutionAnalise.ts" "$BACKUP/"
 sudo -n cp -a "$ROOT/server/economicIndices.ts" "$BACKUP/"
+sudo -n cp -a "$ROOT/server/industryConsumptionStore.ts" "$BACKUP/"
 sudo -n bash -c "tar --exclude='./node_modules' -czf '$BACKUP/code-before.tar.gz' -C '$ROOT' ."
+
+# DDL aditivo somente no banco operacional da Produção. Nenhuma linha é inserida.
+sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d portal_operacoes_prod -f "$MIGRATIONS/0060_economic_indices_prod.sql"
+sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d portal_operacoes_prod -f "$MIGRATIONS/0061_industry_consumption_store_prod.sql"
 
 sudo -n cp -a "$PACKAGE_DIR/server/costEvolutionAnalise.ts" "$ROOT/server/"
 sudo -n cp -a "$PACKAGE_DIR/server/industryCostEvolutionAnalise.ts" "$ROOT/server/"
 sudo -n cp -a "$PACKAGE_DIR/server/economicIndices.ts" "$ROOT/server/"
+sudo -n cp -a "$PACKAGE_DIR/server/industryConsumptionStore.ts" "$ROOT/server/"
 
 cd "$ROOT"
 export PATH="$NODE_BIN:$PATH"

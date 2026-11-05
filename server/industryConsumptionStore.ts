@@ -610,6 +610,8 @@ export async function readIndustryConsumption(
     return { consumo, estoqueAgregado, versionId: current.versionId, refreshedAt, stale: false };
   } catch (error) {
     if (transactionOpen) await client.query("ROLLBACK").catch(() => undefined);
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+    if (code === "42P01") throw new Error(BASE_NOT_PREPARED);
     throw error;
   } finally {
     client.release();
