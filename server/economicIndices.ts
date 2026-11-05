@@ -299,11 +299,18 @@ export async function getIndicesEconomicos(
   const mapas: Record<IndiceEconomico, Map<string, { valor: number; valorFechamento: number | null }>> = { IPCA: new Map(), DOLAR: new Map() };
   if (!periods.length) return mapas;
   const intervalo = intervaloDosPeriodos(periods)!;
-  const { rows } = await portalPool.query<{ indice: string; period: string; valor: string; valorFechamento: string | null }>(
-    `select indice, period, valor, valor_fechamento as "valorFechamento"
-       from public.economic_indices where period between $1 and $2`,
-    [intervalo.inicio, intervalo.fim],
-  );
+  let rows: Array<{ indice: string; period: string; valor: string; valorFechamento: string | null }>;
+  try {
+    ({ rows } = await portalPool.query<{ indice: string; period: string; valor: string; valorFechamento: string | null }>(
+      `select indice, period, valor, valor_fechamento as "valorFechamento"
+         from public.economic_indices where period between $1 and $2`,
+      [intervalo.inicio, intervalo.fim],
+    ));
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+    if (code === "42P01") return mapas;
+    throw error;
+  }
   for (const row of rows) {
     const alvo = row.indice === INDICE_DOLAR ? mapas.DOLAR : row.indice === INDICE_IPCA ? mapas.IPCA : null;
     if (!alvo) continue;

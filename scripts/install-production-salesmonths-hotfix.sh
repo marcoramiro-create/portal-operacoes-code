@@ -16,6 +16,7 @@ fail() { echo "ERRO: $*" >&2; exit 1; }
 [[ "$ROOT" == *production* && "$SERVICE" == *prod* && "$ENV_FILE" == *prod* ]] || fail "caminho, serviço ou ambiente não são de Produção."
 [[ -f "$PACKAGE_DIR/server/costEvolutionAnalise.ts" ]] || fail "fonte Autopeças ausente."
 [[ -f "$PACKAGE_DIR/server/industryCostEvolutionAnalise.ts" ]] || fail "fonte Indústria ausente."
+[[ -f "$PACKAGE_DIR/server/economicIndices.ts" ]] || fail "fonte de índices econômicos ausente."
 [[ -x "$NODE_BIN/npx" ]] || fail "npx Node 22 não encontrado."
 command -v sudo >/dev/null || fail "sudo indisponível."
 
@@ -25,10 +26,12 @@ sudo -n mkdir -p "$BACKUP"
 sudo -n chmod 700 "$BACKUP"
 sudo -n cp -a "$ROOT/server/costEvolutionAnalise.ts" "$BACKUP/"
 sudo -n cp -a "$ROOT/server/industryCostEvolutionAnalise.ts" "$BACKUP/"
+sudo -n cp -a "$ROOT/server/economicIndices.ts" "$BACKUP/"
 sudo -n bash -c "tar --exclude='./node_modules' -czf '$BACKUP/code-before.tar.gz' -C '$ROOT' ."
 
 sudo -n cp -a "$PACKAGE_DIR/server/costEvolutionAnalise.ts" "$ROOT/server/"
 sudo -n cp -a "$PACKAGE_DIR/server/industryCostEvolutionAnalise.ts" "$ROOT/server/"
+sudo -n cp -a "$PACKAGE_DIR/server/economicIndices.ts" "$ROOT/server/"
 
 cd "$ROOT"
 export PATH="$NODE_BIN:$PATH"
