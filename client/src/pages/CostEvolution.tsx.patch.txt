@@ -1,6 +1,0 @@
-// Consultas leves de filtro: mesma disciplina das pesadas — não refazem ao
-// voltar o foco; o servidor também cacheia (TTL 10 min, invalidado na importação).
-  const filterQueryOptions = { retry: false, staleTime: 10 * 60 * 1000, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchOnMount: false } as const;
-  const periodos = trpc.costEvolution.periodos.useQuery({ segment }, filterQueryOptions);
-  const filiais = trpc.costEvolution.filiais.useQuery({ segment }, { ...filterQueryOptions, enabled: !isIndustry });
-  const agregados = trpc.costEvolution.codAgregadosDetalhados.useQuery({ segment }, filterQueryOptions);
