@@ -1,0 +1,41 @@
+import { z } from "zod";
+import { publicProcedure, router } from "../_core/trpc";
+import { previewCostEvolutionWorkbook } from "../costEvolution";
+import { commitCostEvolutionImport, getCostEvolutionFilterOptions, getCostEvolutionItems, getCostEvolutionSummary, listCostEvolutionImports, updateCostEvolutionImportStatus } from "../costEvolutionService";
+import { assertApplicationPermission, getPortalIdentity, getSupabasePool, listObservacoes, recordPortalAudit, upsertObservacao } from "../supabasePortal";
+import { getCodAgregados, getCodAgregadosComDescricao, getCostEvolutionAnalise, getCostEvolutionItens, getFiliais, getPeriodos } from "../costEvolutionDispatch";
+import { invalidateCostFilterCache } from "../costFilterCache";
+import { garantirIndicesEconomicos } from "../economicIndices";
+
+function authorizationHeader(headers: Record<string, string | string[] | undefined>) {
+  const value = headers.authorization;
+  return Array.isArray(value) ? value[0] : value;
+}
+const segment = z.enum(["auto_parts", "industry"]);
+const importerNode = (value: "auto_parts" | "industry") => value === "auto_parts" ? "importacoes-custos-autopecas" : "importacoes-custos-industria";
+const dashboardNode = (value: "auto_parts" | "industry") => value === "auto_parts" ? "custos-autopecas" : "custos-industria";
+const filters = z.object({
+  segment,
+  branch: z.string().trim().max(24).optional(),
+  mrp: z.enum(["Sim", "Não"]).optional(),
+  buyer: z.string().trim().max(320).optional(),
+  search: z.string().trim().max(255).optional(),
+  page: z.number().int().min(1).optional(),
+  pageSize: z.number().int().min(10).max(100).optional(),
+});
+// Limites de alerta configuráveis pelo usuário no filtro.
+const limitesAlerta = z.object({
+  A: z.number().min(0).max(100).optional(),
+  B: z.number().min(0).max(100).optional(),
+  C: z.number().min(0).max(100).optional(),
+  D: z.number().min(0).max(100).optional(),
+  E: z.number().min(0).max(100).optional(),
+}).optional();
+const baseAnalise = {
+  segment,
+  periodoInicio: z.string().trim().max(7).optional(),
+  periodoFim: z.string().trim().max(7).optional(),
+  filial: z.string().trim().max(24).optional(),
+  codAgregado: z.string().trim().max(120).optional(),
+  descricao: z.string().trim().max(255).optional(),
+};
