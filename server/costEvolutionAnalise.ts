@@ -208,20 +208,27 @@ export async function attachAutoPartsMonthlySales(
     const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
     if (code !== "42P01") throw error;
   }
-  const rows = await businessPool.query<CostSalesHistoryRow>(
-    `select trim(a.branch) as branch,
-            trim(a.code) as code,
-            nullif(trim(a."codeOriginal"), '') as "codeOriginal",
-            a."salesMonths" as "salesMonths",
-            i."importedAt" as "importedAt",
-            i.id as "importId", a.id as "rowId"
-       from public."inventoryAnalytics" a
-       join public."protheusImports" i on i.id = a."importId"
-      where i.status = 'approved'
-        and a."salesMonths" is not null
-        and a."salesMonths" <> '{}'::jsonb
-      order by i."importedAt" desc, i.id desc, a.id`,
-  );
+  let rows;
+  try {
+    rows = await businessPool.query<CostSalesHistoryRow>(
+      `select trim(a.branch) as branch,
+              trim(a.code) as code,
+              nullif(trim(a."codeOriginal"), '') as "codeOriginal",
+              a."salesMonths" as "salesMonths",
+              i."importedAt" as "importedAt",
+              i.id as "importId", a.id as "rowId"
+         from public."inventoryAnalytics" a
+         join public."protheusImports" i on i.id = a."importId"
+        where i.status = 'approved'
+          and a."salesMonths" is not null
+          and a."salesMonths" <> '{}'::jsonb
+        order by i."importedAt" desc, i.id desc, a.id`,
+    );
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+    if (code === "42703") return;
+    throw error;
+  }
   sales = buildCostSalesHistoryIndex(rows.rows);
   for (const item of items) {
     for (const month of item.meses) {
