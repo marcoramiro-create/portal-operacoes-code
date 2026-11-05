@@ -77,4 +77,7 @@ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portal_app_prod') THEN
     EXECUTE 'GRANT EXECUTE ON FUNCTION public.get_cost_evolution(text, text, text, text, text) TO portal_app_prod';
   END IF;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'portal_business_prod') THEN
+    EXECUTE 'GRANT EXECUTE ON FUNCTION public.get_cost_evolution(text, text, text, text, text) TO portal_business_prod';
+  END IF;
 END $$;

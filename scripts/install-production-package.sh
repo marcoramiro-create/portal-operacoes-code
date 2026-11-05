@@ -12,6 +12,7 @@ ROOT="${PROD_ROOT:-/home/ubuntu/portal-operacoes-production}"
 SERVICE="${PROD_SERVICE:-portal-operacoes-prod}"
 ENV_FILE="${PROD_ENV_FILE:-/etc/portal-operacoes/portal-prod.env}"
 DB="${PROD_DB:-portal_operacoes_prod}"
+BUSINESS_DB="${PROD_BUSINESS_DB:-portal_negocio_prod}"
 EXPECTED_REF="${PROD_REF:-446faffec27416c51d4c44ee6b13238a56a22e38}"
 NODE_BIN="/home/ubuntu/.nvm/versions/node/v22.23.2/bin"
 STAMP="$(date +%Y%m%d-%H%M%S)"
@@ -27,6 +28,7 @@ fail() { echo "ERRO: $*" >&2; exit 1; }
 [[ "${ALLOW_PRODUCTION_DEPLOY:-}" == "YES" ]] || fail "Produção bloqueada: use ALLOW_PRODUCTION_DEPLOY=YES."
 [[ "$ROOT" == *production* && "$SERVICE" == *prod* && "$ENV_FILE" == *prod* ]] || fail "caminho, serviço ou ambiente não são de Produção."
 [[ "$DB" == "portal_operacoes_prod" ]] || fail "este pacote só aceita portal_operacoes_prod."
+[[ "$BUSINESS_DB" == "portal_negocio_prod" ]] || fail "este pacote só aceita portal_negocio_prod como banco de negócio."
 [[ -r "$ENV_FILE" ]] || fail "arquivo de ambiente ilegível: $ENV_FILE"
 grep -Eq 'portal_operacoes_prod' "$ENV_FILE" || fail "portal_operacoes_prod não encontrado no ambiente."
 grep -Eq 'portal_negocio_prod' "$ENV_FILE" || fail "portal_negocio_prod não encontrado no ambiente."
@@ -47,6 +49,7 @@ sudo -n bash -c "tar --exclude='./node_modules' -czf '$BACKUP/code-before.tar.gz
 sudo -n cp -a "$ENV_FILE" "$BACKUP/portal-prod.env"
 sudo -n chmod 600 "$BACKUP/portal-prod.env"
 sudo -n -u postgres pg_dump -Fc --schema-only -d "$DB" > "$BACKUP/database-schema-before.dump"
+sudo -n -u postgres pg_dump -Fc --schema-only -d "$BUSINESS_DB" > "$BACKUP/business-database-schema-before.dump"
 sudo -n -u postgres pg_dump -Fc -d "$DB" -t public.nf_receipts > "$BACKUP/nf-receipts-before.dump"
 
 before_receipts="$(sudo -n -u postgres psql -X -At -d "$DB" -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.nf_receipts')"
@@ -56,7 +59,7 @@ environment="$(sudo -n -u postgres psql -X -At -d "$DB" -v ON_ERROR_STOP=1 -c "S
 # As migrações são DDL aditivo no único banco autorizado. Nenhuma carga/rebuild é chamado.
 sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$DB" -f "$MIGRATIONS/0057_purchase_sales_monthly_store_prod.sql"
 sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$DB" -f "$MIGRATIONS/0058_sb9_monthly_cost_store_prod.sql"
-sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$DB" -f "$MIGRATIONS/0059_get_cost_evolution_function_prod.sql"
+sudo -n -u postgres psql -X -v ON_ERROR_STOP=1 -d "$BUSINESS_DB" -f "$MIGRATIONS/0059_get_cost_evolution_function_prod.sql"
 
 after_migration_receipts="$(sudo -n -u postgres psql -X -At -d "$DB" -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.nf_receipts')"
 [[ "$after_migration_receipts" == "$before_receipts" ]] || fail "nf_receipts mudou durante as migrações: antes=$before_receipts depois=$after_migration_receipts"
@@ -104,11 +107,14 @@ curl -fsS --max-time 30 -o /dev/null -w 'PROD_HTTP=%{http_code}\n' http://127.0.
 final_receipts="$(sudo -n -u postgres psql -X -At -d "$DB" -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.nf_receipts')"
 [[ "$final_receipts" == "$before_receipts" ]] || fail "nf_receipts mudou após o deploy: antes=$before_receipts depois=$final_receipts"
 
+business_function="$(sudo -n -u postgres psql -X -At -d "$BUSINESS_DB" -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='get_cost_evolution' AND pg_get_function_identity_arguments(p.oid)='p_periodo_inicio text, p_periodo_fim text, p_filial text, p_cod_agregado text, p_descricao text'")"
+[[ "$business_function" == "1" ]] || fail "get_cost_evolution não foi confirmada no banco de negócio."
+
 echo "PRODUCAO_OK"
 echo "REF=$EXPECTED_REF"
 echo "BACKUP=$BACKUP"
 echo "NF_RECEIPTS=$final_receipts"
-echo "MIGRACOES=0057-prod,0058-prod,0059-prod"
+echo "MIGRACOES=0057-prod,0058-prod,0059-prod-negocio"
 echo "DADOS_COPIADOS=NAO"
 echo "REBUILD_EXECUTADO=NAO"
 echo "ROLLBACK_CODIGO=tar -xzf $BACKUP/code-before.tar.gz -C $ROOT"
