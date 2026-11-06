@@ -9,7 +9,7 @@ import { getPortalIdentity, type PortalIdentity, getSupabasePool } from "./supab
 
 const GRAPH = "https://graph.microsoft.com/v1.0";
 const AUTHORITY = `https://login.microsoftonline.com/${ENV.onedriveTenantId}`;
-const SCOPES = "openid profile offline_access User.Read Files.Read";
+const SCOPES = "openid profile offline_access User.Read Files.Read Files.ReadWrite";
 const OAUTH_USER_COOKIE = "onedrive_oauth_user";
 if (!ENV.onedriveTokenKey) throw new Error("ONEDRIVE_TOKEN_KEY não configurada.");
 const KEY = createHash("sha256").update(ENV.onedriveTokenKey).digest();
