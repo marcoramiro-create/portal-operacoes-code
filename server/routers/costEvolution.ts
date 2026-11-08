@@ -4,6 +4,7 @@ import { previewCostEvolutionWorkbook } from "../costEvolution";
 import { commitCostEvolutionImport, getCostEvolutionFilterOptions, getCostEvolutionItems, getCostEvolutionSummary, listCostEvolutionImports, updateCostEvolutionImportStatus } from "../costEvolutionService";
 import { assertApplicationPermission, getPortalIdentity, getSupabasePool, listObservacoes, recordPortalAudit, upsertObservacao } from "../supabasePortal";
 import { getCodAgregados, getCodAgregadosComDescricao, getCostEvolutionAnalise, getCostEvolutionItens, getFiliais, getPeriodos } from "../costEvolutionDispatch";
+import { invalidateCostFilterCache } from "../costFilterCache";
 import { garantirIndicesEconomicos } from "../economicIndices";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) {
@@ -73,6 +74,9 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, importerNode(input.segment), "manage");
     const result = await commitCostEvolutionImport({ ...input, importedBy: identity.email });
+    // Nova base de custos: as listas de filtro (agregados/períodos/filiais)
+    // mudam — invalida o cache em memória imediatamente.
+    invalidateCostFilterCache();
     try {
       await recordPortalAudit(identity, "cost_evolution_import", identity.id, "created", { costImportId: result.id, segment: input.segment, fileName: input.fileName, itemCount: result.itemCount, observationCount: result.observationCount });
     } catch {
@@ -89,6 +93,8 @@ export const costEvolutionRouter = router({
     const identity = await getPortalIdentity(authorizationHeader(ctx.req.headers));
     await assertApplicationPermission(identity, importerNode(input.segment), "approve");
     const result = await updateCostEvolutionImportStatus(input.id, input.status);
+    // Aprovação/arquivamento altera a base vigente: invalida o cache de filtros.
+    invalidateCostFilterCache();
     try {
       await recordPortalAudit(identity, "cost_evolution_import", identity.id, input.status, { costImportId: input.id, segment: input.segment });
     } catch {

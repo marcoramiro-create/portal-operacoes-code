@@ -225,9 +225,12 @@ export function CostEvolutionDashboard({ segment }: { segment: Segment }) {
   const [agregadoDetalhe, setAgregadoDetalhe] = useState<string | null>(null);
   const [mostrarGrafico, setMostrarGrafico] = useState(true);
   const gridRef = useRef<HTMLElement | null>(null);
-  const periodos = trpc.costEvolution.periodos.useQuery({ segment }, { retry: false });
-  const filiais = trpc.costEvolution.filiais.useQuery({ segment }, { retry: false, enabled: !isIndustry });
-  const agregados = trpc.costEvolution.codAgregadosDetalhados.useQuery({ segment }, { retry: false });
+  // Consultas leves de filtro: mesma disciplina das pesadas — não refazem ao
+  // voltar o foco; o servidor também cacheia (TTL 10 min, invalidado na importação).
+  const filterQueryOptions = { retry: false, staleTime: 10 * 60 * 1000, refetchOnWindowFocus: false, refetchOnReconnect: false, refetchOnMount: false } as const;
+  const periodos = trpc.costEvolution.periodos.useQuery({ segment }, filterQueryOptions);
+  const filiais = trpc.costEvolution.filiais.useQuery({ segment }, { ...filterQueryOptions, enabled: !isIndustry });
+  const agregados = trpc.costEvolution.codAgregadosDetalhados.useQuery({ segment }, filterQueryOptions);
   // Botão "Atualizar índices" REMOVIDO — os índices oficiais (IBGE/BCB) se
   // completam sozinhos no servidor a cada análise.
   const limitesAlerta = useMemo(() => {

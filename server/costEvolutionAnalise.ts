@@ -22,6 +22,7 @@
 // ============================================================
 import { getBusinessPool, getSupabasePool } from "./supabasePortal";
 import { getCostSourcePool } from "./costSourcePool";
+import { cachedFilter } from "./costFilterCache";
 import { attachCostBenchmarkReport } from "./costEvolutionBenchmarkAdapter";
 import { streamCostSourceRows } from "./costSourceCursor";
 import { buildSb9CostSourceQuery } from "./sb9CostQuery";
@@ -880,28 +881,38 @@ export async function getCostEvolutionItens(params: ParamsBase & {
   return { total, pagina, itensPorPagina, limites, items: lista.slice(inicio, inicio + itensPorPagina) };
 }
 export async function getCodAgregadosComDescricao() {
-  const pool = getBusinessPool();
-  const { rows } = await pool.query<{ cod_agregado: string; descricao: string }>(
-    `select cr.cod_agregado, max(cr.descricao) as descricao
-       from public.cost_records cr
-      where cr.cod_agregado is not null and trim(cr.cod_agregado) <> ''
-      group by cr.cod_agregado
-      order by cr.cod_agregado`,
-  );
-  return rows;
+  // Lista muda apenas com importação nova; cache evita varrer cost_records
+  // (104 MB na Produção, ~5 s) a cada montagem/foco da tela.
+  return cachedFilter("codAgregadosComDescricao", async () => {
+    const pool = getBusinessPool();
+    const { rows } = await pool.query<{ cod_agregado: string; descricao: string }>(
+      `select cr.cod_agregado, max(cr.descricao) as descricao
+         from public.cost_records cr
+        where cr.cod_agregado is not null and trim(cr.cod_agregado) <> ''
+        group by cr.cod_agregado
+        order by cr.cod_agregado`,
+    );
+    return rows;
+  });
 }
 export async function getFiliais() {
-  const pool = getBusinessPool();
-  const { rows } = await pool.query(`select get_filiais() as result`);
-  return rows[0]?.result ?? [];
+  return cachedFilter("filiais", async () => {
+    const pool = getBusinessPool();
+    const { rows } = await pool.query(`select get_filiais() as result`);
+    return rows[0]?.result ?? [];
+  });
 }
 export async function getCodAgregados() {
-  const pool = getBusinessPool();
-  const { rows } = await pool.query(`select get_cod_agregados() as result`);
-  return rows[0]?.result ?? [];
+  return cachedFilter("codAgregados", async () => {
+    const pool = getBusinessPool();
+    const { rows } = await pool.query(`select get_cod_agregados() as result`);
+    return rows[0]?.result ?? [];
+  });
 }
 export async function getPeriodos() {
-  const pool = getBusinessPool();
-  const { rows } = await pool.query(`select get_periodos() as result`);
-  return rows[0]?.result ?? [];
+  return cachedFilter("periodos", async () => {
+    const pool = getBusinessPool();
+    const { rows } = await pool.query(`select get_periodos() as result`);
+    return rows[0]?.result ?? [];
+  });
 }
