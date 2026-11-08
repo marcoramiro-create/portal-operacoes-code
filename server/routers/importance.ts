@@ -12,7 +12,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { publicProcedure, router } from "../_core/trpc";
 import { getDb } from "../db";
 import { getPortalIdentity } from "../supabasePortal";
-import { inventoryAnalytics, protheusImports } from "../../drizzle/schema";
+import { familyReferences, inventoryAnalytics, protheusImports, sb1References } from "../../drizzle/schema";
 import { calcularImportancia, META_COBERTURA, FATOR_CURVA, PESOS } from "../importanceIndex";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) {
@@ -68,18 +68,25 @@ export const importanceRouter = router({
       const where = and(...conditions);
 
       if (input.dimensao === "item") {
+        // REGRA (08/11/2026): a planilha Compras não traz família — ela vive no
+        // cadastro SB1. Cruzamos por código (com variantes de zeros à esquerda)
+        // para obter a família REAL do item; sem SB1, cai em "—".
         const rows = await db.select({
           code: inventoryAnalytics.code,
           codeOriginal: inventoryAnalytics.codeOriginal,
           description: inventoryAnalytics.description,
           branch: inventoryAnalytics.branch,
-          family: inventoryAnalytics.family,
+          family: sql<string>`coalesce(nullif(trim(${sb1References.familiaCode}), ''), '—')`,
           curve: inventoryAnalytics.curve,
           stockValue: inventoryAnalytics.stockValue,
           salesValue13M: inventoryAnalytics.salesValue13M,
           coverageDays: inventoryAnalytics.coverageDays,
           excessValue: inventoryAnalytics.excessValue,
-        }).from(inventoryAnalytics).where(where).limit(5000);
+        })
+          .from(inventoryAnalytics)
+          .leftJoin(sb1References, sql`ltrim(${inventoryAnalytics.code}, '0') = ltrim(${sb1References.code}, '0')`)
+          .where(where)
+          .limit(5000);
         const calculado = calcularImportancia(rows.map(row => ({
           ...row,
           stockValue: Number(row.stockValue),
@@ -92,18 +99,24 @@ export const importanceRouter = router({
       }
 
       // Familia ou Unidade: agrega primeiro, depois calcula o índice.
-      const groupColumn = input.dimensao === "familia" ? inventoryAnalytics.family : inventoryAnalytics.branch;
+      // Para família, agrupa pela família REAL do SB1 (join); sem SB1 → '—'.
+      const groupColumn = input.dimensao === "familia"
+        ? sql<string>`coalesce(nullif(trim(${sb1References.familiaCode}), ''), '—')`
+        : inventoryAnalytics.branch;
       const rows = await db.select({
         grupo: groupColumn,
         stockValue: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}), 0)`,
         salesValue13M: sql<string>`coalesce(sum(${inventoryAnalytics.salesValue13M}), 0)`,
         excessValue: sql<string>`coalesce(sum(${inventoryAnalytics.excessValue}), 0)`,
-        // Cobertura agregada = Σ estoque ÷ Σ CD (regra do projeto, nunca média).
-        coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}) / nullif(sum(case when ${inventoryAnalytics.salesValue13M} > 0 then ${inventoryAnalytics.stockValue} * 360 / ${inventoryAnalytics.salesValue13M} else 0 end), 0), 0)`,
+        // Cobertura agregada = Σ estoque × 360 ÷ Σ vendas 13M (regra do projeto:
+        // consolidada, nunca média dos itens). Igual ao KPI do dashboard.
+        coverageDays: sql<string>`coalesce(sum(${inventoryAnalytics.stockValue}) * 360 / nullif(sum(${inventoryAnalytics.salesValue13M}), 0), 0)`,
         itens: sql<string>`count(*)`,
         // Curva dominante do grupo: a que concentra mais valor de estoque.
         curve: sql<string>`(array_agg(${inventoryAnalytics.curve} order by ${inventoryAnalytics.stockValue} desc))[1]`,
-      }).from(inventoryAnalytics).where(where).groupBy(groupColumn);
+      }).from(inventoryAnalytics)
+        .leftJoin(sb1References, sql`ltrim(${inventoryAnalytics.code}, '0') = ltrim(${sb1References.code}, '0')`)
+        .where(where).groupBy(groupColumn);
       const calculado = calcularImportancia(rows.map(row => ({
         ...row,
         grupo: String(row.grupo ?? "—"),
