@@ -1,4 +1,4 @@
-import { ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
+import { ExternalLink, LoaderCircle, LogOut, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { supabase } from "@/lib/supabase";
@@ -26,6 +26,11 @@ export default function OneDriveImportSource() {
   const source = trpc.portal.oneDriveSource.useQuery(undefined, { retry: false });
   const connection = trpc.portal.oneDriveConnection.useQuery(undefined, { retry: false });
   const files = trpc.portal.oneDriveFiles.useQuery(undefined, { retry: false, enabled: Boolean(connection.data?.connected) });
+  // Desconexão: revoga a conexão do usuário logado (a conexão de serviço
+  // usada pelos jobs é outra linha e não é afetada).
+  const disconnect = trpc.portal.oneDriveDisconnect.useMutation({
+    onSuccess: () => { void connection.refetch(); void files.refetch(); void utils.portal.oneDriveSource.invalidate(); },
+  });
 
   useEffect(() => {
     if (syncStatus.data?.status === "completed") void utils.analytics.invalidate();
@@ -67,7 +72,13 @@ export default function OneDriveImportSource() {
         {source.isLoading ? (
           <LoaderCircle className="h-5 w-5 animate-spin text-slate-500" />
         ) : connection.data?.connected ? (
-          <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-100 px-4 py-2.5 text-sm font-bold text-emerald-800">OneDrive conectado</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-100 px-4 py-2.5 text-sm font-bold text-emerald-800">OneDrive conectado</span>
+            <button type="button" disabled={disconnect.isPending} onClick={() => { if (window.confirm("Desconectar o OneDrive desta sessão? Os jobs de serviço continuam funcionando.")) disconnect.mutate(); }} title="Revoga a conexão do OneDrive do usuário logado" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">
+              {disconnect.isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+              Desconectar
+            </button>
+          </div>
         ) : (
           <button type="button" disabled={connecting} onClick={connectOneDrive} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">
             {connecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
@@ -79,6 +90,8 @@ export default function OneDriveImportSource() {
         ) : null}
       </div>
       {connectError ? <p className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{connectError}</p> : null}
+      {disconnect.error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">{disconnect.error.message}</p>}
+      {disconnect.isSuccess && <p role="status" className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">OneDrive desconectado desta sessão.</p>}
       {source.data?.reachable && <p className="mt-4 text-xs font-bold uppercase tracking-[0.12em] text-emerald-700">Link público confirmado · somente leitura</p>}
       {source.error && <p className="mt-4 text-xs font-semibold text-amber-800">Não foi possível consultar a origem agora. O envio manual abaixo continua disponível.</p>}
       {connection.data?.connected && (
