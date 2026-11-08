@@ -10,10 +10,13 @@
 // importWorkbook, sem depender de armazenamento. Removidos os cards de upload
 // dos cadastros (SB1, SBZ, Famílias, SubFamílias) — eles são importados pela
 // ferramenta de importações. MANTIDO o histórico de importações dos cadastros.
+// MUDANÇA (08/11/2026): Painel de Diagnóstico — Saúde do Pipeline (padrão
+// do guia Claude) no topo da tela, antes do painel OneDrive.
 // ============================================================
 import { Button } from "@/components/ui/button";
 import OneDriveImportSource from "@/components/OneDriveImportSource";
 import OperationalImportPreviewPanel from "@/components/OperationalImportPreviewPanel";
+import PipelineHealthPanel from "@/components/PipelineHealthPanel";
 import { formatDate } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 import { Archive, CheckCircle2, FileSpreadsheet, FileUp, History, Loader2, ShieldCheck, Trash2, Upload } from "lucide-react";
@@ -97,6 +100,7 @@ export default function ImportData() {
         <h1 className="mt-2 text-3xl font-extrabold tracking-[-0.055em] text-slate-950 sm:text-4xl">Importar planilha</h1>
         <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-slate-500">Envie cada versão da extração Excel do Protheus. A carga preserva o histórico, valida as colunas e permite analisar vendas, estoque, giro e MRP separadamente.</p>
       </header>
+      {canAdminister && <PipelineHealthPanel />}
       {canAdminister && <OneDriveImportSource />}
       {canAdminister && <OperationalImportPreviewPanel />}
       <section className="sc-surface p-6 sm:p-8">
