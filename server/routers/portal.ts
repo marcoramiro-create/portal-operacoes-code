@@ -8,6 +8,7 @@ import { registrationTypes } from "../../shared/registrationLayouts";
 import { validateCardNumber, validatePersonDocument } from "../personDocumentValidation";
 import { listOneDriveFiles, oneDriveStatus } from "../oneDriveOAuth";
 import { createOneDriveSyncJob, getOneDriveSyncJob } from "../oneDriveSyncJob";
+import { createSummaryJob, getSummaryJob, listConfiguredProducts, assertConfiguredProduct } from "../summaryJob";
 
 function authorizationHeader(headers: Record<string, string | string[] | undefined>) { const value = headers.authorization; return Array.isArray(value) ? value[0] : value; }
 function requestInfo(ctx: { req: { ip?: string } }) { return { ip: ctx.req.ip }; }
@@ -28,8 +29,8 @@ export const portalRouter = router({
   createUser: publicProcedure.input(z.object({ email: z.string().email(), displayName: z.string().trim().min(3).max(160), profileKey })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return createPortalUser(input, identity); }),
   updateUser: publicProcedure.input(z.object({ userId: z.string().uuid(), status: z.enum(["active", "inactive"]), profileKey, canFulfillInventoryRequests: z.boolean().optional(), employeeId: z.string().uuid().nullable().optional() })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return updatePortalUser(input.userId, input, identity); }),
   updateUserOperationalScope: publicProcedure.input(z.object({ userId: z.string().uuid(), branchIds: z.array(z.string().uuid()).max(100), defaultBranchId: z.string().uuid().nullable(), privileges: z.array(operationalPrivilege).max(4) })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return updateUserOperationalScope(input, identity); }),
-  resendInvite: publicProcedure.input(z.object({ email: z.string().email() })).mutation(async ({ ctx, input }) => { await administrator(ctx); return resendPortalInvite(input.email, requestInfo(ctx)); }),
-  resendActivationInvite: publicProcedure.input(z.object({ userId: z.string().uuid() })).mutation(async ({ ctx, input }) => { await administrator(ctx); return resendPortalActivation(input.userId, requestInfo(ctx)); }),
+  resendInvite: publicProcedure.mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return resendPortalInvite((input as { email: string }).email, requestInfo(ctx)); }),
+  resendActivationInvite: publicProcedure.input(z.object({ userId: z.string().uuid() })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return resendPortalActivation(input.userId, requestInfo(ctx)); }),
   createAccessRequest: publicProcedure.input(z.object({ email: z.string().email(), displayName: z.string().trim().min(3).max(160), personType: z.enum(["PF", "PJ"]), documentNumber: z.string().trim().min(1).max(32), cardNumber: z.string().trim().max(32).optional(), reason: z.string().trim().max(500).optional() }).superRefine((input, context) => { const document = validatePersonDocument(input.personType, input.documentNumber); if (!document.valid) context.addIssue({ code: z.ZodIssueCode.custom, path: ["documentNumber"], message: document.message }); if (!validateCardNumber(input.cardNumber)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["cardNumber"], message: "Informe um número de cartão válido, com até 32 caracteres." }); })).mutation(({ input }) => createAccessRequest({ ...input, documentNumber: validatePersonDocument(input.personType, input.documentNumber).normalized })),
   accessRequests: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listAccessRequests(); }),
   reviewAccessRequest: publicProcedure.input(z.object({ requestId: z.string().uuid(), decision: z.enum(["approved", "rejected"]), profileKey: profileKey.optional(), displayName: z.string().trim().min(3).max(160).optional() })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); await assertApplicationPermission(identity, "usuarios-solicitacoes", "approve"); return reviewAccessRequest(input, identity); }),
@@ -47,6 +48,17 @@ export const portalRouter = router({
   oneDriveSyncStatus: publicProcedure.input(z.object({ jobId: z.string().min(1).max(100) })).query(async ({ ctx, input }) => {
     await administrator(ctx);
     return getOneDriveSyncJob(input.jobId);
+  }),
+  // Redução Protheus (job em segundo plano — worker executa o script isolado).
+  summaryProducts: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listConfiguredProducts(); }),
+  createSummaryJob: publicProcedure.input(z.object({ product: z.string().trim().min(3).max(4) })).mutation(async ({ ctx, input }) => {
+    const identity = await administrator(ctx);
+    const product = assertConfiguredProduct(input.product);
+    return createSummaryJob(identity.id, product);
+  }),
+  summaryJobStatus: publicProcedure.input(z.object({ jobId: z.string().min(1).max(100) })).query(async ({ ctx, input }) => {
+    await administrator(ctx);
+    return getSummaryJob(input.jobId);
   }),
   oneDriveFiles: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return listOneDriveFiles(ctx.req); }),
   updateUserNodePermission: publicProcedure.input(z.object({ userId: z.string().uuid(), nodeId: z.string().uuid(), permission: nodePermission, allowed: z.boolean() })).mutation(async ({ ctx, input }) => { const identity = await administrator(ctx); return updateUserNodePermission(input, identity); }),
