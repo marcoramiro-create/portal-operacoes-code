@@ -6,7 +6,7 @@ import { registrationOperations, resolvedRegistrationPermissionsForUser, updateR
 import { getOneDriveImportsLink, getOneDriveSourceStatus } from "../onedriveSharedLink";
 import { registrationTypes } from "../../shared/registrationLayouts";
 import { validateCardNumber, validatePersonDocument } from "../personDocumentValidation";
-import { listOneDriveFiles, oneDriveStatus } from "../oneDriveOAuth";
+import { listOneDriveFiles, oneDriveStatus, oneDriveDisconnect } from "../oneDriveOAuth";
 import { createOneDriveSyncJob, getOneDriveSyncJob } from "../oneDriveSyncJob";
 import { createSummaryJob, getSummaryJob, listConfiguredProducts, assertConfiguredProduct } from "../summaryJob";
 
@@ -41,6 +41,7 @@ export const portalRouter = router({
   userNodePermissions: publicProcedure.input(z.object({ userId: z.string().uuid() })).query(async ({ ctx, input }) => { await administrator(ctx); return listUserNodePermissions(input.userId); }),
   oneDriveSource: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return { ...(await getOneDriveSourceStatus()), link: getOneDriveImportsLink() }; }),
   oneDriveConnection: publicProcedure.query(async ({ ctx }) => { await administrator(ctx); return oneDriveStatus(ctx.req); }),
+  oneDriveDisconnect: publicProcedure.mutation(async ({ ctx }) => { await administrator(ctx); return oneDriveDisconnect(ctx.req); }),
   syncOneDriveReferences: publicProcedure.mutation(async ({ ctx }) => {
     const identity = await administrator(ctx);
     return createOneDriveSyncJob(identity.id);
