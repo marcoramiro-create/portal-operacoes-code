@@ -11,6 +11,16 @@ export default function OneDriveImportSource() {
     { jobId: syncJobId ?? "-" },
     { enabled: Boolean(syncJobId), refetchInterval: query => query.state.data?.status === "pending" || query.state.data?.status === "running" ? 2000 : false, retry: false },
   );
+  // ─── Redução Protheus (botão "Reduzir") ───
+  const products = trpc.portal.summaryProducts.useQuery(undefined, { retry: false });
+  const [summaryProduct, setSummaryProduct] = useState<string>("");
+  const [summaryJobId, setSummaryJobId] = useState<string | null>(null);
+  const summary = trpc.portal.createSummaryJob.useMutation({ onSuccess: result => setSummaryJobId(result.jobId) });
+  const summaryStatus = trpc.portal.summaryJobStatus.useQuery(
+    { jobId: summaryJobId ?? "-" },
+    { enabled: Boolean(summaryJobId), refetchInterval: query => query.state.data?.status === "pending" || query.state.data?.status === "running" ? 3000 : false, retry: false },
+  );
+  const summaryRunning = summary.isPending || summaryStatus.data?.status === "pending" || summaryStatus.data?.status === "running";
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const source = trpc.portal.oneDriveSource.useQuery(undefined, { retry: false });
@@ -83,6 +93,23 @@ export default function OneDriveImportSource() {
           {files.isLoading ? <p className="mt-3 text-sm text-slate-500">Lendo exportações…</p> : files.data?.files.length ? <ul className="mt-3 divide-y divide-slate-100">{files.data.files.map(file => <li key={file.id} className="py-2 text-sm"><span className="mr-2 font-bold">{file.folderName}</span>{file.name}<span className="ml-2 text-xs text-slate-500">{new Date(file.modifiedAt).toLocaleString("pt-BR")}</span></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">Nenhuma exportação encontrada nas subpastas.</p>}
         </div>
       )}
+      {connection.data?.connected && products.data?.length ? (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-sm font-extrabold text-slate-950">Reduzir tabela Protheus</p>
+          <p className="mt-1 text-xs text-slate-500">Lê o original mais novo em Cadastros/&lt;produto&gt; e publica a versão resumida em &lt;produto&gt;_REDUZIDAS — em segundo plano; o portal fica livre.</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select className="control h-9 w-44" value={summaryProduct} onChange={event => setSummaryProduct(event.target.value)} title="Tabela a reduzir">
+              <option value="">Tabela…</option>
+              {products.data.map(product => <option key={product} value={product}>{product}</option>)}
+            </select>
+            <button type="button" disabled={!summaryProduct || summaryRunning} onClick={() => { setSummaryJobId(null); summary.mutate({ product: summaryProduct }); }} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{summaryRunning ? "Reduzindo…" : "Reduzir"}</button>
+          </div>
+          {summary.error && <p role="alert" className="mt-3 text-sm text-rose-700">{summary.error.message}</p>}
+          {summaryStatus.data?.status === "failed" && <p role="alert" className="mt-3 text-sm text-rose-700">{summaryStatus.data.error}</p>}
+          {summaryStatus.data?.status === "completed" && <p role="status" className="mt-3 text-sm font-semibold text-emerald-700">{summaryStatus.data.product} concluído{summaryStatus.data.result?.publicada ? " — versão publicada no OneDrive." : "."}</p>}
+          {summaryStatus.data?.status !== "failed" && summaryStatus.data?.log && <details className="mt-2"><summary className="cursor-pointer text-xs font-bold text-slate-600">Ver log da execução</summary><pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-[11px] leading-4 text-slate-700">{summaryStatus.data.log}</pre></details>}
+        </div>
+      ) : null}
     </section>
   );
 }
