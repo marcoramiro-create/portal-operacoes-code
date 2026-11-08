@@ -5,29 +5,22 @@
 // Cadastros/SB9_REDUZIDAS/SB9-resumida.csv), lendo o ORIGINAL
 // direto do OneDrive — substitui vigia.js + sb9-upload.cjs.
 //
-// Por que um job à parte (e não o writeSummaryAtomic commitado):
-// o writer em processo materializa linhas + string completa em
-// memória (~558 MB medidos para 1,55 mi de linhas) e a VM tem
-// 1 GB com o serviço já em ~230 MB. Este job é STREAMING:
-// parser em pedaços → gravação local em /tmp → upload em blocos
-// de 10 MB. Pico de memória constante (~dezenas de MB).
+// v2 (08/11): conexão ÚNICA com o banco (Client, não Pool) — a v1
+// usava Pool max=1 e deadlockava: o advisory lock ocupava a única
+// conexão e a leitura do token esperava uma segunda para sempre.
+// Lock agora é try (não-bloqueante) com mensagem clara, e o job
+// loga progresso: a cada 25 MB baixados e 250 mil linhas parseadas.
 //
 // Disciplina atômica (mesma do onedriveSummaryWriter.ts):
 //   1. Grava SB9-resumida.csv.tmp no OneDrive (upload session)
 //   2. Confere o tamanho do .tmp no Graph == tamanho local
-//      (o conteúdo local já foi validado: cabeçalho + contagem)
 //   3. Apaga SB9-resumida.csv anterior
 //   4. Renomeia .tmp → SB9-resumida.csv
 // Em qualquer falha antes do passo 4, o arquivo final anterior
 // permanece intacto.
 //
 // Colunas: SUMMARY_SCHEMAS.SB9 (onedriveSummarySchemas.ts) é a
-// FONTE ÚNICA — se este import falhar, a VM está atrás da main
-// (git pull --ff-only antes de rodar).
-//
-// Token: espelha o mecanismo de oneDriveOAuth.ts (AES-256-GCM
-// com chave = sha256(ONEDRIVE_TOKEN_KEY), worker por usuário de
-// serviço). Renova sozinho via refresh_token e regrava a conexão.
+// FONTE ÚNICA.
 //
 // Uso (na VM, dentro de /home/ubuntu/portal-operacoes-homolog):
 //   npx tsx --env-file=.env scripts/sb9SummaryUpload.ts --dry-run
@@ -35,8 +28,8 @@
 // ============================================================
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { open, unlink } from "node:fs/promises";
-import { createReadStream, createWriteStream, statSync } from "node:fs";
-import { Pool } from "pg";
+import { createWriteStream, statSync } from "node:fs";
+import { Client } from "pg";
 import { ENV } from "../server/_core/env";
 import { createSb9StreamParser, type Sb9Row } from "../server/protheusCatalogParsers";
 import { SUMMARY_SCHEMAS } from "../server/onedriveSummarySchemas";
@@ -51,6 +44,8 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const SCHEMA = SUMMARY_SCHEMAS.SB9;
 const STAGE_PATH = `/tmp/sb9-resumida-${process.pid}.csv`;
 const CHUNK = 10 * 1024 * 1024; // 10 MiB — múltiplo de 320 KiB exigido pelo Graph
+const LOG_BYTES = 25 * 1024 * 1024; // progresso a cada 25 MB
+const LOG_ROWS = 250_000; // progresso a cada 250 mil linhas
 
 type DriveItem = { id: string; name: string; size: number; lastModifiedDateTime: string; file?: unknown; folder?: unknown };
 
@@ -67,10 +62,11 @@ if (!/^[0-9a-f-]{36}$/i.test(SERVICE_USER_ID)) {
   fail("ONEDRIVE_SERVICE_USER_ID ausente ou inválido no .env.");
 }
 
-const pool = new Pool({
+// Conexão ÚNICA: todo SQL do job passa por ela (lock, token, nada
+// de segunda conexão — elimina a classe de deadlock da v1).
+const client = new Client({
   connectionString: process.env.PORTAL_DATABASE_URL ?? process.env.SUPABASE_DATABASE_URL,
   ssl: { rejectUnauthorized: false },
-  max: 1,
 });
 
 // ─── Cripto (espelha oneDriveOAuth.ts — mesma derivação de chave) ──
@@ -91,13 +87,14 @@ function encryptValue(value: string) {
 }
 
 async function accessToken(): Promise<string> {
-  const row = (await pool.query<{ access_token_enc: string; refresh_token_enc: string | null; expires_at: Date }>(
+  const row = (await client.query<{ access_token_enc: string; refresh_token_enc: string | null; expires_at: Date }>(
     "select access_token_enc, refresh_token_enc, expires_at from public.portal_onedrive_connections where user_id=$1",
     [SERVICE_USER_ID],
   )).rows[0];
   if (!row) fail("OneDrive não conectado para o usuário de serviço. Conecte pela tela do portal.");
   if (new Date(row.expires_at).getTime() > Date.now() + 60_000) return decryptValue(row.access_token_enc);
   if (!row.refresh_token_enc) fail("Token do OneDrive expirado sem refresh disponível. Reconecte pela tela do portal.");
+  console.log("[sb9-resumida] token expirado — renovando via refresh_token…");
   const response = await fetch(`${AUTHORITY}/oauth2/v2.0/token`, {
     method: "POST",
     body: new URLSearchParams({
@@ -110,13 +107,13 @@ async function accessToken(): Promise<string> {
   });
   if (!response.ok) fail("Não foi possível renovar o token do OneDrive. Reconecte pela tela do portal.");
   const data = await response.json() as { access_token: string; refresh_token?: string; expires_in: number };
-  await pool.query(
+  await client.query(
     `update public.portal_onedrive_connections
         set access_token_enc=$2, refresh_token_enc=$3, expires_at=$4, updated_at=now()
       where user_id=$1`,
     [SERVICE_USER_ID, encryptValue(data.access_token), data.refresh_token ? encryptValue(data.refresh_token) : row.refresh_token_enc, new Date(Date.now() + data.expires_in * 1000)],
   );
-  console.log("[sb9-resumida] token renovado via refresh_token");
+  console.log("[sb9-resumida] token renovado.");
   return data.access_token;
 }
 
@@ -187,18 +184,22 @@ async function writeLine(out: ReturnType<typeof createWriteStream>, line: string
 }
 
 // ─── Fluxo principal ───────────────────────────────────────────
-const lockClient = await pool.connect();
 let stageCreated = false;
 try {
-  const dbName = (await lockClient.query("select current_database() as n")).rows[0]?.n;
+  await client.connect();
+  const dbName = (await client.query("select current_database() as n")).rows[0]?.n;
   if (dbName !== "portal_operacoes") fail(`Banco '${dbName}' não é a Homologação autorizada (portal_operacoes).`);
-  await lockClient.query("select pg_advisory_lock($1)", [ADVISORY_LOCK_ID]);
+
+  // Lock NÃO-bloqueante: se outra execução estiver de pé, avisa e sai.
+  const locked = (await client.query<{ ok: boolean }>("select pg_try_advisory_lock($1) as ok", [ADVISORY_LOCK_ID])).rows[0]?.ok;
+  if (!locked) fail("Outra execução do sb9SummaryUpload está em andamento (lock ocupado). Tente mais tarde.");
 
   const token = await accessToken();
   const cadastros = await findCadastrosRoot(token);
-  const sb9Folder = (await listChildren(token, cadastros.id)).find(item => item.folder && item.name === "SB9");
+  const cadastrosChildren = await listChildren(token, cadastros.id);
+  const sb9Folder = cadastrosChildren.find(item => item.folder && item.name === "SB9");
   if (!sb9Folder) fail("Pasta Cadastros/SB9 não encontrada no OneDrive.");
-  const reduzidasFolder = (await listChildren(token, cadastros.id)).find(item => item.folder && item.name === "SB9_REDUZIDAS");
+  const reduzidasFolder = cadastrosChildren.find(item => item.folder && item.name === "SB9_REDUZIDAS");
   if (!reduzidasFolder) fail("Pasta Cadastros/SB9_REDUZIDAS não encontrada no OneDrive (crie-a vazia no OneDrive).");
 
   const sb9Children = await listChildren(token, sb9Folder.id);
@@ -221,8 +222,11 @@ try {
   stageCreated = true;
   await writeLine(out, SCHEMA.columns.map(escapeCsvField).join(";") + "\r\n");
   let rows = 0;
+  let downloaded = 0;
+  let lastLogBytes = 0;
   const parser = createSb9StreamParser((row: Sb9Row) => {
     rows += 1;
+    if (rows % LOG_ROWS === 0) console.log(`[sb9-resumida] ${new Date().toISOString()} | ${rows.toLocaleString("pt-BR")} linhas parseadas`);
     void writeLine(out, summaryLine(row) + "\r\n");
   });
   const content = await fetch(`${GRAPH}/me/drive/items/${fonte.id}/content`, {
@@ -230,7 +234,16 @@ try {
     signal: AbortSignal.timeout(900_000),
   });
   if (!content.ok || !content.body) fail(`Falha ao baixar ${fonte.name}: HTTP ${content.status}.`);
-  for await (const part of content.body as unknown as AsyncIterable<Uint8Array>) parser.push(Buffer.from(part));
+  console.log(`[sb9-resumida] download iniciado (${(fonte.size / 1048576).toFixed(0)} MB)…`);
+  for await (const part of content.body as unknown as AsyncIterable<Uint8Array>) {
+    const buffer = Buffer.from(part);
+    downloaded += buffer.length;
+    if (downloaded - lastLogBytes >= LOG_BYTES) {
+      lastLogBytes = downloaded;
+      console.log(`[sb9-resumida] ${new Date().toISOString()} | baixados ${(downloaded / 1048576).toFixed(0)} de ${(fonte.size / 1048576).toFixed(0)} MB`);
+    }
+    parser.push(buffer);
+  }
   const parsed = parser.finish();
   await new Promise<void>(resolve => out.end(resolve));
   if (!rows) fail("Nenhum registro válido no arquivo fonte. Nada foi publicado.");
@@ -240,10 +253,12 @@ try {
   if (DRY_RUN) {
     console.log("[sb9-resumida] --dry-run: nenhuma gravação no OneDrive. Removendo palco local.");
     await unlink(STAGE_PATH);
+    stageCreated = false;
     process.exit(0);
   }
 
   // Etapa 2 — upload session do .tmp em blocos.
+  console.log(`[sb9-resumida] publicando ${(stageSize / 1048576).toFixed(1)} MB em blocos de 10 MB…`);
   const sessionResponse = await fetch(
     `${GRAPH}/me/drive/items/${reduzidasFolder.id}:/${encodeURIComponent(`${SCHEMA.fileName}.tmp`)}:/createUploadSession`,
     {
@@ -301,9 +316,6 @@ try {
   console.log(`[sb9-resumida] ${new Date().toISOString()} | Publicada | ${SCHEMA.fileName} | ${rows} registros | ${(stageSize / 1048576).toFixed(1)} MB | ${SCHEMA.folder}`);
 } finally {
   if (stageCreated) await unlink(STAGE_PATH).catch(() => undefined);
-  if (lockClient) {
-    await lockClient.query("select pg_advisory_unlock($1)", [ADVISORY_LOCK_ID]).catch(() => undefined);
-    lockClient.release();
-  }
-  await pool.end().catch(() => undefined);
+  await client.query("select pg_advisory_unlock($1)", [ADVISORY_LOCK_ID]).catch(() => undefined);
+  await client.end().catch(() => undefined);
 }
