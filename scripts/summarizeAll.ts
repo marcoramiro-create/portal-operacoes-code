@@ -105,24 +105,27 @@ async function listChildren(token: string, itemId: string | null): Promise<Drive
 }
 
 async function findCadastrosRoot(token: string): Promise<DriveItem> {
-  let current: DriveItem | null = null;
-  for (const segment of ["Documents", "Documentos", "Portal de Operações", "Cadastros"]) {
-    const children = await listChildren(token, current?.id ?? null);
-    const next = children.find(item => item.folder && item.name === segment);
-    if (!next) {
-      // Layout alternativo: "Documentos" direto na raiz.
-      if (!current && segment === "Documents") {
-        const root = await listChildren(token, null);
-        const alt = root.find(item => item.folder && item.name === "Documentos");
-        if (!alt) fail("Pasta Documentos não encontrada no OneDrive.");
-        current = alt;
-        continue;
-      }
-      fail(`Pasta '${segment}' não encontrada no OneDrive.`);
+  // Layouts conhecidos do drive COMPRAS (validados em 08/11):
+  //   A) Documentos/Portal de Operações/Cadastros  (Documentos na raiz)
+  //   B) Documents/Documentos/Portal de Operações/Cadastros (drive OneDrive clássico)
+  //   C) Cadastros direto na raiz
+  const layouts: string[][] = [
+    ["Documentos", "Portal de Operações", "Cadastros"],
+    ["Documents", "Documentos", "Portal de Operações", "Cadastros"],
+    ["Cadastros"],
+  ];
+  for (const layout of layouts) {
+    let current: DriveItem | null = null;
+    let ok = true;
+    for (const segment of layout) {
+      const children = await listChildren(token, current?.id ?? null);
+      const next = children.find(item => item.folder && item.name === segment);
+      if (!next) { ok = false; break; }
+      current = next;
     }
-    current = next;
+    if (ok && current) return current;
   }
-  return current as DriveItem;
+  fail("Pasta Cadastros não encontrada no OneDrive (layouts conhecidos: Documentos/…, Documents/Documentos/…, Cadastros).");
 }
 
 function runSummaryScript(product: string): Promise<{ code: number; log: string }> {
