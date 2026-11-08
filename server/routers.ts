@@ -17,6 +17,7 @@ import { operationalImportRouter } from "./operationalImportRouter";
 import { operationalAuditRouter } from "./routers/operationalAudit";
 import { auditBacklogRouter } from "./routers/auditBacklog";
 import { diagnosticsRouter } from "./routers/diagnostics";
+import { importanceRouter } from "./routers/importance";
 import { loginWithPortalPassword, revokePortalSession, setPasswordFromResetToken } from "./portalAuthService";
 import { z } from "zod";
 function requestInfo(ctx: { req: { ip?: string; headers: Record<string, string | string[] | undefined> } }) {
@@ -57,5 +58,6 @@ export const appRouter = router({
   operationalAudit: operationalAuditRouter,
   auditBacklog: auditBacklogRouter,
   diagnostics: diagnosticsRouter,
+  importance: importanceRouter,
 });
 export type AppRouter = typeof appRouter;
