@@ -5,11 +5,17 @@
 // Cadastros/SB9_REDUZIDAS/SB9-resumida.csv), lendo o ORIGINAL
 // direto do OneDrive — substitui vigia.js + sb9-upload.cjs.
 //
-// v2 (08/11): conexão ÚNICA com o banco (Client, não Pool) — a v1
-// usava Pool max=1 e deadlockava: o advisory lock ocupava a única
-// conexão e a leitura do token esperava uma segunda para sempre.
-// Lock agora é try (não-bloqueante) com mensagem clara, e o job
-// loga progresso: a cada 25 MB baixados e 250 mil linhas parseadas.
+// v3 (08/11): o download do Graph pode travar no meio (stream
+// para de entregar dados). Agora há RETRY: até 3 tentativas
+// completas de download+palco, cada uma com timeout próprio, e
+// cada bloco de upload tem timeout e retry individuais. Erros
+// chegam como mensagem única e limpa (sem stack). Escrita do
+// palco SERIALIZADA (corrente de promises) — elimina o aviso
+// MaxListenersExceeded da v2 (drain listeners acumulavam por
+// causa do fire-and-forget).
+//
+// v2: conexão única com o banco (Client) — corrige o deadlock
+// do Pool max=1; pg_try_advisory_lock com aviso claro.
 //
 // Disciplina atômica (mesma do onedriveSummaryWriter.ts):
 //   1. Grava SB9-resumida.csv.tmp no OneDrive (upload session)
@@ -46,12 +52,25 @@ const STAGE_PATH = `/tmp/sb9-resumida-${process.pid}.csv`;
 const CHUNK = 10 * 1024 * 1024; // 10 MiB — múltiplo de 320 KiB exigido pelo Graph
 const LOG_BYTES = 25 * 1024 * 1024; // progresso a cada 25 MB
 const LOG_ROWS = 250_000; // progresso a cada 250 mil linhas
+const RANGE_SIZE = 32 * 1024 * 1024; // baixa em faixas de 32 MB com retomada
+const RANGE_ATTEMPTS = 4; // tentativas por faixa
+const RANGE_TIMEOUT_MS = 4 * 60 * 1000; // 4 min por faixa
+const CHUNK_ATTEMPTS = 3; // retries por bloco de upload
+const CHUNK_TIMEOUT_MS = 3 * 60 * 1000; // 3 min por bloco
+const RETRY_DELAY_MS = 30_000; // pausa entre tentativas
 
 type DriveItem = { id: string; name: string; size: number; lastModifiedDateTime: string; file?: unknown; folder?: unknown };
 
 function fail(message: string): never {
   console.error(`[sb9-resumida] ERRO: ${message}`);
   process.exit(1);
+}
+function sleep(ms: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, ms));
+}
+function errorMessage(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  return text.includes("aborted due to timeout") ? "timeout — a transferência parou de responder" : text;
 }
 
 // ─── Guardas de execução ───────────────────────────────────────
@@ -62,8 +81,7 @@ if (!/^[0-9a-f-]{36}$/i.test(SERVICE_USER_ID)) {
   fail("ONEDRIVE_SERVICE_USER_ID ausente ou inválido no .env.");
 }
 
-// Conexão ÚNICA: todo SQL do job passa por ela (lock, token, nada
-// de segunda conexão — elimina a classe de deadlock da v1).
+// Conexão ÚNICA: todo SQL do job passa por ela.
 const client = new Client({
   connectionString: process.env.PORTAL_DATABASE_URL ?? process.env.SUPABASE_DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -104,6 +122,7 @@ async function accessToken(): Promise<string> {
       refresh_token: decryptValue(row.refresh_token_enc),
       scope: SCOPES,
     }),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!response.ok) fail("Não foi possível renovar o token do OneDrive. Reconecte pela tela do portal.");
   const data = await response.json() as { access_token: string; refresh_token?: string; expires_in: number };
@@ -183,9 +202,74 @@ async function writeLine(out: ReturnType<typeof createWriteStream>, line: string
   if (!out.write(line)) await new Promise<void>(resolve => out.once("drain", resolve));
 }
 
+// ─── Etapa 1: download + palco local (com retry completo) ──────
+async function downloadAndStage(token: string, fonte: DriveItem): Promise<{ rows: number; stageSize: number; skipped: number }> {
+  const out = createWriteStream(STAGE_PATH, { encoding: "utf8" });
+  try {
+    await writeLine(out, SCHEMA.columns.map(escapeCsvField).join(";") + "\r\n");
+    let rows = 0;
+    let downloaded = 0;
+    let lastLogBytes = 0;
+    // Escrita SERIALIZADA: cada linha espera a anterior — no máximo um
+    // listener de drain ativo (fim do MaxListenersExceededWarning).
+    let writeChain: Promise<void> = Promise.resolve();
+    const parser = createSb9StreamParser((row: Sb9Row) => {
+      rows += 1;
+      if (rows % LOG_ROWS === 0) console.log(`[sb9-resumida] ${new Date().toISOString()} | ${rows.toLocaleString("pt-BR")} linhas parseadas`);
+      const line = summaryLine(row) + "\r\n";
+      writeChain = writeChain.then(() => writeLine(out, line));
+    });
+    // Download por FAIXAS de 32 MB com retomada: o SharePoint corta streams
+    // longos (travou 2x aos 25 MB); cada faixa é uma requisição nova e
+    // independente, com retry próprio. Faixa concluída nunca é rebaixada.
+    const total = fonte.size;
+    for (let start = 0; start < total; start += RANGE_SIZE) {
+      const end = Math.min(start + RANGE_SIZE, total) - 1;
+      let faixaError: unknown = null;
+      for (let attempt = 1; attempt <= RANGE_ATTEMPTS; attempt += 1) {
+        try {
+          const response = await fetch(`${GRAPH}/me/drive/items/${fonte.id}/content`, {
+            headers: { authorization: `Bearer ${token}`, range: `bytes=${start}-${end}` },
+            signal: AbortSignal.timeout(RANGE_TIMEOUT_MS),
+          });
+          if (response.status !== 206 && response.status !== 200) throw new Error(`HTTP ${response.status} na faixa ${start}-${end}.`);
+          if (!response.body) throw new Error("Resposta sem corpo na faixa " + start);
+          for await (const part of response.body as unknown as AsyncIterable<Uint8Array>) {
+            const buffer = Buffer.from(part);
+            downloaded += buffer.length;
+            if (downloaded - lastLogBytes >= LOG_BYTES) {
+              lastLogBytes = downloaded;
+              console.log(`[sb9-resumida] ${new Date().toISOString()} | baixados ${(downloaded / 1048576).toFixed(0)} de ${(total / 1048576).toFixed(0)} MB`);
+            }
+            parser.push(buffer);
+          }
+          if (downloaded < end + 1 && start + RANGE_SIZE <= total) throw new Error(`faixa ${start}-${end} incompleta (${downloaded} recebidos)`);
+          faixaError = null;
+          break;
+        } catch (error) {
+          faixaError = error;
+          if (attempt < RANGE_ATTEMPTS) {
+            console.log(`[sb9-resumida] faixa em ${(start / 1048576).toFixed(0)} MB: tentativa ${attempt} falhou (${errorMessage(error)}); repetindo em 15 s…`);
+            await sleep(15_000);
+          }
+        }
+      }
+      if (faixaError) fail(`faixa ${(start / 1048576).toFixed(0)} MB não concluída após ${RANGE_ATTEMPTS} tentativas: ${errorMessage(faixaError)}`);
+    }
+    const parsed = parser.finish();
+    await writeChain;
+    await new Promise<void>(resolve => out.end(resolve));
+    if (!rows) throw new Error("Nenhum registro válido no arquivo fonte.");
+    return { rows, stageSize: statSync(STAGE_PATH).size, skipped: parsed.skippedRows };
+  } catch (error) {
+    await new Promise<void>(resolve => out.end(resolve)).catch(() => undefined);
+    await unlink(STAGE_PATH).catch(() => undefined);
+    throw error;
+  }
+}
+
 // ─── Fluxo principal ───────────────────────────────────────────
-let stageCreated = false;
-try {
+async function main() {
   await client.connect();
   const dbName = (await client.query("select current_database() as n")).rows[0]?.n;
   if (dbName !== "portal_operacoes") fail(`Banco '${dbName}' não é a Homologação autorizada (portal_operacoes).`);
@@ -217,47 +301,17 @@ try {
     console.log(`[sb9-resumida] .tmp órfão removido (${orfao.name})`);
   }
 
-  // Etapa 1 — download em streaming + palco local com as colunas do schema.
-  const out = createWriteStream(STAGE_PATH, { encoding: "utf8" });
-  stageCreated = true;
-  await writeLine(out, SCHEMA.columns.map(escapeCsvField).join(";") + "\r\n");
-  let rows = 0;
-  let downloaded = 0;
-  let lastLogBytes = 0;
-  const parser = createSb9StreamParser((row: Sb9Row) => {
-    rows += 1;
-    if (rows % LOG_ROWS === 0) console.log(`[sb9-resumida] ${new Date().toISOString()} | ${rows.toLocaleString("pt-BR")} linhas parseadas`);
-    void writeLine(out, summaryLine(row) + "\r\n");
-  });
-  const content = await fetch(`${GRAPH}/me/drive/items/${fonte.id}/content`, {
-    headers: { authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(900_000),
-  });
-  if (!content.ok || !content.body) fail(`Falha ao baixar ${fonte.name}: HTTP ${content.status}.`);
-  console.log(`[sb9-resumida] download iniciado (${(fonte.size / 1048576).toFixed(0)} MB)…`);
-  for await (const part of content.body as unknown as AsyncIterable<Uint8Array>) {
-    const buffer = Buffer.from(part);
-    downloaded += buffer.length;
-    if (downloaded - lastLogBytes >= LOG_BYTES) {
-      lastLogBytes = downloaded;
-      console.log(`[sb9-resumida] ${new Date().toISOString()} | baixados ${(downloaded / 1048576).toFixed(0)} de ${(fonte.size / 1048576).toFixed(0)} MB`);
-    }
-    parser.push(buffer);
-  }
-  const parsed = parser.finish();
-  await new Promise<void>(resolve => out.end(resolve));
-  if (!rows) fail("Nenhum registro válido no arquivo fonte. Nada foi publicado.");
-  const stageSize = statSync(STAGE_PATH).size;
-  console.log(`[sb9-resumida] ${new Date().toISOString()} | Palco local validado: ${rows} registros, ${(stageSize / 1048576).toFixed(1)} MB (linhas ignoradas na origem: ${parsed.skippedRows})`);
+  // Etapa 1 — download em streaming + palco local (retry interno).
+  const { rows, stageSize, skipped } = await downloadAndStage(token, fonte);
+  console.log(`[sb9-resumida] ${new Date().toISOString()} | Palco local validado: ${rows} registros, ${(stageSize / 1048576).toFixed(1)} MB (linhas ignoradas na origem: ${skipped})`);
 
   if (DRY_RUN) {
     console.log("[sb9-resumida] --dry-run: nenhuma gravação no OneDrive. Removendo palco local.");
     await unlink(STAGE_PATH);
-    stageCreated = false;
-    process.exit(0);
+    return;
   }
 
-  // Etapa 2 — upload session do .tmp em blocos.
+  // Etapa 2 — upload session do .tmp em blocos (retry por bloco).
   console.log(`[sb9-resumida] publicando ${(stageSize / 1048576).toFixed(1)} MB em blocos de 10 MB…`);
   const sessionResponse = await fetch(
     `${GRAPH}/me/drive/items/${reduzidasFolder.id}:/${encodeURIComponent(`${SCHEMA.fileName}.tmp`)}:/createUploadSession`,
@@ -265,6 +319,7 @@ try {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
       body: JSON.stringify({ item: { "@microsoft.graph.conflictBehavior": "replace" } }),
+      signal: AbortSignal.timeout(60_000),
     },
   );
   if (!sessionResponse.ok) fail(`Falha ao abrir upload session: HTTP ${sessionResponse.status}.`);
@@ -276,24 +331,39 @@ try {
       const length = Math.min(CHUNK, stageSize - offset);
       const buffer = Buffer.alloc(length);
       await handle.read(buffer, 0, length, offset);
-      const chunkResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "content-range": `bytes ${offset}-${offset + length - 1}/${stageSize}` },
-        body: buffer,
-      });
-      if (!chunkResponse.ok) fail(`Falha no upload do bloco em ${offset}: HTTP ${chunkResponse.status}.`);
-      const payload = await chunkResponse.json().catch(() => null) as { id?: string } | null;
-      if (offset + length >= stageSize) {
-        if (!payload?.id) fail("Upload concluído sem confirmação do Graph (.tmp sem id).");
-        tmpItemId = payload.id;
+      let chunkError: unknown = null;
+      for (let attempt = 1; attempt <= CHUNK_ATTEMPTS; attempt += 1) {
+        try {
+          const chunkResponse = await fetch(uploadUrl, {
+            method: "PUT",
+            headers: { "content-range": `bytes ${offset}-${offset + length - 1}/${stageSize}` },
+            body: buffer,
+            signal: AbortSignal.timeout(CHUNK_TIMEOUT_MS),
+          });
+          if (!chunkResponse.ok) throw new Error(`HTTP ${chunkResponse.status} no bloco em ${offset}.`);
+          const payload = await chunkResponse.json().catch(() => null) as { id?: string } | null;
+          if (offset + length >= stageSize) {
+            if (!payload?.id) throw new Error("Upload concluído sem confirmação do Graph (.tmp sem id).");
+            tmpItemId = payload.id;
+          }
+          chunkError = null;
+          break;
+        } catch (error) {
+          chunkError = error;
+          if (attempt < CHUNK_ATTEMPTS) {
+            console.log(`[sb9-resumida] bloco em ${offset}: tentativa ${attempt} falhou (${errorMessage(error)}); repetindo em 10 s…`);
+            await sleep(10_000);
+          }
+        }
       }
+      if (chunkError) fail(`upload do bloco em ${offset} não concluído após ${CHUNK_ATTEMPTS} tentativas: ${errorMessage(chunkError)}`);
     }
   } finally {
     await handle.close();
   }
 
   // Etapa 3 — confere o .tmp no Graph antes de tocar no arquivo final.
-  const tmpItem = await fetch(`${GRAPH}/me/drive/items/${tmpItemId}?$select=size,name`, { headers: { authorization: `Bearer ${token}` } });
+  const tmpItem = await fetch(`${GRAPH}/me/drive/items/${tmpItemId}?$select=size,name`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(60_000) });
   if (!tmpItem.ok) fail(`Falha ao conferir o .tmp publicado: HTTP ${tmpItem.status}.`);
   const tmpMeta = await tmpItem.json() as { size: number; name: string };
   if (tmpMeta.size !== stageSize) {
@@ -310,12 +380,18 @@ try {
     method: "PATCH",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify({ name: SCHEMA.fileName }),
+    signal: AbortSignal.timeout(60_000),
   });
   if (!renameResponse.ok) fail(`Falha ao renomear o .tmp para ${SCHEMA.fileName}: HTTP ${renameResponse.status}.`);
 
   console.log(`[sb9-resumida] ${new Date().toISOString()} | Publicada | ${SCHEMA.fileName} | ${rows} registros | ${(stageSize / 1048576).toFixed(1)} MB | ${SCHEMA.folder}`);
-} finally {
-  if (stageCreated) await unlink(STAGE_PATH).catch(() => undefined);
-  await client.query("select pg_advisory_unlock($1)", [ADVISORY_LOCK_ID]).catch(() => undefined);
-  await client.end().catch(() => undefined);
 }
+
+main()
+  .catch(error => fail(errorMessage(error)))
+  .finally(async () => {
+    // Palco sempre removido ao sair (dry-run já removeu — unlink é tolerante).
+    await unlink(STAGE_PATH).catch(() => undefined);
+    await client.query("select pg_advisory_unlock($1)", [ADVISORY_LOCK_ID]).catch(() => undefined);
+    await client.end().catch(() => undefined);
+  });
