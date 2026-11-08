@@ -2,7 +2,16 @@
 // Textos são limpos sem destruir informação; códigos preservam zeros à esquerda,
 // sufixos e caracteres alfanuméricos. Não remover ou acrescentar caracteres.
 export function cleanSourceText(value: unknown): string {
-  return String(value ?? '').replace(/\s+/g, ' ').trim();
+  let text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  // REGRA (08/11/2026): o export do Protheus pode escapar aspas dobrando-as
+  // (""0000002"" → o CSV entrega '"0000002"'). Remove APENAS aspas que
+  // envolvem o valor inteiro (par de abertura/fechamento), preservando
+  // aspas internas legítimas de conteúdo.
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    const interno = text.slice(1, -1).replace(/""/g, '"').trim();
+    if (interno) text = interno;
+  }
+  return text;
 }
 
 export function normalizeProductCode(value: unknown): string {
