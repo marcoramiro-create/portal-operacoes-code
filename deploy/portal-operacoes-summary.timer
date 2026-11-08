@@ -1,0 +1,10 @@
+[Unit]
+Description=Reducao automatica Protheus a cada 1 hora
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

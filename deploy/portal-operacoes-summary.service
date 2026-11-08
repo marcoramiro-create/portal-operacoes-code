@@ -1,0 +1,15 @@
+[Unit]
+Description=Portal de Operacoes - Reducao automatica Protheus (Homologacao)
+After=network.target postgresql.service portal-operacoes.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/portal-operacoes-homolog
+Environment=NODE_ENV=production
+Environment=PATH=/home/ubuntu/.nvm/versions/node/v22.23.2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin
+Environment=NODE_OPTIONS=--max-old-space-size=1400
+EnvironmentFile=/etc/portal-operacoes/onedrive-secret.env
+EnvironmentFile=/etc/portal-operacoes/portal.env
+ExecStart=/home/ubuntu/.nvm/versions/node/v22.23.2/bin/npx tsx --env-file=.env scripts/summarizeAll.ts
+TimeoutStartSec=2h
