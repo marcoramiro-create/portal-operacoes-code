@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { ExternalLink, LoaderCircle, LogOut, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { supabase } from "@/lib/supabase";
 
