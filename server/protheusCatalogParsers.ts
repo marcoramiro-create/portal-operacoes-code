@@ -1,48 +1,41 @@
-// ============================================================
-// protheusCatalogParsers.ts — parsers dos CSVs de catálogo Protheus
-// (SB1, SBZ, SB5, SA2, ZFM, ZSF) lidos direto do OneDrive.
-// ============================================================
+/**
+ * protheusCatalogParsers.ts
+ * Parsers dos cadastros Protheus (SB1, SBZ, SB5, SA2) para a prévia e a importação.
+ * Módulo: server (API tRPC)
+ *
+ * // REGRA DE NEGÓCIO — EXPORTAÇÃO DOS ARQUIVOS (lembrete permanente — 24/09/2026):
+ * //   - Compras:   cabeçalho SEMPRE na linha 1.
+ * //   - SB1/SBZ (e demais cadastros): cabeçalho SEMPRE na linha 2, a partir de 24/09/2026.
+ * //   - A ferramenta procura o cabeçalho nas linhas 1, 2, 3 e 4 (e além), comparando os
+ * //     rótulos normalizados (sem acento/símbolos). Exportações com título ou linha de
+ * //     observação antes do cabeçalho continuam funcionando.
+ * //   - Colunas obrigatórias: SB1 = Código, Cod Agregado, Descrição;
+ * //     SBZ = Filial, Código, Entra MRP; SB5 = Produto, Marca Peça; SA2 = Código, Loja, Razão Social.
+ * //   - Decodificação automática UTF-8 e Windows-1252 (escolhe a que encontrar o cabeçalho).
+ * // REGRA DE NEGÓCIO — NORMALIZAÇÃO (vale para TODO o portal, todas as sessões):
+ * //   - Campos de código/filial são capturados COMO TEXTO, preservando zeros à esquerda
+ * //     e o valor original (nada de 0101 virar 101 ou 0001 virar 1 na captura).
+ * //   - A normalização para cruzamento é aplicada SOMENTE depois, por funções únicas:
+ * //     código sem zero à esquerda preservando sufixo (0000000001 → 1) e filial com 4
+ * //     dígitos (0101-MEGATEC ARACATUBA → 0101). O mesmo padrão vale no Compras × SB1/SBZ,
+ * //     no re-enriquecimento, no Recebimento e em qualquer módulo futuro.
+ * // MUDANÇA (24/09/2026): a leitura agora DETECTA arquivos .xlsx (assinatura interna do
+ * //   Excel) e lê as células de verdade com o leitor XLSX já usado na Compras. O usuário
+ * //   exporta do Protheus e importa direto, sem converter para CSV. Arquivos CSV/texto
+ * //   continuam funcionando (fallback automático).
+ * // CORREÇÃO (09/11/2026): mapHeaders mantém a PRIMEIRA ocorrência de colunas duplicadas
+ * //   (o SB1 traz 'Familia' duas vezes — a primeira com o código real, a segunda vazia;
+ * //   o Map guardava a última e o parser lia a vazia — causa raiz do familiaCode vazio).
+ */
+import * as XLSX from "xlsx";
 import { cleanSourceText, normalizeBranchCode, normalizeProductCode, normalizeSupplierKey, parseSourceNumber } from "./operationalNormalization";
+
+export type RegistrationIssue = { row: number; field: string; message: string };
+export type RegistrationResult<T> = { rows: T[]; sourceRows: number; skippedRows: number; duplicateRows: number; issues: RegistrationIssue[] };
+type CsvRow = string[];
 
 function normalizeHeader(value: unknown) {
   return cleanSourceText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-}
-
-function parseCsv(content: string) {
-  const first = content.split(/\r?\n/).find(line => line.includes(";") || line.includes(",")) ?? "";
-  const delimiter = first.split(";").length >= first.split(",").length ? ";" : ",";
-  const rows: CsvRow[] = [];
-  let row: string[] = [];
-  let value = "";
-  let quoted = false;
-  for (let i = 0; i < content.length; i += 1) {
-    const c = content[i];
-    const n = content[i + 1];
-    if (c === '"' && quoted && n === '"') { value += '"'; i += 1; continue; }
-    if (c === '"') { quoted = !quoted; continue; }
-    if (c === delimiter && !quoted) { row.push(value); value = ""; continue; }
-    if ((c === "\n" || c === "\r") && !quoted) {
-      if (c === "\r" && n === "\n") i += 1;
-      row.push(value);
-      if (row.some(v => cleanSourceText(v) !== "")) rows.push(row);
-      row = [];
-      value = "";
-      continue;
-    }
-    value += c;
-  }
-  if (row.some(v => cleanSourceText(v) !== "")) rows.push(row);
-  return { rows, delimiter };
-}
-
-function readRowsWithHeader(content: Buffer | string, requiredHeaders: string[][]) {
-  const text = typeof content === "string" ? content : content.toString("utf8");
-  const { rows } = parseCsv(text);
-  const headerIndex = rows.findIndex(row => {
-    const normalized = row.map(normalizeHeader);
-    return requiredHeaders.every(required => required.some(alias => normalized.includes(normalizeHeader(alias))));
-  });
-  return { rows, header: headerIndex };
 }
 
 function mapHeaders(header: CsvRow) {
@@ -66,27 +59,8 @@ function get(row: CsvRow, map: Map<string, number>, ...aliases: string[]) {
   return "";
 }
 
-function getPreservingInternalSpaces(row: CsvRow, map: Map<string, number>, ...aliases: string[]) {
-  for (const alias of aliases) {
-    const index = map.get(normalizeHeader(alias));
-    if (index !== undefined) return cleanSourceText(row[index]);
-  }
-  return "";
-}
-
-type CsvRow = string[];
-
-export interface RegistrationResult<T> {
-  rows: T[];
-  sourceRows: number;
-  skippedRows: number;
-  duplicateRows: number;
-  issues: Array<{ row: number; field: string; message: string }>;
-  warnings: string[];
-}
-
 function emptyResult<T>(): RegistrationResult<T> {
-  return { rows: [], sourceRows: 0, skippedRows: 0, duplicateRows: 0, issues: [], warnings: [] };
+  return { rows: [], sourceRows: 0, skippedRows: 0, duplicateRows: 0, issues: [] };
 }
 
 function invalidScientific(value: string) {
@@ -97,8 +71,6 @@ const SB1_HEADER = [["codigo", "cod"], ["codagregado", "codagreg", "codigodoagre
 const SBZ_HEADER = [["filial", "codigofilial", "fil"], ["codigo", "cod", "produto"], ["entramrp", "mrp", "entranomrp"]];
 const SB5_HEADER = [["produto", "codigo", "cod"], ["marcapeca", "marcadapeca"]];
 const SA2_HEADER = [["codigo", "cod"], ["loja", "filial", "store"], ["razaosocial", "nome", "fornecedor"]];
-const ZFM_HEADER = [["codigo", "cod", "codfamilia", "familia"], ["descricao", "desc", "descricaofamilia", "descricaodafamilia"]];
-const ZSF_HEADER = [["codigo", "cod", "codsubfamilia", "subfamilia"], ["descricao", "desc", "descricaosubfamilia", "descricaodasubfamilia"]];
 
 export interface Sb1CatalogRow {
   productCode: string;
@@ -290,6 +262,9 @@ function parseFamilyCatalog(content: Buffer | string, kind: "FAMILIA" | "SUBFAMI
   });
   return out;
 }
+
+const ZFM_HEADER = [["codigo", "cod", "codfamilia", "familia"], ["descricao", "desc", "descricaofamilia", "descricaodafamilia"]];
+const ZSF_HEADER = [["codigo", "cod", "codsubfamilia", "subfamilia"], ["descricao", "desc", "descricaosubfamilia", "descricaodasubfamilia"]];
 
 export function parseZfm(content: Buffer | string): RegistrationResult<FamilyCatalogRow> {
   return parseFamilyCatalog(content, "FAMILIA", ZFM_HEADER);
