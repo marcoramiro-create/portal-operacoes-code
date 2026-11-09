@@ -38,6 +38,120 @@ function normalizeHeader(value: unknown) {
   return cleanSourceText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
 }
 
+function parseCsv(content: string) {
+  const first = content.split(/\r?\n/).find(line => line.includes(";") || line.includes(",")) ?? "";
+  const delimiter = first.split(";").length >= first.split(",").length ? ";" : ",";
+  const rows: CsvRow[] = [];
+  let row: string[] = [];
+  let value = "";
+  let quoted = false;
+  for (let i = 0; i < content.length; i += 1) {
+    const c = content[i];
+    const n = content[i + 1];
+    if (c === '"' && quoted && n === '"') { value += '"'; i += 1; continue; }
+    if (c === '"') { quoted = !quoted; continue; }
+    if (c === delimiter && !quoted) { row.push(value); value = ""; continue; }
+    if ((c === "\n" || c === "\r") && !quoted) {
+      if (c === "\r" && n === "\n") i += 1;
+      row.push(value);
+      if (row.some(v => cleanSourceText(v) !== "")) rows.push(row);
+      row = [];
+      value = "";
+      continue;
+    }
+    value += c;
+  }
+  if (value || row.length) {
+    row.push(value);
+    if (row.some(v => cleanSourceText(v) !== "")) rows.push(row);
+  }
+  return rows;
+}
+
+/** Detecta se o Buffer é um arquivo .xlsx (ZIP com assinatura "PK"). */
+function ehBufferXlsx(content: Buffer): boolean {
+  return (
+    content.length >= 4 &&
+    content[0] === 0x50 &&
+    content[1] === 0x4b &&
+    (content[2] === 0x03 || content[2] === 0x05 || content[2] === 0x07) &&
+    content[3] === 0x04
+  );
+}
+
+/**
+ * Lê as linhas brutas de um arquivo, aceitando .xlsx E texto/CSV.
+ * - .xlsx: lê a primeira aba com o leitor de Excel, preservando cada célula como texto
+ *   (zeros à esquerda intactos; a normalização acontece depois, nas funções de negócio).
+ * - texto/CSV: mantém o fluxo original (parseCsv + decodificação UTF-8/Windows-1252).
+ */
+function lerLinhasBrutas(content: Buffer | string): CsvRow[] {
+  if (typeof content === "string") return parseCsv(content);
+  if (ehBufferXlsx(content)) {
+    try {
+      const workbook = XLSX.read(content, { type: "buffer", cellText: false });
+      const sheetName = workbook.SheetNames[0];
+      if (sheetName) {
+        const linhas = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
+          header: 1,
+          raw: false,
+          defval: "",
+        });
+        return linhas
+          .filter((linha): linha is unknown[] => Array.isArray(linha))
+          .map((linha) => linha.map((celula) => String(celula ?? "").trim()))
+          .filter((linha) => linha.some((c) => c !== ""));
+      }
+    } catch {
+      // Arquivo .xlsx corrompido/inválido: cai no fallback de texto abaixo.
+    }
+  }
+  return parseCsv(new TextDecoder("utf-8").decode(content).replace(/^\uFEFF/, ""));
+}
+
+// Apelidos aceitos por tipo de cabeçalho (cada item = variações do mesmo rótulo).
+const SB1_HEADER = [["codigo", "cod"], ["codagregado", "codagreg", "codigodoagregado"], ["descricao", "desc", "descricaodoproduto"]];
+const SBZ_HEADER = [["filial", "codigofilial", "fil"], ["codigo", "cod", "produto"], ["entramrp", "mrp", "entranomrp"]];
+const SB5_HEADER = [["produto", "codigo", "cod"], ["marcapeca", "marcadapeca"]];
+const SA2_HEADER = [["codigo", "cod"], ["loja", "filial", "store"], ["razaosocial", "nome", "fornecedor"]];
+const ZFM_HEADER = [["codigo", "cod", "codfamilia", "familia"], ["descricao", "desc", "descricaofamilia", "descricaodafamilia"]];
+const ZSF_HEADER = [["codigo", "cod", "codsubfamilia", "subfamilia"], ["descricao", "desc", "descricaosubfamilia", "descricaodasubfamilia"]];
+const SB9_HEADER = [["filial", "codigofilial", "fil"], ["produto", "codigo"], ["datasaldo"], ["cunit1am", "custo1am", "cunit1"]];
+
+// Procura a linha do cabeçalho comparando grupos de apelidos normalizados.
+function headerIndex(rows: CsvRow[], requiredGroups: string[][]): number {
+  return rows.findIndex(row =>
+    requiredGroups.every(group =>
+      row.some(h => group.some(alias => normalizeHeader(h) === normalizeHeader(alias))),
+    ),
+  );
+}
+
+// Lê o arquivo e localiza o cabeçalho (linhas 1 a 4 e além), tentando rótulos.
+// Para texto, tenta também UTF-8 e Windows-1252 (usa a que encontrar o cabeçalho).
+function readRowsWithHeader(content: Buffer | string, requiredGroups: string[][]): { rows: CsvRow[]; header: number } {
+  if (typeof content === "string") {
+    const rows = lerLinhasBrutas(content);
+    return { rows, header: headerIndex(rows, requiredGroups) };
+  }
+  if (ehBufferXlsx(content)) {
+    const rows = lerLinhasBrutas(content);
+    return { rows, header: headerIndex(rows, requiredGroups) };
+  }
+  const candidates = [
+    new TextDecoder("utf-8").decode(content).replace(/^\uFEFF/, ""),
+    new TextDecoder("windows-1252").decode(content),
+  ];
+  let fallback: { rows: CsvRow[]; header: number } | null = null;
+  for (const text of candidates) {
+    const rows = parseCsv(text);
+    const header = headerIndex(rows, requiredGroups);
+    if (header >= 0) return { rows, header };
+    if (!fallback || rows.length > fallback.rows.length) fallback = { rows, header };
+  }
+  return fallback ?? { rows: [], header: -1 };
+}
+
 function mapHeaders(header: CsvRow) {
   // REGRA (09/11/2026): o export do Protheus pode ter colunas DUPLICADAS
   // (o SB1 traz 'Familia' duas vezes — a primeira com o código real, a
@@ -59,37 +173,33 @@ function get(row: CsvRow, map: Map<string, number>, ...aliases: string[]) {
   return "";
 }
 
+function getPreservingInternalSpaces(row: CsvRow, map: Map<string, number>, ...aliases: string[]) {
+  for (const alias of aliases) {
+    const index = map.get(normalizeHeader(alias));
+    if (index !== undefined) return String(row[index] ?? "").trim();
+  }
+  return "";
+}
+
 function emptyResult<T>(): RegistrationResult<T> {
   return { rows: [], sourceRows: 0, skippedRows: 0, duplicateRows: 0, issues: [] };
 }
 
 function invalidScientific(value: string) {
-  return /^\s*[+-]?\d+(\.\d+)?[eE][+-]?\d+\s*$/.test(value);
+  return /^[-+]?\d+(?:[,\.]\d+)?e[-+]?\d+$/i.test(value) || /^[-+]?\d+[,\.]?\d*e[+]?\d+$/i.test(value);
 }
 
-const SB1_HEADER = [["codigo", "cod"], ["codagregado", "codagreg", "codigodoagregado"], ["descricao", "desc", "descricaodoproduto"]];
-const SBZ_HEADER = [["filial", "codigofilial", "fil"], ["codigo", "cod", "produto"], ["entramrp", "mrp", "entranomrp"]];
-const SB5_HEADER = [["produto", "codigo", "cod"], ["marcapeca", "marcadapeca"]];
-const SA2_HEADER = [["codigo", "cod"], ["loja", "filial", "store"], ["razaosocial", "nome", "fornecedor"]];
+export type Sb1Row = {
+  productCode: string; normalizedProductCode: string; aggregateProductCode: string;
+  normalizedAggregateProductCode: string; description: string; type: string;
+  family: string; subfamily: string; ncm: string; inclusionDate: string;
+};
 
-export interface Sb1CatalogRow {
-  productCode: string;
-  normalizedProductCode: string;
-  aggregateProductCode: string;
-  normalizedAggregateProductCode: string;
-  description: string;
-  type: string;
-  family: string;
-  subfamily: string;
-  ncm: string;
-  inclusionDate: string;
-}
-
-export function parseSb1(content: Buffer | string): RegistrationResult<Sb1CatalogRow> {
+export function parseSb1(content: Buffer | string): RegistrationResult<Sb1Row> {
   const { rows, header } = readRowsWithHeader(content, SB1_HEADER);
   if (header < 0) throw new Error("SB1: cabeçalho não encontrado. Esperadas as colunas Código, Cod Agregado e Descrição (o cabeçalho pode estar nas linhas 1 a 4).");
   const map = mapHeaders(rows[header]);
-  const out = emptyResult<Sb1CatalogRow>();
+  const out = emptyResult<Sb1Row>();
   const seen = new Map<string, number>();
   rows.slice(header + 1).forEach((row, offset) => {
     if (!row.some(v => cleanSourceText(v))) return;
@@ -115,161 +225,308 @@ export function parseSb1(content: Buffer | string): RegistrationResult<Sb1Catalo
     const previous = seen.get(code);
     if (previous !== undefined) {
       out.duplicateRows += 1;
-      if (current.aggregateProductCode && !out.rows[previous].aggregateProductCode) out.rows[previous] = current;
+      out.issues.push({ row: header + offset + 2, field: "Codigo", message: `Código duplicado; linha anterior ${previous}.` });
+      const index = previous - header - 2;
+      const prior = out.rows[index];
+      if (prior && Object.values(current).filter(Boolean).length > Object.values(prior).filter(Boolean).length) out.rows[index] = current;
       return;
     }
-    seen.set(code, out.rows.length);
+    seen.set(code, header + offset + 2);
     out.rows.push(current);
   });
   return out;
 }
 
-export interface SbzCatalogRow {
-  branch: string;
-  normalizedBranch: string;
-  productCode: string;
-  normalizedProductCode: string;
-  entersMrp: string;
-}
+export type SbzRow = {
+  branchCode: string; productCode: string; taxGroup: string; type: string;
+  minStock: string; maxStock: string; origin: string; mrp: boolean; fiscalClass: string;
+};
 
-export function parseSbz(content: Buffer | string): RegistrationResult<SbzCatalogRow> {
+export function parseSbz(content: Buffer | string): RegistrationResult<SbzRow> {
   const { rows, header } = readRowsWithHeader(content, SBZ_HEADER);
-  if (header < 0) throw new Error("SBZ: cabeçalho não encontrado. Esperadas as colunas Filial, Código e Entra MRP.");
+  if (header < 0) throw new Error("SBZ: cabeçalho não encontrado. Esperadas as colunas Filial, Código e Entra MRP (o cabeçalho pode estar nas linhas 1 a 4).");
   const map = mapHeaders(rows[header]);
-  const out = emptyResult<SbzCatalogRow>();
+  const out = emptyResult<SbzRow>();
   const seen = new Set<string>();
   rows.slice(header + 1).forEach((row, offset) => {
     if (!row.some(v => cleanSourceText(v))) return;
     out.sourceRows += 1;
-    const branch = get(row, map, "Filial");
-    const productCode = get(row, map, "Codigo");
-    if (!branch || !productCode) {
+    const branch = normalizeBranchCode(get(row, map, "Filial")), raw = get(row, map, "Codigo"), product = normalizeProductCode(raw);
+    if (!branch || !product || invalidScientific(raw)) {
       out.skippedRows += 1;
-      out.issues.push({ row: header + offset + 2, field: "Filial/Codigo", message: "Linha sem filial ou código de produto." });
+      out.issues.push({ row: header + offset + 2, field: "Codigo", message: "Linha sem código de produto válido." });
       return;
     }
-    const key = `${branch}|${productCode}`;
-    if (seen.has(key)) { out.duplicateRows += 1; return; }
+    const key = `${branch}|${product}`;
+    if (seen.has(key)) {
+      out.duplicateRows += 1;
+      out.issues.push({ row: header + offset + 2, field: "Codigo", message: `Chave código+filial duplicada: ${key}.` });
+      return;
+    }
     seen.add(key);
     out.rows.push({
-      branch,
-      normalizedBranch: normalizeBranchCode(branch),
-      productCode,
-      normalizedProductCode: normalizeProductCode(productCode),
-      entersMrp: get(row, map, "Entra MRP"),
+      branchCode: branch,
+      productCode: product,
+      taxGroup: get(row, map, "Grupo Trib."),
+      type: get(row, map, "Tipo"),
+      minStock: get(row, map, "Estoq Minimo"),
+      maxStock: get(row, map, "Estoq Maximo"),
+      origin: get(row, map, "Origem"),
+      mrp: /^(sim|s|yes|1)$/i.test(get(row, map, "Entra MRP")),
+      fiscalClass: get(row, map, "Class.Fiscal"),
     });
   });
   return out;
 }
 
-export interface Sb5CatalogRow {
-  productCode: string;
-  normalizedProductCode: string;
-  marcaPeca: string;
-}
+export type Sb5Row = {
+  productCode: string; technicalFamily: string; partFamily: string; partBrand: string; partLine: string;
+};
 
-export function parseSb5(content: Buffer | string): RegistrationResult<Sb5CatalogRow> {
+export function parseSb5(content: Buffer | string): RegistrationResult<Sb5Row> {
   const { rows, header } = readRowsWithHeader(content, SB5_HEADER);
-  if (header < 0) throw new Error("SB5: cabeçalho não encontrado. Esperadas as colunas Produto e Marca Peça.");
+  if (header < 0) throw new Error("SB5: cabeçalho não encontrado. Esperadas as colunas Produto e Marca Peça (o cabeçalho pode estar nas linhas 1 a 4).");
   const map = mapHeaders(rows[header]);
-  const out = emptyResult<Sb5CatalogRow>();
+  const out = emptyResult<Sb5Row>();
   const seen = new Set<string>();
   rows.slice(header + 1).forEach((row, offset) => {
     if (!row.some(v => cleanSourceText(v))) return;
     out.sourceRows += 1;
-    const productCode = get(row, map, "Produto");
-    if (!productCode) {
+    const raw = get(row, map, "Produto"), product = normalizeProductCode(raw);
+    if (!product || invalidScientific(raw)) {
       out.skippedRows += 1;
-      out.issues.push({ row: header + offset + 2, field: "Produto", message: "Linha sem código de produto." });
+      out.issues.push({ row: header + offset + 2, field: "Produto", message: "Produto vazio ou em notação científica." });
       return;
     }
-    if (seen.has(productCode)) { out.duplicateRows += 1; return; }
-    seen.add(productCode);
+    if (seen.has(product)) {
+      out.duplicateRows += 1;
+      out.issues.push({ row: header + offset + 2, field: "Produto", message: `Produto alternativo duplicado: ${product}.` });
+      return;
+    }
+    seen.add(product);
     out.rows.push({
-      productCode,
-      normalizedProductCode: normalizeProductCode(productCode),
-      marcaPeca: get(row, map, "Marca Peca"),
+      productCode: product,
+      technicalFamily: get(row, map, "Familia Tec."),
+      partFamily: get(row, map, "Família Peça", "Familia Peca"),
+      partBrand: get(row, map, "Marca Peca"),
+      partLine: get(row, map, "Linha Peça", "Linha Peca"),
     });
   });
   return out;
 }
 
-export interface Sa2CatalogRow {
-  supplierCode: string;
-  store: string;
-  normalizedName: string;
-  supplierKey: string;
-  cnpj: string;
-  name: string;
+export type Sb9Row = {
+  branchCode: string;
+  productCode: string;
+  warehouseCode: string;
+  balanceDate: string;
+  balanceDateIso: string;
+  initialQuantity: string;
+  initialBalance: string;
+  groupCode: string;
+  auditProductCode: string;
+  standardCost: string;
+  unitCost1aM: string;
+  unitCost1aMValue: number | null;
+};
+
+function normalizeSb9Date(value: string) {
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
 }
 
-export function parseSa2(content: Buffer | string): RegistrationResult<Sa2CatalogRow> {
+/**
+ * Lê SB9 em pedaços e entrega cada linha válida ao callback. Isso evita manter
+ * a exportação inteira em memória na atualização do OneDrive.
+ */
+export function createSb9StreamParser(
+  onRow?: (row: Sb9Row) => void,
+  maxIssueSamples = Number.POSITIVE_INFINITY,
+) {
+  let pending = "";
+  let headerMap: Map<string, number> | null = null;
+  let byteEncoding: "unknown" | "utf-8" | "windows-1252" = "unknown";
+  let bytePrefix = Buffer.alloc(0);
+  let decoder: TextDecoder | null = null;
+  const result = emptyResult<Sb9Row>();
+
+  const decodeChunk = (chunk: Buffer | string) => {
+    if (typeof chunk === "string") return chunk.replace(/^\uFEFF/, "");
+    let bytes = Buffer.from(chunk);
+    if (byteEncoding === "unknown") {
+      bytePrefix = Buffer.concat([bytePrefix, bytes]);
+      if (bytePrefix.length < 3) return "";
+      const hasUtf8Bom = bytePrefix[0] === 0xef && bytePrefix[1] === 0xbb && bytePrefix[2] === 0xbf;
+      byteEncoding = hasUtf8Bom ? "utf-8" : "windows-1252";
+      decoder = new TextDecoder(byteEncoding);
+      bytes = hasUtf8Bom ? bytePrefix.subarray(3) : bytePrefix;
+      bytePrefix = Buffer.alloc(0);
+    }
+    return decoder!.decode(bytes, { stream: true });
+  };
+
+  const consumeLine = (line: string) => {
+    const rows = parseCsv(line.replace(/\r$/, ""));
+    if (!rows.length || !rows[0].some(value => cleanSourceText(value))) return;
+    if (!headerMap) {
+      if (headerIndex(rows, SB9_HEADER) >= 0) headerMap = mapHeaders(rows[0]);
+      return;
+    }
+
+    const row = rows[0];
+    result.sourceRows += 1;
+    const rawBranch = get(row, headerMap, "Filial");
+    const rawProduct = get(row, headerMap, "Produto");
+    const balanceDate = get(row, headerMap, "Data Saldo");
+    const branchCode = normalizeBranchCode(rawBranch);
+    const productCode = normalizeProductCode(rawProduct);
+    if (!branchCode || !productCode || !balanceDate || !normalizeSb9Date(balanceDate) || invalidScientific(rawProduct)) {
+      result.skippedRows += 1;
+      if (result.issues.length < maxIssueSamples) {
+        result.issues.push({ row: result.sourceRows + 3, field: "Filial/Produto/Data Saldo", message: "Linha SB9 sem filial, produto ou data de saldo válida." });
+      }
+      return;
+    }
+
+    const unitCost1aM = get(row, headerMap, "C Unit 1a M");
+    const parsed: Sb9Row = {
+      branchCode,
+      productCode,
+      warehouseCode: get(row, headerMap, "Armazem", "Armazém"),
+      balanceDate,
+      balanceDateIso: normalizeSb9Date(balanceDate),
+      initialQuantity: get(row, headerMap, "Qtd.Inic.Mes"),
+      initialBalance: get(row, headerMap, "Sld.Ini.Mes"),
+      groupCode: get(row, headerMap, "Grupo"),
+      auditProductCode: get(row, headerMap, "Cod. Produto"),
+      standardCost: get(row, headerMap, "Custo Stand."),
+      unitCost1aM,
+      unitCost1aMValue: parseSourceNumber(unitCost1aM),
+    };
+    if (onRow) onRow(parsed);
+    else result.rows.push(parsed);
+  };
+
+  return {
+    push(chunk: Buffer | string) {
+      pending += decodeChunk(chunk);
+      let newline = pending.indexOf("\n");
+      while (newline >= 0) {
+        consumeLine(pending.slice(0, newline));
+        pending = pending.slice(newline + 1);
+        newline = pending.indexOf("\n");
+      }
+    },
+    get headerFound() {
+      return headerMap !== null;
+    },
+    finish() {
+      if (byteEncoding === "unknown" && bytePrefix.length) {
+        byteEncoding = "windows-1252";
+        decoder = new TextDecoder(byteEncoding);
+        pending += decoder.decode(bytePrefix, { stream: true });
+        bytePrefix = Buffer.alloc(0);
+      }
+      if (decoder) pending += decoder.decode();
+      let newline = pending.indexOf("\n");
+      while (newline >= 0) {
+        consumeLine(pending.slice(0, newline));
+        pending = pending.slice(newline + 1);
+        newline = pending.indexOf("\n");
+      }
+      if (pending.trim()) consumeLine(pending);
+      if (!headerMap) throw new Error("SB9: cabeçalho não encontrado. Esperadas as colunas Filial, Produto, Data Saldo e C Unit 1a M.");
+      return result;
+    },
+  };
+}
+
+export function parseSb9(content: Buffer | string): RegistrationResult<Sb9Row> {
+  const parser = createSb9StreamParser();
+  parser.push(content);
+  return parser.finish();
+}
+
+export type Sa2Row = {
+  supplierCode: string; store: string; document: string; legalName: string; tradeAddress: string;
+  number: string; zipCode: string; neighborhood: string; municipality: string; state: string;
+};
+
+export function parseSa2(content: Buffer | string): RegistrationResult<Sa2Row> {
   const { rows, header } = readRowsWithHeader(content, SA2_HEADER);
-  if (header < 0) throw new Error("SA2: cabeçalho não encontrado. Esperadas as colunas Código, Loja e Razão Social.");
+  if (header < 0) throw new Error("SA2: cabeçalho não encontrado. Esperadas as colunas Código, Loja e Razão Social (o cabeçalho pode estar nas linhas 1 a 4).");
   const map = mapHeaders(rows[header]);
-  const out = emptyResult<Sa2CatalogRow>();
+  const out = emptyResult<Sa2Row>();
   const seen = new Set<string>();
   rows.slice(header + 1).forEach((row, offset) => {
     if (!row.some(v => cleanSourceText(v))) return;
     out.sourceRows += 1;
-    const supplierCode = get(row, map, "Codigo");
-    const store = get(row, map, "Loja");
-    if (!supplierCode || !store) {
+    const code = get(row, map, "Codigo"), store = get(row, map, "Loja"), name = get(row, map, "Razao Social"), document = get(row, map, "CNPJ/CPF");
+    if (!code || !store || !name || /^\.\s*\.\s*\/\s*-?$/.test(document)) {
       out.skippedRows += 1;
-      out.issues.push({ row: header + offset + 2, field: "Codigo/Loja", message: "Linha sem código ou loja do fornecedor." });
+      out.issues.push({ row: header + offset + 2, field: "Codigo/Loja", message: "Fornecedor sem chave ou linha de controle da extração." });
       return;
     }
-    const key = `${supplierCode}|${store}`;
-    if (seen.has(key)) { out.duplicateRows += 1; return; }
+    const key = normalizeSupplierKey(code, store);
+    if (seen.has(key)) {
+      out.duplicateRows += 1;
+      out.issues.push({ row: header + offset + 2, field: "Codigo+Loja", message: `Fornecedor duplicado: ${key}.` });
+      return;
+    }
     seen.add(key);
     out.rows.push({
-      supplierCode,
+      supplierCode: code,
       store,
-      normalizedName: normalizeProductCode(get(row, map, "Razao Social")),
-      supplierKey: normalizeSupplierKey(supplierCode, store),
-      cnpj: get(row, map, "CNPJ/CPF"),
-      name: get(row, map, "Razao Social"),
+      document,
+      legalName: name,
+      tradeAddress: get(row, map, "Endereço", "Endereco"),
+      number: get(row, map, "Numero"),
+      zipCode: get(row, map, "CEP"),
+      neighborhood: get(row, map, "Bairro"),
+      municipality: get(row, map, "Município", "Municipio", "Munícipio"),
+      state: get(row, map, "Estado"),
     });
   });
   return out;
 }
 
-export interface FamilyCatalogRow {
-  kind: "FAMILIA" | "SUBFAMILIA";
-  code: string;
-  description: string;
-}
+export type FamilyCatalogRow = { code: string; description: string };
 
-function parseFamilyCatalog(content: Buffer | string, kind: "FAMILIA" | "SUBFAMILIA", required: string[][]): RegistrationResult<FamilyCatalogRow> {
-  const { rows, header } = readRowsWithHeader(content, required);
-  if (header < 0) throw new Error(`${kind}: cabeçalho não encontrado. Esperadas as colunas Código e Descrição (o cabeçalho pode estar nas linhas 1 a 4).`);
+function parseSimpleClassificationCatalog(
+  content: Buffer | string,
+  kind: "ZFM" | "ZSF",
+  requiredHeader: string[][],
+): RegistrationResult<FamilyCatalogRow> {
+  const { rows, header } = readRowsWithHeader(content, requiredHeader);
+  if (header < 0) throw new Error(`${kind}: cabeçalho não encontrado. Esperadas as colunas Código e Descrição (o cabeçalho pode estar deslocado).`);
   const map = mapHeaders(rows[header]);
   const out = emptyResult<FamilyCatalogRow>();
   const seen = new Set<string>();
   rows.slice(header + 1).forEach((row, offset) => {
-    if (!row.some(v => cleanSourceText(v))) return;
+    if (!row.some(v => String(v ?? "").trim() !== "")) return;
     out.sourceRows += 1;
-    const code = get(row, map, "Codigo");
-    const description = get(row, map, "Descricao");
-    if (!code) {
+    const code = getPreservingInternalSpaces(row, map, "Codigo", "Cod", kind === "ZFM" ? "Cod Família" : "Cod Subfamília");
+    const description = getPreservingInternalSpaces(row, map, "Descricao", "Desc", kind === "ZFM" ? "Descrição da Família" : "Descrição da Subfamília");
+    if (!code || !description || invalidScientific(code)) {
       out.skippedRows += 1;
-      out.issues.push({ row: header + offset + 2, field: "Codigo", message: "Linha sem código." });
+      out.issues.push({ row: header + offset + 2, field: !code ? "Codigo" : "Descricao", message: "Código ou descrição ausente; linha ignorada." });
       return;
     }
-    if (seen.has(code)) { out.duplicateRows += 1; return; }
+    if (seen.has(code)) {
+      out.duplicateRows += 1;
+      out.issues.push({ row: header + offset + 2, field: "Codigo", message: `Código duplicado: ${code}.` });
+      return;
+    }
     seen.add(code);
-    out.rows.push({ kind, code, description });
+    out.rows.push({ code, description });
   });
   return out;
 }
 
-const ZFM_HEADER = [["codigo", "cod", "codfamilia", "familia"], ["descricao", "desc", "descricaofamilia", "descricaodafamilia"]];
-const ZSF_HEADER = [["codigo", "cod", "codsubfamilia", "subfamilia"], ["descricao", "desc", "descricaosubfamilia", "descricaodasubfamilia"]];
-
 export function parseZfm(content: Buffer | string): RegistrationResult<FamilyCatalogRow> {
-  return parseFamilyCatalog(content, "FAMILIA", ZFM_HEADER);
+  return parseSimpleClassificationCatalog(content, "ZFM", ZFM_HEADER);
 }
 
 export function parseZsf(content: Buffer | string): RegistrationResult<FamilyCatalogRow> {
-  return parseFamilyCatalog(content, "SUBFAMILIA", ZSF_HEADER);
+  return parseSimpleClassificationCatalog(content, "ZSF", ZSF_HEADER);
 }
