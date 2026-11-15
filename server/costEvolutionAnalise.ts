@@ -425,7 +425,7 @@ export async function obterConsumoIndustria(
   const chave = `${branch}:${periods[0]}:${periods[periods.length - 1]}`;
   const existente = cacheConsumoIndustria.get(chave);
   if (existente && Date.now() - existente.gravadoEm < CACHE_CONSUMO_TTL_MS) {
-    return { consumo: existente.consumo, estoque: existente.estoqueAgregado };
+    return { consumo: existente.consumo, estoqueAgregado: existente.estoqueAgregado };
   }
   const inicio = previousPeriod(periods[0]);
   const fim = periods[periods.length - 1];
@@ -872,7 +872,7 @@ export async function getCostEvolutionItens(params: ParamsBase & {
     lista = lista.filter(item => {
       if (!item.curve || item.costStatus === "SEM_BASE_CUSTO" || item.variacaoPercent == null) return false;
       const limite = limites[item.curve as keyof LimitesAlerta] ?? LIMITES_PADRAO[item.curve as keyof LimitesAlerta];
-      return Math.abs(variacao) >= limite;
+      return Math.abs(item.variacaoPercent) >= limite;
     });
   } else if (criterio.startsWith("curva-")) {
     const curva = criterio.replace("curva-", "").toUpperCase();
