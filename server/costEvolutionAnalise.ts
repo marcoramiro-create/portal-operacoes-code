@@ -83,14 +83,29 @@ type ItemInterno = {
 };
 // B-v15: SÉRIE COM HERANÇA — o custo médio de um mês sem movimento é o do
 // último mês que teve custo calculado. O consumo NÃO é herdado.
+// REGRA DO MARCO (12/11/2026): o Custo Total usa a quantidade vendida do mês
+// multiplicada pelo ÚLTIMO custo médio VÁLIDO do item. Antes da primeira
+// observação positiva, o primeiro custo seguinte é transportado para trás
+// (2025 com custo só a partir de 2026 não pode ficar sem custo).
 function serieCusto(item: ItemInterno, periods: string[]): (number | null)[] {
   const values = new Map(item.meses.map(mes => [mes.period, mes.custo_medio]));
-  let anterior: number | null = null;
-  return periods.map(period => {
+  const crua = periods.map(period => {
     const atual = values.get(period);
-    if (atual != null && atual !== 0) anterior = atual;
+    return atual != null && atual !== 0 ? atual : null;
+  });
+  let anterior: number | null = null;
+  const paraFrente = crua.map(valor => {
+    if (valor != null) anterior = valor;
     return anterior;
   });
+  if (paraFrente.some(valor => valor == null)) {
+    let seguinte: number | null = null;
+    for (let i = paraFrente.length - 1; i >= 0; i -= 1) {
+      if (crua[i] != null) seguinte = crua[i];
+      else if (seguinte != null) paraFrente[i] = seguinte;
+    }
+  }
+  return paraFrente;
 }
 // B-v15: aplica a herança DIRETO nos meses do item, para que o consumo em
 // reais (quantidade × custo) use o custo herdado. Só o custo é transportado.
@@ -410,7 +425,7 @@ export async function obterConsumoIndustria(
   const chave = `${branch}:${periods[0]}:${periods[periods.length - 1]}`;
   const existente = cacheConsumoIndustria.get(chave);
   if (existente && Date.now() - existente.gravadoEm < CACHE_CONSUMO_TTL_MS) {
-    return { consumo: existente.consumo, estoqueAgregado: existente.estoqueAgregado };
+    return { consumo: existente.consumo, estoque: existente.estoqueAgregado };
   }
   const inicio = previousPeriod(periods[0]);
   const fim = periods[periods.length - 1];
@@ -564,7 +579,7 @@ async function getCurrentCurveLookup(
               from public."protheusImports" latest
              where latest.status = 'approved'
              order by latest."importedAt" desc, latest.id desc
-             limit 1
+            limit 1
           )
             and ($1::text is null or trim(a.branch) = $1)
             and a.curve::text in ('A', 'B', 'C', 'D', 'E')`,
@@ -857,7 +872,7 @@ export async function getCostEvolutionItens(params: ParamsBase & {
     lista = lista.filter(item => {
       if (!item.curve || item.costStatus === "SEM_BASE_CUSTO" || item.variacaoPercent == null) return false;
       const limite = limites[item.curve as keyof LimitesAlerta] ?? LIMITES_PADRAO[item.curve as keyof LimitesAlerta];
-      return Math.abs(item.variacaoPercent) >= limite;
+      return Math.abs(variacao) >= limite;
     });
   } else if (criterio.startsWith("curva-")) {
     const curva = criterio.replace("curva-", "").toUpperCase();
