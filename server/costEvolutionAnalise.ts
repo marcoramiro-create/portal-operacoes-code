@@ -745,22 +745,69 @@ async function obterBase(params: ParamsBase, limites: LimitesAlerta) {
     basesEmAndamento.delete(chave);
   }
 }
-// Custo total: soma item a item e mês a mês de consumo/venda × custo médio.
-// A quantidade mensal do agregado é aplicada a cada item do agregado, conforme
-// a regra de negócio da análise; não deduplicar por filial|agregado|mês.
+// REGRA DO MARCO (15/11/2026): o Custo Total conta CADA MÊS UMA ÚNICA VEZ por
+// filial+agregado — igual à planilha do Excel. O custo do agregado no mês é a
+// MÉDIA PONDERADA dos custos dos produtos-membros, ponderada pela quantidade
+// de cada membro no mês (saldo físico da SB9; membro sem quantidade não entra
+// na média). A quantidade vendida é do agregado, aplicada uma vez só.
+// Sem quantidade de membro algum, cai na média simples dos custos válidos.
 export function calcularCustoTotal(items: ItemInterno[], segment: CostEvolutionSegment): number {
-  let total = 0;
-  const consumoIndustrialContado = new Set<string>();
-  for (const item of items) {
-    for (const mes of item.meses) {
-      const valor = consumoMensalEmReais(mes, segment);
-      if (valor == null) continue;
-      if (segment === "industry") {
+  if (segment === "industry") {
+    // Indústria mantém a deduplicação por agregado já validada.
+    let total = 0;
+    const consumoIndustrialContado = new Set<string>();
+    for (const item of items) {
+      for (const mes of item.meses) {
+        const valor = consumoMensalEmReais(mes, segment);
+        if (valor == null) continue;
         const chave = `${item.filial ?? INDUSTRY_BRANCH}|${item.cod_agregado ?? item.codigo}|${mes.period}`;
         if (consumoIndustrialContado.has(chave)) continue;
         consumoIndustrialContado.add(chave);
+        total += valor;
       }
-      total += valor;
+    }
+    return Number(total.toFixed(2));
+  }
+  // AUTOPEÇAS — um fato por filial|agregado|mês com custo ponderado dos membros.
+  // Passo 1: por filial+agregado+mês, acumula custo×quantidade e quantidade.
+  const porAgregadoMes = new Map<string, { custoVezesQtd: number; qtd: number; membrosComCusto: number; somaCustos: number }>();
+  for (const item of items) {
+    const agregado = (item.cod_agregado ?? item.codigo).trim();
+    const filial = String(item.filial ?? "").trim().padStart(4, "0");
+    for (const mes of item.meses) {
+      const quantidadeVendida = mes.quantidade_vendida;
+      const custo = mes.custo_medio;
+      if (quantidadeVendida == null || !Number.isFinite(quantidadeVendida) || custo == null) continue;
+      const chave = `${filial}|${agregado}|${mes.period}`;
+      let acc = porAgregadoMes.get(chave);
+      if (!acc) { acc = { custoVezesQtd: 0, qtd: 0, membrosComCusto: 0, somaCustos: 0 }; porAgregadoMes.set(chave, acc); }
+      // Peso do membro = sua quantidade vendida no mês; sem quantidade, peso 0
+      // (só entra na média simples de fallback).
+      acc.custoVezesQtd += custo * quantidadeVendida;
+      acc.qtd += quantidadeVendida;
+      acc.membrosComCusto += 1;
+      acc.somaCustos += custo;
+    }
+  }
+  // Passo 2: um valor por filial+agregado+mês.
+  let total = 0;
+  const contados = new Set<string>();
+  for (const item of items) {
+    const agregado = (item.cod_agregado ?? item.codigo).trim();
+    const filial = String(item.filial ?? "").trim().padStart(4, "0");
+    for (const mes of item.meses) {
+      const quantidadeVendida = mes.quantidade_vendida;
+      const custo = mes.custo_medio;
+      if (quantidadeVendida == null || !Number.isFinite(quantidadeVendida) || custo == null) continue;
+      const chave = `${filial}|${agregado}|${mes.period}`;
+      if (contados.has(chave)) continue;
+      contados.add(chave);
+      const acc = porAgregadoMes.get(chave);
+      if (!acc) continue;
+      const custoAgregado = acc.qtd > 0
+        ? acc.custoVezesQtd / acc.qtd
+        : (acc.membrosComCusto > 0 ? acc.somaCustos / acc.membrosComCusto : custo);
+      total += quantidadeVendida * custoAgregado;
     }
   }
   return Number(total.toFixed(2));
