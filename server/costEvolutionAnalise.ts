@@ -393,6 +393,11 @@ export async function attachSb9MonthlyCosts(
     if (catalogDescription && (!item.descricao?.trim() || item.descricao.trim() === item.codigo)) {
       item.descricao = catalogDescription;
     }
+    // REGRA DO MARCO (18/11/2026): custo 0 na SB9 = mês SEM MOVIMENTO naquele
+    // produto/filial — NÃO apaga o custo válido já trazido pelo cost_records
+    // (acompanhamento de custos, cobertura por agregado). A SB9 só soma
+    // informação; custo positivo sobrescreve, custo 0 preserva o existente.
+    if (observedCost <= 0) continue;
     let costs = monthlyCost.get(item);
     if (!costs) { costs = new Map(); monthlyCost.set(item, costs); }
     // Preserva a regra anterior de MAX por produto/mês, mas sem sort/hash no SQL.
