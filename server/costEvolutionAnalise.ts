@@ -768,47 +768,40 @@ export function calcularCustoTotal(items: ItemInterno[], segment: CostEvolutionS
     }
     return Number(total.toFixed(2));
   }
-  // AUTOPEÇAS — um fato por filial|agregado|mês com custo ponderado dos membros.
-  // Passo 1: por filial+agregado+mês, acumula custo×quantidade e quantidade.
-  const porAgregadoMes = new Map<string, { custoVezesQtd: number; qtd: number; membrosComCusto: number; somaCustos: number }>();
+  // AUTOPEÇAS — REGRA DO EXCEL (validada 18/11/2026 na planilha do Marco):
+  // o valor do mês é a quantidade vendida do mês × o ÚLTIMO custo médio válido
+  // do item (a planilha usa UM preço — CustoUn13M — para os 13 meses).
+  // Cada mês conta UMA única vez por filial+agregado; o custo do agregado é a
+  // média dos últimos custos válidos dos membros.
+  const ultimoCusto = new Map<ItemInterno, number>();
   for (const item of items) {
+    const serie = serieCusto(item, item.meses.map(mes => mes.period));
+    let ultimo: number | null = null;
+    for (const valor of serie) if (valor != null) ultimo = valor;
+    if (ultimo != null) ultimoCusto.set(item, ultimo);
+  }
+  const porAgregadoMes = new Map<string, { qtd: number; somaCustos: number; membros: number }>();
+  for (const item of items) {
+    const custo = ultimoCusto.get(item);
+    if (custo == null) continue;
     const agregado = (item.cod_agregado ?? item.codigo).trim();
     const filial = String(item.filial ?? "").trim().padStart(4, "0");
     for (const mes of item.meses) {
-      const quantidadeVendida = mes.quantidade_vendida;
-      const custo = mes.custo_medio;
-      if (quantidadeVendida == null || !Number.isFinite(quantidadeVendida) || custo == null) continue;
+      const quantidade = mes.quantidade_vendida;
+      if (quantidade == null || !Number.isFinite(quantidade)) continue;
       const chave = `${filial}|${agregado}|${mes.period}`;
       let acc = porAgregadoMes.get(chave);
-      if (!acc) { acc = { custoVezesQtd: 0, qtd: 0, membrosComCusto: 0, somaCustos: 0 }; porAgregadoMes.set(chave, acc); }
-      // Peso do membro = sua quantidade vendida no mês; sem quantidade, peso 0
-      // (só entra na média simples de fallback).
-      acc.custoVezesQtd += custo * quantidadeVendida;
-      acc.qtd += quantidadeVendida;
-      acc.membrosComCusto += 1;
+      if (!acc) { acc = { qtd: 0, somaCustos: 0, membros: 0 }; porAgregadoMes.set(chave, acc); }
+      // A quantidade é do agregado: os membros repetem o mesmo valor; guarda uma vez.
+      if (acc.membros === 0) acc.qtd = quantidade;
       acc.somaCustos += custo;
+      acc.membros += 1;
     }
   }
-  // Passo 2: um valor por filial+agregado+mês.
   let total = 0;
-  const contados = new Set<string>();
-  for (const item of items) {
-    const agregado = (item.cod_agregado ?? item.codigo).trim();
-    const filial = String(item.filial ?? "").trim().padStart(4, "0");
-    for (const mes of item.meses) {
-      const quantidadeVendida = mes.quantidade_vendida;
-      const custo = mes.custo_medio;
-      if (quantidadeVendida == null || !Number.isFinite(quantidadeVendida) || custo == null) continue;
-      const chave = `${filial}|${agregado}|${mes.period}`;
-      if (contados.has(chave)) continue;
-      contados.add(chave);
-      const acc = porAgregadoMes.get(chave);
-      if (!acc) continue;
-      const custoAgregado = acc.qtd > 0
-        ? acc.custoVezesQtd / acc.qtd
-        : (acc.membrosComCusto > 0 ? acc.somaCustos / acc.membrosComCusto : custo);
-      total += quantidadeVendida * custoAgregado;
-    }
+  for (const acc of porAgregadoMes.values()) {
+    if (acc.membros === 0) continue;
+    total += acc.qtd * (acc.somaCustos / acc.membros);
   }
   return Number(total.toFixed(2));
 }
