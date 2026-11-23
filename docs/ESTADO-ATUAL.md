@@ -103,3 +103,10 @@ A consolidação é somente documental: não alterou código, banco, OneDrive, H
 Foi concluída localmente a primeira conciliação controlada em `docs/CONCILIACAO-READONLY-0303-301010414-MGT-2025Q1.md`: Autopeças, filial 0303, agregado `301010414-MGT`, produto focal `100000142456`, armazém 01, janeiro a março de 2025. Foram cruzados SB1, SD1 e SF1; a SB9 foi usada somente para comparação.
 
 O produto focal apresentou custo de entrada de R$ 420,35 em janeiro e março. A comparação com a SB9 foi próxima em março (R$ 420,2450) e divergente em janeiro (R$ 383,9860), confirmando que a análise de custo de entrada não deve substituir sua fonte por SB9 automaticamente. Nenhum banco remoto, código funcional, OneDrive, Homologação ou Produção foi alterado.
+
+
+## Primeira conciliação read-only da Indústria — 23/11/2026
+
+Foi concluída localmente a conciliação de `docs/CONCILIACAO-READONLY-0105-04088-2025Q1.md`: filial 0105, armazém 20, produto/agregado `04088`, janeiro a março de 2025. As entradas SD1/SF1, todas com CFOP 1101, resultaram em custo médio de R$ 6,34. A SB9 do armazém 20 apresentou R$ 5,2101, R$ 5,2298 e R$ 5,2253, diferença consistente de aproximadamente 21%.
+
+A evidência reforça a separação entre custo de entrada e custo mensal da SB9 na Indústria. O armazém 01 apresentou custo zero e não foi usado como base comparável. A regra financeira ainda precisa ser conciliada com RM BIS/planilha antes de qualquer read model definitivo.
