@@ -110,3 +110,8 @@ O produto focal apresentou custo de entrada de R$ 420,35 em janeiro e março. A 
 Foi concluída localmente a conciliação de `docs/CONCILIACAO-READONLY-0105-04088-2025Q1.md`: filial 0105, armazém 20, produto/agregado `04088`, janeiro a março de 2025. As entradas SD1/SF1, todas com CFOP 1101, resultaram em custo médio de R$ 6,34. A SB9 do armazém 20 apresentou R$ 5,2101, R$ 5,2298 e R$ 5,2253, diferença consistente de aproximadamente 21%.
 
 A evidência reforça a separação entre custo de entrada e custo mensal da SB9 na Indústria. O armazém 01 apresentou custo zero e não foi usado como base comparável. A regra financeira ainda precisa ser conciliada com RM BIS/planilha antes de qualquer read model definitivo.
+
+
+## Verificação da hipótese de frete — 23/11/2026
+
+Foi verificado `Vlr. Frete`, `Vlr. Seguro` e `Vlr. Despesa` na SD1 e `Vlr.Frete`, `Vlr.Seguro` e `Vlr.Despesas` na SF1 para os dois casos controlados. Todos estavam zerados. A divergência entre custo de entrada e SB9 não é explicada por frete, seguro ou despesa explicitamente apropriáveis nesses registros. A análise foi registrada em `docs/VERIFICACAO-FRETE-CONCILIACOES-2025Q1.md`.
