@@ -10,9 +10,9 @@ O repositório oficial indicado pelo usuário é:
 
 `https://github.com/marcoramiro-create/portal-operacoes-code`
 
-O repositório `portal-operacoes` não respondeu como um repositório Git acessível na verificação read-only. O repositório `portal-operacoes-code` possui branch `main`, commit atual `45c217522bfa97152b986223046ecf2860c424e9` e a mesma aplicação `gestao-suprimentos-logistica`.
+O repositório `portal-operacoes` não respondeu como um repositório Git acessível na verificação read-only. O repositório `portal-operacoes-code` possui branch `main`, a mesma aplicação `gestao-suprimentos-logistica` e preserva a sequência de correções de custos iniciada no commit `45c2175`. Após o checkpoint desta etapa, a referência publicada passou a apontar para o checkpoint `ca79fe5`, que contém este documento.
 
-O remote atualmente configurado no sandbox ainda é um repositório interno temporário do Manus. Ele não deve ser tratado como fonte compartilhada entre o usuário, a Oracle, o computador, o Maestro e o Claude.
+O remote `origin` continua sendo um repositório interno do Manus, mas o remote `github` foi adicionado apontando para `portal-operacoes-code`. O GitHub é a fonte compartilhada; `origin` não deve ser usado para sincronizar Oracle, computador, Maestro ou Claude.
 
 ## Diagnóstico da divergência
 
@@ -33,7 +33,7 @@ O sandbox contém, por outro lado, alterações posteriores relacionadas a:
 - correção para não refazer consultas pesadas ao recuperar foco da tela;
 - ajustes recentes de autenticação e preparação de deploy.
 
-Os arquivos `server/routers.ts` e `server/costEvolutionAnalise.ts` divergem entre os dois locais. Portanto, não é seguro executar `git pull`, substituir o sandbox pelo GitHub ou publicar o estado local diretamente.
+Os arquivos `server/routers.ts` e `server/costEvolutionAnalise.ts` divergiam antes da integração. A branch `chore/sincronizacao-github` está agora baseada no histórico do GitHub e recebeu apenas dois ajustes mínimos: remoção de um auxiliar OneDrive incompleto que duplicava implementação existente e correção da chamada de redefinição de senha. A branch `main` local continua preservada separadamente para comparação.
 
 ## Estado de ambientes
 
@@ -57,15 +57,20 @@ A separação documentada permanece:
 
 ## Próxima sequência segura
 
-1. Preservar este diagnóstico em commit local.
-2. Adicionar o GitHub oficial como remote separado, sem remover o remote Manus.
-3. Fazer uma integração em branch temporária, mantendo os dois históricos.
-4. Comparar e integrar primeiro os motores de custo e os testes correspondentes.
-5. Comparar depois migrações, read models, scripts de deploy e componentes de diagnóstico.
-6. Executar testes e build local.
-7. Publicar uma branch/PR no GitHub oficial.
-8. Atualizar o computador e a Oracle a partir do SHA aprovado, nunca por cópia manual de pasta.
-9. Somente após validação funcional em Homologação criar uma tag para Produção.
+1. Preservar este diagnóstico e os dois ajustes em commit na branch de integração.
+2. Manter o remote GitHub separado do remote Manus.
+3. Comparar os motores de custo, migrações, read models e scripts da `main` local com o histórico GitHub antes de promover qualquer versão.
+4. Executar testes e build local; nesta etapa TypeScript, testes e build passaram.
+5. Publicar uma branch/PR no GitHub oficial somente após revisar o diff final.
+6. Atualizar o computador e a Oracle a partir do SHA aprovado, nunca por cópia manual de pasta.
+7. Somente após validação funcional em Homologação criar uma tag para Produção.
+
+## Validação técnica desta etapa
+
+- `pnpm exec tsc --noEmit`: aprovado após os dois ajustes.
+- `pnpm test --run`: aprovado.
+- `pnpm run build`: aprovado.
+- Publicação automática do checkpoint: falhou no health check porque o ambiente do sandbox não tinha `ONEDRIVE_TOKEN_KEY`. Isso não alterou a Oracle nem os bancos, mas confirma que a publicação automática não deve ser usada como deploy do Portal.
 
 ## Pendências de dados ainda existentes
 
@@ -79,8 +84,8 @@ Estas pendências não impedem a preparação da sincronização, mas impedem in
 
 ## Proibições desta etapa
 
-- Não fazer push automático para `main`.
+- Não fazer deploy automático a partir do sandbox; o checkpoint pode atualizar a referência GitHub, mas isso não substitui revisão, Homologação ou release.
 - Não fazer deploy na Oracle.
 - Não executar migração remota.
 - Não copiar banco ou dados entre ambientes.
-- Não sobrescrever o GitHub com o sandbox antes da integração dos dois conjuntos de alterações.
+- Não substituir a `main` local pela branch GitHub sem preservar o histórico e os scripts de Produção/read models.
