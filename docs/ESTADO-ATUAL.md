@@ -89,3 +89,10 @@ Estas pendências não impedem a preparação da sincronização, mas impedem in
 - Não executar migração remota.
 - Não copiar banco ou dados entre ambientes.
 - Não substituir a `main` local pela branch GitHub sem preservar o histórico e os scripts de Produção/read models.
+
+
+## Documento-mestre de requisitos — 23/11/2026
+
+Foi criado `docs/PLANO-MESTRE-ANALISE-EVOLUTIVA.md`, consolidando os requisitos funcionais e técnicos já definidos para a evolução de custos e consumo de Autopeças e Indústria: fontes, filiais, armazéns, CFOPs, ponderação, períodos, ranking de agregados, pneus, auditoria, inflação/dólar e sequência de validação.
+
+A consolidação é somente documental: não alterou código, banco, OneDrive, Homologação ou Produção. O próximo passo seguro é validação read-only de cabeçalhos/chaves e conciliação de um caso pequeno antes de qualquer novo read model, migração ou integração de tela.
