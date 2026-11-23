@@ -96,3 +96,10 @@ Estas pendências não impedem a preparação da sincronização, mas impedem in
 Foi criado `docs/PLANO-MESTRE-ANALISE-EVOLUTIVA.md`, consolidando os requisitos funcionais e técnicos já definidos para a evolução de custos e consumo de Autopeças e Indústria: fontes, filiais, armazéns, CFOPs, ponderação, períodos, ranking de agregados, pneus, auditoria, inflação/dólar e sequência de validação.
 
 A consolidação é somente documental: não alterou código, banco, OneDrive, Homologação ou Produção. O próximo passo seguro é validação read-only de cabeçalhos/chaves e conciliação de um caso pequeno antes de qualquer novo read model, migração ou integração de tela.
+
+
+## Primeira conciliação read-only — 23/11/2026
+
+Foi concluída localmente a primeira conciliação controlada em `docs/CONCILIACAO-READONLY-0303-301010414-MGT-2025Q1.md`: Autopeças, filial 0303, agregado `301010414-MGT`, produto focal `100000142456`, armazém 01, janeiro a março de 2025. Foram cruzados SB1, SD1 e SF1; a SB9 foi usada somente para comparação.
+
+O produto focal apresentou custo de entrada de R$ 420,35 em janeiro e março. A comparação com a SB9 foi próxima em março (R$ 420,2450) e divergente em janeiro (R$ 383,9860), confirmando que a análise de custo de entrada não deve substituir sua fonte por SB9 automaticamente. Nenhum banco remoto, código funcional, OneDrive, Homologação ou Produção foi alterado.
