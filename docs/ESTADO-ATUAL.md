@@ -125,3 +125,8 @@ A análise local adicional verificou composição fiscal e saldo inicial. Na Ind
 ## Tabela para Fiscal/Controladoria — 23/11/2026
 
 Foi criada `docs/TABELA-VALIDACAO-FISCAL-CONTROLADORIA-2025Q1.md`, com resumo comparativo, detalhamento das notas de Autopeças e Indústria, campos SF1, custos de entrada, SB9, saldos iniciais e perguntas objetivas para validação. O documento deixa explícito que valores `Vlr.Mercad`/`Vlr.Bruto` da SF1 são da nota inteira e não devem ser atribuídos ao produto sem rateio aprovado.
+
+
+## Correção da conciliação de Autopeças — 23/11/2026
+
+Na preparação da tabela para Fiscal/Controladoria, foi identificada e corrigida uma omissão: o produto `100000142456` possui duas entradas em março de 2025, não apenas uma. São 48 unidades a R$ 420,35 e 80 unidades a R$ 507,00, totalizando 128 unidades, R$ 60.736,80 e custo médio ponderado de R$ 474,5063. A comparação correta com a SB9 de R$ 420,2450 resulta em diferença de 12,91% em março. Os relatórios e a tabela foram corrigidos antes da entrega.

@@ -44,13 +44,13 @@ Somente linhas de SD1 com os CFOPs aprovados foram consideradas. A SB9 não part
 |---|---:|---:|---:|---:|---:|---:|---:|
 | 01/2025 | `000007303 / 100` | 64 | R$ 26.902,40 | R$ 420,3500 | R$ 383,9860 | R$ 36,3640 | 9,47% |
 | 02/2025 | — | 0 | R$ 0,00 | não calculado | sem entrada focal | — | — |
-| 03/2025 | `000007598 / 100` | 48 | R$ 20.176,80 | R$ 420,3500 | R$ 420,2450 | R$ 0,1050 | 0,02% |
+| 03/2025 | `000007598 / 100` e `000072236 / 2` | 128 | R$ 60.736,80 | R$ 474,5063 | R$ 420,2450 | R$ 54,2613 | 12,91% |
 
 ## 5. Leitura inicial
 
-1. O produto focal tem duas entradas no trimestre, ambas com preço unitário de entrada de R$ 420,35.
-2. Em março de 2025, a entrada e a SB9 praticamente coincidem: diferença de aproximadamente R$ 0,11 por unidade.
-3. Em janeiro de 2025, há diferença relevante de 9,47% entre a entrada e a SB9. Isso impede assumir que a SB9 seja automaticamente o custo de entrada correto para a análise evolutiva.
+1. O produto focal tem três entradas no trimestre: uma em janeiro e duas em março.
+2. Em março, os preços unitários foram R$ 420,35 e R$ 507,00; por isso o custo médio ponderado do mês é R$ 474,5063, e não R$ 420,35.
+3. A comparação com a SB9 diverge 12,91% em março e 9,47% em janeiro. Isso impede assumir que a SB9 seja automaticamente o custo de entrada correto para a análise evolutiva.
 4. Fevereiro não deve ser preenchido com zero. Deve permanecer como mês sem entrada; eventual linha contínua no gráfico deverá ser uma escolha visual explícita, carregando o último preço válido e exibindo sua origem.
 5. O agregado possui outros códigos e variantes. A conciliação do agregado completo exige consolidar todos os produtos vinculados pela SB1, sem misturar códigos apenas semelhantes por descrição.
 
