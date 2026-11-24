@@ -31,3 +31,11 @@ Nos dois casos controlados, a diferença não é explicada por frete, seguro ou 
 7. eventual diferença entre o produto fiscal e a chave/código materializado na SB9.
 
 Não se deve corrigir a fórmula adicionando frete enquanto a fonte não apresentar valor de frete apropriável ao item.
+
+## Verificação adicional de impostos e composição
+
+Na Indústria, o produto `04088` possui `Vlr.Unitario` de R$ 6,34 nas entradas. As notas correspondentes têm IPI de 5% no cabeçalho e ICMS informado, mas o valor de ICMS varia por nota e os campos reduzidos da SD1 não permitem apropriar esse imposto diretamente ao item. A diferença da SB9, entre aproximadamente 17,5% e 17,8% abaixo da entrada, não coincide exatamente com a soma simples dos percentuais observados.
+
+Também foi verificado que a SB9 registra saldo inicial relevante no armazém 20 — por exemplo, 430.703,45 na unidade de saldo em janeiro — enquanto a entrada do mês é de 44.878 unidades. Isso torna plausível que `C Unit 1a M` seja custo de abertura/médio contábil do estoque, e não o preço unitário da entrada do mês. Essa hipótese precisa ser confirmada pelo significado operacional da SB9 antes de qualquer fórmula definitiva.
+
+Conclusão atual: o frete foi descartado nos casos testados; impostos, saldo inicial e regra de valorização da SB9 permanecem hipóteses abertas.

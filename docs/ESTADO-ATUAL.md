@@ -115,3 +115,8 @@ A evidência reforça a separação entre custo de entrada e custo mensal da SB9
 ## Verificação da hipótese de frete — 23/11/2026
 
 Foi verificado `Vlr. Frete`, `Vlr. Seguro` e `Vlr. Despesa` na SD1 e `Vlr.Frete`, `Vlr.Seguro` e `Vlr.Despesas` na SF1 para os dois casos controlados. Todos estavam zerados. A divergência entre custo de entrada e SB9 não é explicada por frete, seguro ou despesa explicitamente apropriáveis nesses registros. A análise foi registrada em `docs/VERIFICACAO-FRETE-CONCILIACOES-2025Q1.md`.
+
+
+## Hipóteses após a verificação de frete — 23/11/2026
+
+A análise local adicional verificou composição fiscal e saldo inicial. Na Indústria, as notas do produto 04088 têm IPI de 5% e ICMS informado, mas os percentuais observados não explicam exatamente a diferença da SB9. A SB9 também possui saldo inicial relevante no armazém 20, tornando plausível que `C Unit 1a M` seja custo de abertura/médio contábil, e não preço de entrada do mês. Essa hipótese permanece pendente de confirmação operacional da SB9; nenhuma fórmula foi alterada.
