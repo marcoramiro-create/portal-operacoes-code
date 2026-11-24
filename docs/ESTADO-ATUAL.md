@@ -120,3 +120,8 @@ Foi verificado `Vlr. Frete`, `Vlr. Seguro` e `Vlr. Despesa` na SD1 e `Vlr.Frete`
 ## Hipóteses após a verificação de frete — 23/11/2026
 
 A análise local adicional verificou composição fiscal e saldo inicial. Na Indústria, as notas do produto 04088 têm IPI de 5% e ICMS informado, mas os percentuais observados não explicam exatamente a diferença da SB9. A SB9 também possui saldo inicial relevante no armazém 20, tornando plausível que `C Unit 1a M` seja custo de abertura/médio contábil, e não preço de entrada do mês. Essa hipótese permanece pendente de confirmação operacional da SB9; nenhuma fórmula foi alterada.
+
+
+## Tabela para Fiscal/Controladoria — 23/11/2026
+
+Foi criada `docs/TABELA-VALIDACAO-FISCAL-CONTROLADORIA-2025Q1.md`, com resumo comparativo, detalhamento das notas de Autopeças e Indústria, campos SF1, custos de entrada, SB9, saldos iniciais e perguntas objetivas para validação. O documento deixa explícito que valores `Vlr.Mercad`/`Vlr.Bruto` da SF1 são da nota inteira e não devem ser atribuídos ao produto sem rateio aprovado.
