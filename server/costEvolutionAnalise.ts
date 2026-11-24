@@ -163,15 +163,40 @@ function consumoTotalDoItem(item: ItemInterno, segment: CostEvolutionSegment): n
   if (!valores.length) return null;
   return valores.reduce((acc, valor) => acc + valor, 0);
 }
+// REGRA DO MARCO (24/11/2026): o impacto NÃO é simulação percentual sobre
+// todo o consumo do período. É o efeito REAL da variação: para cada mês em que
+// o item foi transacionado (venda no Autopeças / consumo na Indústria),
+// multiplica a QUANTIDADE DO MÊS pela diferença absoluta de custo entre o
+// custo vigente naquele mês e o último custo anterior a ele.
+// Exemplo validado (12864/0101, bonificação a 1,29 → custo real 439,15):
+// (439,15 − 1,29) × 21 un = 9.195,06 — e não 3,1MM de simulação.
+export function impactoRealDoItem(item: ItemInterno, segment: CostEvolutionSegment): number | null {
+  const meses = [...item.meses].sort((a, b) => a.period.localeCompare(b.period));
+  let anterior: number | null = null;
+  let impacto: number | null = null;
+  for (const mes of meses) {
+    const custo = mes.custo_medio;
+    // Custo 0/ausente = mês sem movimento: não gera impacto e não muda a base.
+    if (custo == null || custo === 0) continue;
+    // Quantidade transacionada no mês: venda (Autopeças). Na Indústria a
+    // quantidade é implícita: valor de consumo ÷ custo do mês (R$ ÷ R$/un).
+    const quantidade = segment === "industry"
+      ? (mes.valor_consumo != null && Number.isFinite(mes.valor_consumo) ? mes.valor_consumo / custo : null)
+      : mes.quantidade_vendida;
+    if (quantidade != null && Number.isFinite(quantidade) && quantidade !== 0 && anterior != null) {
+      const parcela = (custo - anterior) * quantidade;
+      impacto = (impacto ?? 0) + parcela;
+    }
+    anterior = custo;
+  }
+  return impacto;
+}
 function enriquecerItens(items: ItemInterno[], segment: CostEvolutionSegment): void {
   for (const item of items) {
     const variacaoPercent = variacaoDoItem(item);
     const consumoMedioMensal = consumoMedioDoItem(item, segment);
     const consumoTotal = consumoTotalDoItem(item, segment);
-    let impactoEstimado: number | null = null;
-    if (variacaoPercent != null && consumoTotal != null) {
-      impactoEstimado = consumoTotal * (variacaoPercent / 100);
-    }
+    const impactoEstimado = impactoRealDoItem(item, segment);
     const quantidades = item.meses
       .map(mes => mes.quantidade_vendida)
       .filter((valor): valor is number => valor != null && Number.isFinite(valor));
